@@ -18,14 +18,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="tr">
       <body className={inter.className}>
         <CartProvider>
-          {/* SADECE ADMIN DEĞİLSEK MÜŞTERİ ARAÇLARINI GÖSTER */}
+          {/* Admin değilsek müşteri araçlarını göster */}
           {!isAdmin && (
             <>
               <CampaignBanner />
               <Navbar />
             </>
           )}
-          
           <CartSidebar />
           {children}
         </CartProvider>
