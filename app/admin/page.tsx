@@ -1,168 +1,147 @@
-// src/app/admin/page.tsx
+// app/page.tsx
 "use client";
 
-import { useState, useEffect } from "react";
-import Link from "next/link";
+import { useEffect, useState } from "react";
+import Hero from "@/components/Hero";
+import ProductCard from "@/components/ui/ProductCard";
+import ProductModal from "@/components/ProductModal";
 
-export default function AdminPanel() {
-  const [products, setProducts] = useState<any[]>([]);
+// Ürün Tipi
+type Product = {
+  id: number;
+  name: string;
+  price: number;
+  image: string;
+  category?: string;
+};
+
+export default function Home() {
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({ totalValue: 0, count: 0 });
 
-  // 1. ADIM: Sayfa açılınca GERÇEK verileri çek
+  // --- YENİ EKLENEN STATE'LER ---
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortOrder, setSortOrder] = useState("default"); // default, asc, desc
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // Verileri Çek (Scrape)
   useEffect(() => {
-    const fetchRealData = async () => {
+    const fetchProducts = async () => {
       try {
         const res = await fetch('/api/scrape', {
           method: 'POST',
-          body: JSON.stringify({ url: 'https://prestigeso.com' }), // Arkadaşının sitesi
+          body: JSON.stringify({ url: 'https://prestigeso.com' }),
           headers: { 'Content-Type': 'application/json' }
         });
         const data = await res.json();
-        
         if (data.success) {
           setProducts(data.products);
-          
-          // İstatistik Hesapla
-          const total = data.products.reduce((acc: number, item: any) => acc + item.price, 0);
-          setStats({ totalValue: total, count: data.products.length });
         }
       } catch (error) {
-        console.error("Veri çekilemedi", error);
+        console.error("Hata:", error);
       } finally {
         setLoading(false);
       }
     };
-
-    fetchRealData();
+    fetchProducts();
   }, []);
 
-  // Ürün Silme Fonksiyonu
-  const handleDelete = (id: number) => {
-    if (window.confirm("Bu ürünü panelden kaldırmak istiyor musun?")) {
-      const newProducts = products.filter(p => p.id !== id);
-      setProducts(newProducts);
-      // İstatistikleri güncelle
-      const total = newProducts.reduce((acc: number, item: any) => acc + item.price, 0);
-      setStats({ totalValue: total, count: newProducts.length });
-    }
+  // --- FİLTRELEME MANTIĞI ---
+  const filteredProducts = products
+    .filter((product) =>
+      product.name.toLowerCase().includes(searchTerm.toLowerCase())
+    )
+    .sort((a, b) => {
+      if (sortOrder === "asc") return a.price - b.price; // Artan Fiyat
+      if (sortOrder === "desc") return b.price - a.price; // Azalan Fiyat
+      return 0; // Varsayılan
+    });
+
+  // Modal Açma Fonksiyonu
+  const openModal = (product: Product) => {
+    setSelectedProduct(product);
+    setIsModalOpen(true);
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24 select-none font-sans">
-      
-      {/* --- ÜST BAR (APP Header) --- */}
-      <div className="bg-white px-6 pt-14 pb-4 shadow-sm sticky top-0 z-20 flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 tracking-tight">Yönetim</h1>
-          <p className="text-xs text-gray-500 font-medium">PrestigeSO Mobile Admin</p>
-        </div>
-        {/* Profil İkonu */}
-        <div className="w-10 h-10 bg-black text-white rounded-full flex items-center justify-center font-bold shadow-lg">
-            YP
-        </div>
-      </div>
+    <main className="min-h-screen bg-gray-50 pb-20">
+      <Hero />
 
-      {/* --- DASHBOARD KARTLARI --- */}
-      <div className="grid grid-cols-2 gap-4 p-4">
-        {/* Kart 1: Toplam Değer */}
-        <div className="bg-black text-white p-5 rounded-2xl shadow-xl hover:scale-[1.02] transition-transform">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"/>
-            <p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Mağaza Değeri</p>
-          </div>
-          <p className="text-xl font-bold">
-            {loading ? "..." : `${stats.totalValue.toLocaleString('tr-TR')} ₺`}
-          </p>
-        </div>
-
-        {/* Kart 2: Ürün Sayısı */}
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between">
-          <p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Aktif Ürün</p>
-          <p className="text-3xl font-black text-blue-600 mt-1">
-             {loading ? "..." : stats.count}
-          </p>
-        </div>
-      </div>
-
-      {/* --- LİSTE BAŞLIĞI VE YENİLEME BUTONU --- */}
-      <div className="px-5 mt-4 flex justify-between items-end">
-        <h2 className="text-gray-900 font-bold text-lg">Ürün Listesi</h2>
-        <button 
-            onClick={() => window.location.reload()} 
-            className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full hover:bg-blue-100 transition-colors"
-        >
-            🔄 Verileri Yenile
-        </button>
-      </div>
-      
-      {/* --- ÜRÜN LİSTESİ --- */}
-      <div className="px-4 mt-3 space-y-3">
-        {loading ? (
-          // Yükleniyor İskeleti (Skeleton)
-          [1,2,3,4].map(i => (
-            <div key={i} className="bg-white h-20 rounded-xl animate-pulse shadow-sm"/>
-          ))
-        ) : (
-          products.map((product) => (
-            <div key={product.id} className="group bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between active:scale-95 transition-all duration-200">
-              
-              <div className="flex items-center gap-4">
-                {/* Ürün Resmi */}
-                <div className="w-14 h-14 bg-gray-50 rounded-lg overflow-hidden border border-gray-100 relative">
-                    <img src={product.image} alt="" className="w-full h-full object-cover" />
-                </div>
-                
-                {/* Ürün Bilgisi */}
-                <div className="flex flex-col">
-                  <h3 className="font-bold text-gray-900 text-sm line-clamp-1 w-40">{product.name}</h3>
-                  <span className="text-xs font-medium text-gray-500 mt-1">
-                    {product.price.toLocaleString('tr-TR')} ₺
-                  </span>
-                </div>
-              </div>
-              
-              {/* Aksiyon Butonları */}
-              <div className="flex items-center gap-2">
-                 <button 
-                    onClick={() => handleDelete(product.id)}
-                    className="w-9 h-9 flex items-center justify-center bg-red-50 text-red-500 rounded-full hover:bg-red-500 hover:text-white transition-colors shadow-sm"
-                 >
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-4 h-4">
-                        <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
-                    </svg>
-                 </button>
-              </div>
-
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* --- ALT MENÜ (MOBİL NAVİGASYON) --- */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-4 flex justify-between items-center z-30 pb-safe">
-        <Link href="/" className="flex flex-col items-center gap-1 text-gray-400 hover:text-black">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 21v-7.5a.75.75 0 0 1 .75-.75h3a.75.75 0 0 1 .75.75V21m-4.5 0H2.36m11.14 0H18m0 0h3.64m-1.39 0V9.349m-16.5 11.65V9.35m0 0a3.375 3.375 0 0 1 2.062-2.98L12 2.766l10.337 5.257c.731.372 1.343 1.049 1.636 1.832" />
-            </svg>
-            <span className="text-[10px] font-bold">Mağaza</span>
-        </Link>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-20 relative z-10">
         
-        {/* Floating Action Button (Ortadaki Ekleme Butonu) */}
-        <button className="bg-black text-white w-14 h-14 rounded-full shadow-2xl shadow-gray-400 flex items-center justify-center -mt-8 border-4 border-gray-50 active:scale-95 transition-transform">
-             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-6 h-6">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-            </svg>
-        </button>
+        {/* --- ARAMA VE FİLTRE ÇUBUĞU --- */}
+        <div className="bg-white p-4 rounded-2xl shadow-lg mb-8 flex flex-col md:flex-row gap-4 items-center justify-between">
+          
+          {/* Arama Kutusu */}
+          <div className="relative w-full md:w-96">
+            <input 
+              type="text" 
+              placeholder="Ürün ara... (örn: Bileklik)" 
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-3 border border-gray-200 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all"
+            />
+            <svg className="w-5 h-5 text-gray-400 absolute left-3 top-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+          </div>
 
-        <Link href="#" className="flex flex-col items-center gap-1 text-blue-600">
-             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" />
-            </svg>
-            <span className="text-[10px] font-bold">Ayarlar</span>
-        </Link>
+          {/* Sıralama Kutusu */}
+          <div className="flex items-center gap-2 w-full md:w-auto">
+            <span className="text-sm font-bold text-gray-500 whitespace-nowrap">Sırala:</span>
+            <select 
+              value={sortOrder}
+              onChange={(e) => setSortOrder(e.target.value)}
+              className="w-full md:w-48 p-3 border border-gray-200 rounded-xl bg-white focus:outline-none focus:border-blue-500 cursor-pointer"
+            >
+              <option value="default">Önerilen</option>
+              <option value="asc">Fiyat: Artan</option>
+              <option value="desc">Fiyat: Azalan</option>
+            </select>
+          </div>
+        </div>
+
+        {/* --- ÜRÜN LİSTESİ --- */}
+        <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100">
+          <h2 className="text-3xl font-black text-center text-gray-900 mb-2">
+            Mağaza Koleksiyonu
+          </h2>
+          <p className="text-center text-gray-500 mb-10">
+            {loading ? "Ürünler yükleniyor..." : `${filteredProducts.length} ürün listeleniyor`}
+          </p>
+          
+          {loading ? (
+             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+               {[1,2,3,4].map(i => <div key={i} className="h-96 bg-gray-100 rounded-2xl animate-pulse"/>)}
+             </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
+              {filteredProducts.map((product) => (
+                <div key={product.id} onClick={() => openModal(product)} className="cursor-pointer">
+                   {/* ProductCard'a tıklayınca modal açılacak */}
+                   <ProductCard product={product} />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!loading && filteredProducts.length === 0 && (
+            <div className="text-center py-20">
+              <p className="text-xl text-gray-400">Aradığınız kriterlere uygun ürün bulunamadı. 😔</p>
+              <button onClick={() => setSearchTerm("")} className="mt-4 text-blue-600 font-bold hover:underline">
+                Tüm ürünleri göster
+              </button>
+            </div>
+          )}
+        </div>
       </div>
 
-    </div>
+      {/* --- MODAL BİLEŞENİ --- */}
+      <ProductModal 
+        product={selectedProduct} 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+      />
+
+    </main>
   );
 }

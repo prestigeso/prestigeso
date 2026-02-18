@@ -3,6 +3,7 @@ import "./globals.css";
 import Navbar from "@/components/Navbar";
 import { CartProvider } from "@/context/CartContext"; // Yol düzeltildi
 import CartSidebar from "@/components/CartSidebar";   // Yol düzeltildi
+import CampaignBanner from "@/components/CampaignBanner";
 
 export default function RootLayout({
   children,
