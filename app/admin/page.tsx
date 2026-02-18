@@ -1,86 +1,113 @@
-// app/admin/page.tsx
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 
 export default function AdminPanel() {
-  const [products, setProducts] = useState([
-    { id: 1, name: "Nike Air Jordan", price: 4500, stock: 12 },
-    { id: 2, name: "Sony Kulaklık", price: 12400, stock: 4 },
-    { id: 3, name: "RayBan Gözlük", price: 4200, stock: 0 },
-  ]);
+  const [products, setProducts] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [stats, setStats] = useState({ totalValue: 0, count: 0 });
 
-  const deleteProduct = (id: number) => {
-    if (confirm("Bu ürünü silmek istediğine emin misin?")) {
-      setProducts(products.filter((p) => p.id !== id));
-    }
-  };
+  useEffect(() => {
+    const fetchRealData = async () => {
+      try {
+        const res = await fetch('/api/scrape', {
+          method: 'POST',
+          body: JSON.stringify({ url: 'https://prestigeso.com' }),
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        
+        if (data.success) {
+          setProducts(data.products);
+          const total = data.products.reduce((acc: number, item: any) => acc + item.price, 0);
+          setStats({ totalValue: total, count: data.products.length });
+        }
+      } catch (error) {
+        console.error("Veri çekilemedi", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchRealData();
+  }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20 select-none">
-      
-      {/* Üst Bar */}
-      <div className="bg-white px-6 pt-12 pb-4 shadow-sm sticky top-0 z-20 flex justify-between items-center">
+    <div className="min-h-screen bg-white pb-24 select-none font-sans text-black">
+      {/* HEADER */}
+      <div className="bg-white px-6 pt-14 pb-4 shadow-sm sticky top-0 z-20 flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-black text-gray-900 tracking-tight">Yönetim</h1>
           <p className="text-xs text-gray-500 font-medium">PrestigeSO Mobile Admin</p>
         </div>
-        <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-bold">A</div>
+        <div className="w-10 h-10 bg-black text-white rounded-full flex items-center justify-center font-bold shadow-lg">YP</div>
       </div>
 
-      {/* İstatistikler */}
+      {/* STATS KARTLARI */}
       <div className="grid grid-cols-2 gap-4 p-4">
-        <div className="bg-black text-white p-5 rounded-2xl shadow-lg">
-          <p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Günlük Ciro</p>
-          <p className="text-2xl font-bold mt-1">14.250 ₺</p>
+        <div className="bg-black text-white p-5 rounded-2xl shadow-xl">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"/>
+            <p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Mağaza Değeri</p>
+          </div>
+          <p className="text-xl font-bold">
+            {loading ? "..." : `${stats.totalValue.toLocaleString('tr-TR')} ₺`}
+          </p>
         </div>
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-          <p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Bekleyen</p>
-          <p className="text-2xl font-bold text-orange-500 mt-1">3 Sipariş</p>
+
+        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between">
+          <p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Aktif Ürün</p>
+          <p className="text-3xl font-black text-blue-600 mt-1">
+             {loading ? "..." : stats.count}
+          </p>
         </div>
       </div>
 
-      {/* Liste */}
-      <div className="px-4 mt-2">
-        <div className="flex justify-between items-end mb-4">
-            <h2 className="text-gray-900 font-bold text-lg">Ürün Listesi</h2>
-            <span className="text-xs text-gray-400 bg-gray-200 px-2 py-1 rounded-md">{products.length} Adet</span>
-        </div>
-        
-        <div className="space-y-3">
-          {products.map((product) => (
-            <div key={product.id} className="bg-white p-4 rounded-xl shadow-sm flex items-center justify-between border border-gray-100 active:scale-95 transition-transform">
+      <div className="px-5 mt-4 flex justify-between items-end border-b border-gray-50 pb-4">
+        <h2 className="text-gray-900 font-bold text-lg">Ürün Listesi</h2>
+        <button onClick={() => window.location.reload()} className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full">🔄 Verileri Yenile</button>
+      </div>
+      
+      {/* ÜRÜN LİSTESİ */}
+      <div className="px-4 mt-3 space-y-3">
+        {loading ? (
+          [1,2,3,4].map(i => (
+            <div key={i} className="bg-white h-20 rounded-xl animate-pulse shadow-sm border border-gray-100"/>
+          ))
+        ) : (
+          products.map((product) => (
+            <div key={product.id} className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-gray-50 rounded-lg flex items-center justify-center text-xl">📦</div>
-                <div>
-                  <h3 className="font-bold text-gray-900 text-sm">{product.name}</h3>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="text-xs font-medium text-gray-500">{product.price.toLocaleString()} ₺</span>
-                    {product.stock === 0 ? (
-                      <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full font-bold">Tükendi</span>
-                    ) : (
-                      <span className="text-[10px] bg-green-100 text-green-600 px-2 py-0.5 rounded-full font-bold">{product.stock} Stok</span>
-                    )}
-                  </div>
+                <div className="w-14 h-14 bg-gray-50 rounded-lg overflow-hidden border border-gray-100">
+                    <img src={product.image} alt="" className="w-full h-full object-cover" />
+                </div>
+                <div className="flex flex-col">
+                  <h3 className="font-bold text-gray-900 text-sm line-clamp-1 w-40">{product.name}</h3>
+                  <span className="text-xs font-medium text-gray-500 mt-1">{product.price.toLocaleString('tr-TR')} ₺</span>
                 </div>
               </div>
-              <button onClick={() => deleteProduct(product.id)} className="w-8 h-8 flex items-center justify-center bg-red-50 text-red-500 rounded-lg hover:bg-red-500 hover:text-white transition-colors">
-                  X
-              </button>
+              <button className="text-gray-300 p-2 text-xl font-light">✕</button>
             </div>
-          ))}
+          ))
+        )}
+      </div>
+
+      {/* ALT NAVİGASYON */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-4 flex justify-between items-center z-30 pb-safe">
+        <Link href="/" className="flex flex-col items-center gap-1 text-gray-400">
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
+            </svg>
+            <span className="text-[10px] font-bold">Mağaza</span>
+        </Link>
+        <button className="bg-black text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center -mt-8 border-4 border-white text-3xl font-light">+</button>
+        <div className="flex flex-col items-center gap-1 text-blue-600">
+             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" />
+            </svg>
+            <span className="text-[10px] font-bold underline underline-offset-4">Panel</span>
         </div>
-      </div>
-
-      <div className="fixed bottom-8 right-6">
-        <button className="bg-blue-600 text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center hover:scale-110 active:scale-90 transition-transform">
-          +
-        </button>
-      </div>
-
-      <div className="text-center mt-8 pb-4">
-        <Link href="/" className="text-gray-400 text-xs font-medium hover:text-black transition-colors">← Mağazaya Dön</Link>
       </div>
     </div>
   );
