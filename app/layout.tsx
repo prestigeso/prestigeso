@@ -12,21 +12,18 @@ const inter = Inter({ subsets: ["latin"] });
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  // Sadece /admin ile başlayan yollarda Navbar ve Banner'ı gizle
   const isAdmin = pathname.startsWith("/admin");
 
   return (
     <html lang="tr">
       <body className={inter.className}>
         <CartProvider>
-          {/* Admin değilsek müşteri araçlarını göster */}
-          {!isAdmin && (
-            <>
-              <CampaignBanner />
-              <Navbar />
-            </>
-          )}
+          {!isAdmin && <CampaignBanner />}
+          {!isAdmin && <Navbar />}
+          
           <CartSidebar />
-          {children}
+          <main>{children}</main>
         </CartProvider>
       </body>
     </html>
