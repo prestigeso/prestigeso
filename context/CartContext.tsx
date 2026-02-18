@@ -3,8 +3,8 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
-// Sepetteki ürün tipi
-type CartItem = {
+// Ürün Tipi
+export type Product = {
   id: number;
   name: string;
   price: number;
@@ -12,46 +12,58 @@ type CartItem = {
   quantity: number;
 };
 
+// Context Tipi
 type CartContextType = {
-  items: CartItem[];
+  items: Product[];
   addToCart: (product: any) => void;
   removeFromCart: (id: number) => void;
   toggleCart: () => void;
   isCartOpen: boolean;
   cartTotal: number;
-  cartCount: number;
+  // --- YENİ EKLENEN KISIM ---
+  campaignText: string;
+  updateCampaignText: (text: string) => void;
 };
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  const [items, setItems] = useState<CartItem[]>([]);
+  const [items, setItems] = useState<Product[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
+  
+  // Varsayılan Kampanya Metni
+  const [campaignText, setCampaignText] = useState("🚚 500 TL VE ÜZERİ KARGO BEDAVA! 🔥 SEZON İNDİRİMLERİ BAŞLADI");
 
-  // LocalStorage'dan sepeti geri yükle
+  // Sayfa açılınca hafızadan (localStorage) oku
   useEffect(() => {
     const savedCart = localStorage.getItem("cart");
-    if (savedCart) {
-      setItems(JSON.parse(savedCart));
-    }
+    const savedText = localStorage.getItem("campaignText");
+    
+    if (savedCart) setItems(JSON.parse(savedCart));
+    if (savedText) setCampaignText(savedText);
   }, []);
 
-  // Sepet değişince kaydet
+  // Değişiklik olunca hafızaya kaydet
   useEffect(() => {
     localStorage.setItem("cart", JSON.stringify(items));
   }, [items]);
 
+  const updateCampaignText = (text: string) => {
+    setCampaignText(text);
+    localStorage.setItem("campaignText", text); // Yazıyı kaydet
+  };
+
   const addToCart = (product: any) => {
     setItems((prev) => {
-      const existingItem = prev.find((item) => item.id === product.id);
-      if (existingItem) {
+      const existing = prev.find((item) => item.id === product.id);
+      if (existing) {
         return prev.map((item) =>
           item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
       return [...prev, { ...product, quantity: 1 }];
     });
-   
+    setIsCartOpen(true);
   };
 
   const removeFromCart = (id: number) => {
@@ -60,11 +72,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const toggleCart = () => setIsCartOpen(!isCartOpen);
 
-  const cartTotal = items.reduce((total, item) => total + item.price * item.quantity, 0);
-  const cartCount = items.reduce((count, item) => count + item.quantity, 0);
+  const cartTotal = items.reduce((acc, item) => acc + item.price * item.quantity, 0);
 
   return (
-    <CartContext.Provider value={{ items, addToCart, removeFromCart, toggleCart, isCartOpen, cartTotal, cartCount }}>
+    <CartContext.Provider value={{ items, addToCart, removeFromCart, toggleCart, isCartOpen, cartTotal, campaignText, updateCampaignText }}>
       {children}
     </CartContext.Provider>
   );
@@ -72,6 +83,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
 export function useCart() {
   const context = useContext(CartContext);
-  if (!context) throw new Error("useCart must be used within a CartProvider");
+  if (context === undefined) {
+    throw new Error("useCart must be used within a CartProvider");
+  }
   return context;
 }
