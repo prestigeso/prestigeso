@@ -1,4 +1,6 @@
 // components/CampaignBanner.tsx
+"use client"; // <--- İŞTE EKSİK OLAN BU SATIR!
+
 export default function CampaignBanner() {
   return (
     <div className="bg-black text-white text-xs font-bold py-2 overflow-hidden relative z-50">
