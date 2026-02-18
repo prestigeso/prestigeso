@@ -1,29 +1,44 @@
-"use client";
-
+// src/app/layout.tsx
+import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
+import Footer from "@/components/Footer"; // Footer varsa
 import { CartProvider } from "@/context/CartContext";
 import CartSidebar from "@/components/CartSidebar";
-import CampaignBanner from "@/components/CampaignBanner";
-import { usePathname } from "next/navigation";
+import CampaignBanner from "@/components/CampaignBanner"; // Kampanya bandını ekledik
 
 const inter = Inter({ subsets: ["latin"] });
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-  // Sadece /admin ile başlayan yollarda Navbar ve Banner'ı gizle
-  const isAdmin = pathname.startsWith("/admin");
+export const metadata: Metadata = {
+  title: "PrestigeSO",
+  description: "Tarzını Yeniden Keşfet",
+  manifest: "/manifest.json",
+};
 
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
     <html lang="tr">
       <body className={inter.className}>
         <CartProvider>
-          {!isAdmin && <CampaignBanner />}
-          {!isAdmin && <Navbar />}
+          {/* 1. En Üstte Kampanya Bandı */}
+          <CampaignBanner />
           
+          {/* 2. Sonra Navbar */}
+          <Navbar />
+          
+          {/* 3. Gizli Sepet Penceresi */}
           <CartSidebar />
-          <main>{children}</main>
+          
+          {/* 4. Sayfa İçeriği */}
+          {children}
+
+          {/* 5. En Altta Footer (Varsa) */}
+          <Footer /> 
         </CartProvider>
       </body>
     </html>
