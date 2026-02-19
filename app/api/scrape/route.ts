@@ -1,11 +1,9 @@
-// src/app/api/scrape/route.ts
 import { NextResponse } from 'next/server';
 import puppeteer from 'puppeteer';
 import * as cheerio from 'cheerio';
 
 export async function POST(request: Request) {
   try {
-    // 1. Hedef Site: Prestigeso.com (veya istekten gelen url)
     const body = await request.json();
     const url = body.url || 'https://prestigeso.com'; 
 
@@ -18,28 +16,45 @@ export async function POST(request: Request) {
 
     const page = await browser.newPage();
     
-    // Gerçek kullanıcı taklidi yap
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36');
 
-    // Siteye git ve yüklenmesini bekle
-    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    // domcontentloaded yerine networkidle2 kullandık ki arka plandaki yüklemeler de bitsin
+    await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
 
-    // Sayfanın HTML'ini al
+    console.log("📜 Daha fazla ürün için sayfa aşağı kaydırılıyor (Beyin Nakli Devrede)...");
+    
+    // AKILLI KAYDIRMA (LAZY LOAD ÇÖZÜCÜ)
+    // Bot, sayfayı yavaşça aşağı doğru kaydırarak gizli ürünlerin yüklenmesini tetikler
+    await page.evaluate(async () => {
+      await new Promise<void>((resolve) => {
+        let totalHeight = 0;
+        const distance = 500; // Her adımda inilecek piksel
+        const timer = setInterval(() => {
+          const scrollHeight = document.body.scrollHeight;
+          window.scrollBy(0, distance);
+          totalHeight += distance;
+
+          // Sayfa sonuna geldiysek veya çok fazla indiysek durdur
+          if (totalHeight >= scrollHeight || totalHeight > 15000) {
+            clearInterval(timer);
+            resolve();
+          }
+        }, 400); // 400ms bekleyerek in ki site bot sanıp engellemesin
+      });
+    });
+
     const content = await page.content();
     const $ = cheerio.load(content);
     const products: any[] = [];
 
     console.log("🔍 Ürünler taranıyor...");
 
-    // 2. AKILLI SEÇİCİLER (Genel E-Ticaret Yapıları)
-    // Çoğu sitede ürünler bu class'lardan birinin içindedir.
     const productSelectors = [
       '.product', '.product-item', '.item', 
       '.card', '.product-card', '.grid-item', 
       'li.product', 'div[class*="product"]'
     ];
 
-    // Sayfada hangi yapının olduğunu bulmaya çalış
     let selectedContainer = '';
     for (const selector of productSelectors) {
       if ($(selector).length > 0) {
@@ -51,32 +66,34 @@ export async function POST(request: Request) {
 
     if (!selectedContainer) {
       await browser.close();
-      return NextResponse.json({ error: 'Ürünlerin HTML yapısı (class) bulunamadı. Lütfen siteyi inceleyip bana class ismini söyle.' }, { status: 404 });
+      return NextResponse.json({ error: 'Ürünlerin HTML yapısı (class) bulunamadı.' }, { status: 404 });
     }
 
-    // 3. VERİLERİ TOPLA
+    // VERİLERİ TOPLA
     $(selectedContainer).each((i, el) => {
-      // Başlık Bul (h2, h3 veya .name, .title)
       const title = $(el).find('h2, h3, .name, .title, .product-title, .woocommerce-loop-product__title').first().text().trim();
       
-      // Fiyat Bul (.price, .amount, .money)
       let priceText = $(el).find('.price, .amount, .money, .current-price, ins .amount').text().trim();
-      // Temizlik: "1.250,00 TL" -> 1250
       const price = parseFloat(priceText.replace(/[^0-9,.]/g, '').replace(',', '.'));
 
-      // Resim Bul (img src)
-      let image = $(el).find('img').attr('data-src') || $(el).find('img').attr('src');
+      // Resim bulucu güçlendirildi (Lazy Load kullanan siteler data-src kullanır)
+      let image = $(el).find('img').attr('data-src') || 
+                  $(el).find('img').attr('data-lazy-src') || 
+                  $(el).find('img').attr('src');
       
-      // Link Bul
       const link = $(el).find('a').attr('href');
+      
+      // EKSTRA DETAY: Eğer ürün kartında kısa açıklama, marka vs. varsa onu da al
+      const description = $(el).find('.description, .short-description, .summary').text().trim() || "Detaylı açıklama ürün sayfasındadır.";
 
-      if (title && title.length > 2) { // Boş başlıkları atla
+      if (title && title.length > 2) { 
         products.push({
           id: i + 1,
           name: title,
           price: isNaN(price) ? 0 : price,
           category: "PrestigeSO",
-          image: image?.startsWith('http') ? image : `https://prestigeso.com${image}`, // Link tam değilse tamamla
+          description: description,
+          image: image?.startsWith('http') ? image : `https://prestigeso.com${image}`,
           original_link: link?.startsWith('http') ? link : `https://prestigeso.com${link}`
         });
       }
@@ -89,6 +106,6 @@ export async function POST(request: Request) {
 
   } catch (error: any) {
     console.error("Hata:", error);
-    return NextResponse.json({ error: 'Siteye erişilemedi veya yapı çok farklı.', details: error.message }, { status: 500 });
+    return NextResponse.json({ error: 'Sistem hatası veya API zaman aşımı.', details: error.message }, { status: 500 });
   }
 }
