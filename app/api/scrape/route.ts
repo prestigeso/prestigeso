@@ -1,34 +1,48 @@
 import { NextResponse } from 'next/server';
+import puppeteer from 'puppeteer';
 import * as cheerio from 'cheerio';
 
+// Vercel'e bu işlemin biraz sürebileceğini söylüyoruz
+export const maxDuration = 60;
+
 export async function POST(request: Request) {
+  let browser;
   try {
     const body = await request.json();
     const url = body.url || 'https://prestigeso.com'; 
 
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7'
-      },
-      cache: 'no-store'
+    console.log(`📡 Hayalet Tarayıcı ile Bağlanılıyor: ${url}`);
+
+    // Güvenlik duvarını (403) aşmak için gerçek tarayıcı açıyoruz
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox', 
+        '--disable-setuid-sandbox',
+        '--disable-blink-features=AutomationControlled' // Bot olduğumuzu gizler
+      ]
     });
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status} - Site erişimimizi engelliyor olabilir.`);
-    }
+    const page = await browser.newPage();
+    
+    // Cloudflare vb. sistemleri kandırmak için tam bir insan taklidi
+    await page.setExtraHTTPHeaders({
+        'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7'
+    });
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
 
-    const html = await response.text();
-    const $ = cheerio.load(html);
+    // Timeout yememek için 'networkidle2' yerine daha hızlı olan 'domcontentloaded' kullanıyoruz
+    await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
+
+    const content = await page.content();
+    const $ = cheerio.load(content);
     const products: any[] = [];
 
-    // TÜRKİYE'DEKİ E-TİCARET ALTYAPILARI EKLENDİ (IdeaSoft, Ticimax vb.)
+    // TÜRKİYE'DEKİ E-TİCARET ALTYAPILARI (WooCommerce, Ticimax vb.)
     const productSelectors = [
-      '.urun-kutu', '.vitrin-urun', '.pr-item', '.ProductList .item', 
       '.product', '.product-item', '.item', 
       '.card', '.product-card', '.grid-item', 
-      'li.product', 'div[class*="product"]', '.product-details'
+      'li.product', 'div[class*="product"]', '.urun-kutu'
     ];
 
     let selectedContainer = '';
@@ -40,26 +54,22 @@ export async function POST(request: Request) {
     }
 
     if (!selectedContainer) {
-      // HTML'in başını gönderelim ki site bize boş sayfa mı atıyor görelim
-      const snippet = html.substring(0, 300);
-      return NextResponse.json({ 
-        error: 'Ürün kutularının ismi (class) bulunamadı.', 
-        details: `Sitenin bize verdiği kodun başı: ${snippet}...` 
-      }, { status: 404 });
+      await browser.close();
+      return NextResponse.json({ error: 'Ürün kodları (class) bulunamadı.' }, { status: 404 });
     }
 
+    // VERİLERİ TOPLA
     $(selectedContainer).each((i, el) => {
-      const title = $(el).find('h2, h3, h4, .name, .title, .product-title, .urun-adi').first().text().trim();
-      let priceText = $(el).find('.price, .amount, .money, .current-price, ins .amount, .urun-fiyat').first().text().trim();
+      const title = $(el).find('h2, h3, h4, .name, .title, .product-title, .woocommerce-loop-product__title').first().text().trim();
+      let priceText = $(el).find('.price, .amount, .money, .current-price, ins .amount').first().text().trim();
       const price = parseFloat(priceText.replace(/[^0-9,.]/g, '').replace(',', '.'));
 
       let image = $(el).find('img').attr('data-src') || 
                   $(el).find('img').attr('data-lazy-src') || 
-                  $(el).find('img').attr('srcset')?.split(' ')[0] || 
                   $(el).find('img').attr('src');
       
       const link = $(el).find('a').attr('href');
-      const description = $(el).find('.description, .short-description, .summary').text().trim();
+      const description = $(el).find('.description, .short-description').text().trim();
 
       if (title && title.length > 2) { 
         products.push({
@@ -74,16 +84,11 @@ export async function POST(request: Request) {
       }
     });
 
-    if (products.length === 0) {
-       return NextResponse.json({ 
-        error: `Kutu bulundu (${selectedContainer}) ama içi boş.`, 
-        details: 'İsim veya fiyat etiketleri uyuşmuyor.' 
-      }, { status: 404 });
-    }
-
+    await browser.close();
     return NextResponse.json({ success: true, count: products.length, products });
 
   } catch (error: any) {
-    return NextResponse.json({ error: 'Bağlantı Hatası veya Engelleme.', details: error.message }, { status: 500 });
+    if (browser) await browser.close();
+    return NextResponse.json({ error: 'Tarayıcı Başlatılamadı veya Zaman Aşımı.', details: error.message }, { status: 500 });
   }
 }
