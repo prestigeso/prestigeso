@@ -6,34 +6,40 @@ import { useCart } from "@/context/CartContext";
 export default function Home() {
   const { addToCart } = useCart();
   const [products, setProducts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   
   // Hızlı Bakış için seçili ürünü tutacağımız State
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
 
-  // Ürünleri Çekme İşlemi
-  useEffect(() => {
-    const fetchRealData = async () => {
-      try {
-        const res = await fetch('/api/scrape', {
-          method: 'POST',
-          body: JSON.stringify({ url: 'https://prestigeso.com' }),
-          headers: { 'Content-Type': 'application/json' }
-        });
-        const data = await res.json();
-        if (data.success) {
-          setProducts(data.products);
-        }
-      } catch (error) {
-        console.error("Veri çekilemedi", error);
-      } finally {
-        setLoading(false);
+  // Ürünleri Çekme İşlemi (Manuel butona bağladık)
+  const fetchRealData = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/scrape', {
+        method: 'POST',
+        body: JSON.stringify({ url: 'https://prestigeso.com' }),
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setProducts(data.products);
+      } else {
+        alert("Ürünler çekilemedi, api'yi kontrol et.");
       }
-    };
+    } catch (error) {
+      console.error("Veri çekilemedi", error);
+      alert("Bir hata oluştu.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Sayfa ilk açıldığında da bir kere çekmeyi denesin (İstersen silebilirsin, buton hep var)
+  useEffect(() => {
     fetchRealData();
   }, []);
 
-  // ESC tuşuna basınca modalı kapatma (Kullanıcı deneyimi için önemli)
+  // ESC tuşuna basınca modalı kapatma
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setSelectedProduct(null);
@@ -45,9 +51,8 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-white font-sans text-black">
       
-      {/* 1. HERO BÖLÜMÜ (O meşhur mankenli alan) */}
+      {/* 1. HERO BÖLÜMÜ */}
       <div className="relative w-full h-[70vh] flex items-center overflow-hidden bg-gray-900">
-        {/* Arka plan görselini kendi görselinin linkiyle değiştirebilirsin */}
         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1469334031218-e382a71b716b?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-60"></div>
         <div className="absolute inset-0 bg-gradient-to-r from-black/80 to-transparent"></div>
         
@@ -69,10 +74,27 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 2. ÜRÜN LİSTESİ */}
+      {/* 2. ÜRÜN LİSTESİ VE BUTON */}
       <div className="container mx-auto px-6 lg:px-12 py-16">
-        <h2 className="text-3xl font-black tracking-tight mb-8">Yeni Gelenler</h2>
         
+        {/* Başlık ve Ürün Getir Butonu Yan Yana */}
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+          <h2 className="text-3xl font-black tracking-tight">Yeni Gelenler</h2>
+          <button 
+            onClick={fetchRealData}
+            className="bg-black text-white px-6 py-2.5 rounded-full font-bold text-sm hover:bg-gray-800 active:scale-95 transition-all shadow-lg flex items-center gap-2"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
+            Ürünleri Getir
+          </button>
+        </div>
+        
+        {products.length === 0 && !loading && (
+          <div className="text-center py-20 bg-gray-50 rounded-3xl border border-gray-100">
+            <p className="text-gray-500 font-medium">Şu an mağazada hiç ürün yok. Butona tıklayarak ürünleri çekebilirsin.</p>
+          </div>
+        )}
+
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {loading ? (
             // Yükleniyor iskeleti
@@ -82,7 +104,7 @@ export default function Home() {
               <div 
                 key={product.id} 
                 className="group relative cursor-pointer" 
-                onClick={() => setSelectedProduct(product)} // Tıklanınca Modalı Aç
+                onClick={() => setSelectedProduct(product)} 
               >
                 <div className="aspect-[3/4] w-full overflow-hidden rounded-3xl bg-gray-100 relative">
                   <img 
@@ -90,9 +112,10 @@ export default function Home() {
                     alt={product.name} 
                     className="h-full w-full object-cover object-center group-hover:scale-105 transition-transform duration-700 ease-out" 
                   />
+                  <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity" />
                   {/* Hover olunca çıkan ufak detay ikonu */}
-                  <div className="absolute bottom-4 right-4 bg-white/90 backdrop-blur-sm w-10 h-10 rounded-full flex items-center justify-center shadow-lg opacity-0 group-hover:opacity-100 transition-opacity translate-y-2 group-hover:translate-y-0">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-5 h-5 text-black"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
+                  <div className="absolute bottom-4 right-4 bg-white/95 backdrop-blur-sm w-12 h-12 rounded-full flex items-center justify-center shadow-xl opacity-0 group-hover:opacity-100 transition-all translate-y-4 group-hover:translate-y-0">
+                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5 text-black"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
                   </div>
                 </div>
                 <div className="mt-4">
@@ -105,27 +128,23 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 3. HIZLI BAKIŞ MODALI (Pop-up Pencere) */}
+      {/* 3. HIZLI BAKIŞ MODALI */}
       {selectedProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
-          {/* Arka plan karartması */}
           <div 
             className="absolute inset-0 bg-black/60 backdrop-blur-md transition-opacity" 
             onClick={() => setSelectedProduct(null)}
           />
           
-          {/* Modal İçeriği */}
           <div className="relative bg-white rounded-[2rem] shadow-2xl overflow-hidden max-w-4xl w-full flex flex-col md:flex-row animate-in fade-in zoom-in duration-200">
             
-            {/* Kapat Butonu */}
             <button 
               onClick={() => setSelectedProduct(null)}
-              className="absolute top-4 right-4 z-20 w-10 h-10 bg-white/80 backdrop-blur-md flex items-center justify-center rounded-full text-gray-900 hover:bg-gray-100 transition-colors shadow-sm"
+              className="absolute top-4 right-4 z-20 w-10 h-10 bg-white/80 backdrop-blur-md flex items-center justify-center rounded-full text-gray-900 hover:bg-gray-100 active:scale-90 transition-all shadow-sm"
             >
               ✕
             </button>
 
-            {/* Sol Taraf: Büyük Resim */}
             <div className="md:w-1/2 h-[40vh] md:h-auto bg-gray-100 relative">
               <img 
                 src={selectedProduct.image} 
@@ -134,7 +153,6 @@ export default function Home() {
               />
             </div>
 
-            {/* Sağ Taraf: Ürün Detayları */}
             <div className="md:w-1/2 p-8 md:p-10 flex flex-col justify-center bg-white">
               <div className="uppercase tracking-widest text-[10px] font-bold text-blue-600 mb-3">
                 PrestigeSO Özel
@@ -152,11 +170,10 @@ export default function Home() {
                 </p>
               </div>
 
-              {/* Sepete Ekle Butonu */}
               <button 
                 onClick={() => {
                   addToCart({ ...selectedProduct, quantity: 1 });
-                  setSelectedProduct(null); // Sepete ekleyince pencereyi kapat
+                  setSelectedProduct(null); 
                 }}
                 className="w-full bg-black text-white py-4 rounded-2xl font-bold uppercase tracking-widest hover:bg-gray-800 active:scale-95 transition-transform shadow-xl shadow-black/20 flex items-center justify-center gap-2"
               >
