@@ -2,13 +2,20 @@
 
 import { useState, useEffect } from "react";
 import { useCart } from "@/context/CartContext";
+import { useSearch } from "@/context/SearchContext";
 
 export default function Home() {
+  const { searchQuery, selectedCategory } = useSearch();
   const { addToCart } = useCart();
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
-
+  const filteredProducts = products.filter((product) => {
+    const matchCategory = selectedCategory === "Tümü" || product.category === selectedCategory;
+    const matchSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchCategory && matchSearch;
+  });
+  
   const fetchRealData = async () => {
     setLoading(true);
     try {
@@ -88,7 +95,7 @@ export default function Home() {
           {loading ? (
             [1,2,3,4].map(i => <div key={i} className="bg-gray-100 aspect-[3/4] rounded-3xl animate-pulse"/>)
           ) : (
-            products.map((product) => (
+            filteredProducts.map((product) => (
               <div 
                 key={product.id} 
                 className="group relative cursor-pointer" 
