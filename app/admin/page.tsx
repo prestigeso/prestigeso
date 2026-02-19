@@ -2,11 +2,18 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import { useCart } from "@/context/CartContext";
 
 export default function AdminPanel() {
+  // Veri Çekme Stateleri
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ totalValue: 0, count: 0 });
+
+  // Ayarlar Menüsü ve Kayan Yazı Stateleri
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const { campaignText, updateCampaignText } = useCart();
+  const [inputText, setInputText] = useState("");
 
   useEffect(() => {
     const fetchRealData = async () => {
@@ -33,8 +40,19 @@ export default function AdminPanel() {
     fetchRealData();
   }, []);
 
+  // Menü açıldığında mevcut yazıyı kutuya doldur
+  useEffect(() => {
+    setInputText(campaignText);
+  }, [campaignText]);
+
+  const handleSaveSettings = () => {
+    updateCampaignText(inputText);
+    alert("Kayan yazı güncellendi! 🎉");
+    setIsSettingsOpen(false); // Kaydettikten sonra menüyü kapat
+  };
+
   return (
-    <div className="min-h-screen bg-white pb-24 select-none font-sans text-black">
+    <div className="min-h-screen bg-white pb-24 select-none font-sans text-black relative">
       {/* HEADER */}
       <div className="bg-white px-6 pt-14 pb-4 shadow-sm sticky top-0 z-20 flex justify-between items-center">
         <div>
@@ -87,7 +105,7 @@ export default function AdminPanel() {
                   <span className="text-xs font-medium text-gray-500 mt-1">{product.price.toLocaleString('tr-TR')} ₺</span>
                 </div>
               </div>
-              <button className="text-gray-300 p-2 text-xl font-light">✕</button>
+              <button className="text-gray-300 p-2 text-xl font-light hover:text-red-500 transition-colors">✕</button>
             </div>
           ))
         )}
@@ -95,20 +113,66 @@ export default function AdminPanel() {
 
       {/* ALT NAVİGASYON */}
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-4 flex justify-between items-center z-30 pb-safe">
-        <Link href="/" className="flex flex-col items-center gap-1 text-gray-400">
+        <Link href="/" className="flex flex-col items-center gap-1 text-gray-400 hover:text-black">
             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" />
             </svg>
             <span className="text-[10px] font-bold">Mağaza</span>
         </Link>
-        <button className="bg-black text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center -mt-8 border-4 border-white text-3xl font-light">+</button>
-        <div className="flex flex-col items-center gap-1 text-blue-600">
+        <button className="bg-black text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center -mt-8 border-4 border-white text-3xl font-light active:scale-95 transition-transform">+</button>
+        
+        {/* PANEL BUTONU (Tıklanabilir yapıldı) */}
+        <button 
+            onClick={() => setIsSettingsOpen(true)} 
+            className="flex flex-col items-center gap-1 text-blue-600 active:scale-95 transition-transform"
+        >
              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
                 <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" />
             </svg>
             <span className="text-[10px] font-bold underline underline-offset-4">Panel</span>
-        </div>
+        </button>
       </div>
+
+      {/* --- GİZLİ AYARLAR PENCERESİ (YUKARI KAYARAK AÇILIR) --- */}
+      {isSettingsOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center backdrop-blur-sm transition-opacity">
+          <div className="bg-white w-full rounded-t-3xl p-6 pb-12 shadow-2xl">
+            {/* Pencere Başlığı */}
+            <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
+              <h2 className="text-xl font-black text-gray-900">Ayarlar / Panel</h2>
+              <button 
+                onClick={() => setIsSettingsOpen(false)} 
+                className="w-8 h-8 flex items-center justify-center bg-gray-100 text-gray-500 rounded-full font-bold hover:bg-gray-200 active:scale-90 transition-all"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Kayan Yazı Kutusu */}
+            <div className="space-y-4">
+              <div>
+                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">📢 Kayan Yazı Metni</label>
+                <input
+                  type="text"
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-black transition-all"
+                  placeholder="Kayan yazı metnini girin..."
+                />
+              </div>
+
+              {/* Kaydet Butonu */}
+              <button 
+                onClick={handleSaveSettings} 
+                className="w-full bg-black text-white py-4 rounded-2xl font-bold text-xs uppercase tracking-widest active:scale-95 transition-transform shadow-xl shadow-black/20"
+              >
+                Kaydet ve Yayınla
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
