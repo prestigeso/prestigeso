@@ -7,11 +7,8 @@ export default function Home() {
   const { addToCart } = useCart();
   const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  
-  // Hızlı Bakış için seçili ürünü tutacağımız State
   const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
 
-  // Ürünleri Çekme İşlemi (Manuel butona bağladık)
   const fetchRealData = async () => {
     setLoading(true);
     try {
@@ -21,25 +18,21 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' }
       });
       const data = await res.json();
+      
       if (data.success) {
         setProducts(data.products);
       } else {
-        alert("Ürünler çekilemedi, api'yi kontrol et.");
+        // İŞTE ASIL SİHİR BURADA: GERÇEK HATAYI EKRANA BASIYORUZ
+        alert(`❌ HATA DETAYI:\n\nSebep: ${data.error}\nAyrıntı: ${data.details}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Veri çekilemedi", error);
-      alert("Bir hata oluştu.");
+      alert("Bağlantı koptu: " + error.message);
     } finally {
       setLoading(false);
     }
   };
 
-  // Sayfa ilk açıldığında da bir kere çekmeyi denesin (İstersen silebilirsin, buton hep var)
-  useEffect(() => {
-    fetchRealData();
-  }, []);
-
-  // ESC tuşuna basınca modalı kapatma
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setSelectedProduct(null);
@@ -51,7 +44,6 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-white font-sans text-black">
       
-      {/* 1. HERO BÖLÜMÜ */}
       <div className="relative w-full h-[70vh] flex items-center overflow-hidden bg-gray-900">
         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1469334031218-e382a71b716b?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-60"></div>
         <div className="absolute inset-0 bg-gradient-to-r from-black/80 to-transparent"></div>
@@ -74,10 +66,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 2. ÜRÜN LİSTESİ VE BUTON */}
       <div className="container mx-auto px-6 lg:px-12 py-16">
-        
-        {/* Başlık ve Ürün Getir Butonu Yan Yana */}
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
           <h2 className="text-3xl font-black tracking-tight">Yeni Gelenler</h2>
           <button 
@@ -97,7 +86,6 @@ export default function Home() {
 
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
           {loading ? (
-            // Yükleniyor iskeleti
             [1,2,3,4].map(i => <div key={i} className="bg-gray-100 aspect-[3/4] rounded-3xl animate-pulse"/>)
           ) : (
             products.map((product) => (
@@ -113,7 +101,6 @@ export default function Home() {
                     className="h-full w-full object-cover object-center group-hover:scale-105 transition-transform duration-700 ease-out" 
                   />
                   <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  {/* Hover olunca çıkan ufak detay ikonu */}
                   <div className="absolute bottom-4 right-4 bg-white/95 backdrop-blur-sm w-12 h-12 rounded-full flex items-center justify-center shadow-xl opacity-0 group-hover:opacity-100 transition-all translate-y-4 group-hover:translate-y-0">
                     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5 text-black"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
                   </div>
@@ -128,7 +115,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* 3. HIZLI BAKIŞ MODALI */}
       {selectedProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
           <div 
@@ -137,13 +123,10 @@ export default function Home() {
           />
           
           <div className="relative bg-white rounded-[2rem] shadow-2xl overflow-hidden max-w-4xl w-full flex flex-col md:flex-row animate-in fade-in zoom-in duration-200">
-            
             <button 
               onClick={() => setSelectedProduct(null)}
               className="absolute top-4 right-4 z-20 w-10 h-10 bg-white/80 backdrop-blur-md flex items-center justify-center rounded-full text-gray-900 hover:bg-gray-100 active:scale-90 transition-all shadow-sm"
-            >
-              ✕
-            </button>
+            >✕</button>
 
             <div className="md:w-1/2 h-[40vh] md:h-auto bg-gray-100 relative">
               <img 
@@ -154,19 +137,13 @@ export default function Home() {
             </div>
 
             <div className="md:w-1/2 p-8 md:p-10 flex flex-col justify-center bg-white">
-              <div className="uppercase tracking-widest text-[10px] font-bold text-blue-600 mb-3">
-                PrestigeSO Özel
-              </div>
-              <h2 className="text-2xl md:text-3xl font-black text-gray-900 leading-tight mb-4">
-                {selectedProduct.name}
-              </h2>
-              <p className="text-4xl font-black text-gray-900 mb-6 tracking-tighter">
-                {selectedProduct.price.toLocaleString('tr-TR')} ₺
-              </p>
+              <div className="uppercase tracking-widest text-[10px] font-bold text-blue-600 mb-3">PrestigeSO Özel</div>
+              <h2 className="text-2xl md:text-3xl font-black text-gray-900 leading-tight mb-4">{selectedProduct.name}</h2>
+              <p className="text-4xl font-black text-gray-900 mb-6 tracking-tighter">{selectedProduct.price.toLocaleString('tr-TR')} ₺</p>
               
               <div className="space-y-4 mb-8">
                 <p className="text-sm text-gray-500 leading-relaxed font-medium">
-                  Sezonun en trend parçalarından biri. Kaliteli dokusu ve modern kesimiyle tarzınızı yeniden keşfedin. Stoklar tükenmeden sepetinize ekleyin.
+                  {selectedProduct.description || "Sezonun en trend parçalarından biri. Kaliteli dokusu ve modern kesimiyle tarzınızı yeniden keşfedin. Stoklar tükenmeden sepetinize ekleyin."}
                 </p>
               </div>
 
