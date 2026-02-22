@@ -1,174 +1,205 @@
 "use client";
-
+export const dynamic = "force-dynamic";
 import { useState, useEffect } from "react";
-import { useCart } from "@/context/CartContext";
+import Link from "next/link"; // Artık ürünler kendi detay sayfasına gidecek
 import { useSearch } from "@/context/SearchContext";
+import { supabase } from "../lib/supabase"; 
 
 export default function Home() {
-  const { searchQuery, selectedCategory } = useSearch();
-  const { addToCart } = useCart();
-  const [products, setProducts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<any | null>(null);
-  const filteredProducts = products.filter((product) => {
+  const { searchQuery } = useSearch();
+  const [dbProducts, setDbProducts] = useState<any[]>([]); 
+  const [heroSlides, setHeroSlides] = useState<any[]>([]);
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [loading, setLoading] = useState(true);
+  
+  // Arama ve Kategori
+  const [selectedCategory, setSelectedCategory] = useState("Tümü");
+  const [showAll, setShowAll] = useState(false); // "Tüm Ürünleri Keşfet" state'i
+  const [localCampaign, setLocalCampaign] = useState("");
+
+  const categories = ["Tümü", "Masa Süsleri", "Yüzükler", "Setler", "Bilezikler", "Küpeler"];
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setLocalCampaign(localStorage.getItem("prestigeso_campaign") || "");
+    }
+
+    const fetchData = async () => {
+      // 1. Vitrin Resimlerini Çek
+      const { data: slidesData } = await supabase.from("hero_slides").select("*").order("created_at", { ascending: false });
+      if (slidesData) setHeroSlides(slidesData);
+
+      // 2. Ürünleri Çek
+      const { data: productsData } = await supabase.from("products").select("*").order("created_at", { ascending: false });
+      if (productsData) setDbProducts(productsData);
+
+      setLoading(false);
+    };
+
+    fetchData();
+  }, []);
+
+  // 🟢 5 Saniyede Bir Resim Değiştirme Animasyonu
+  useEffect(() => {
+    if (heroSlides.length <= 1) return;
+    const interval = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % heroSlides.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [heroSlides.length]);
+
+  // Filtrelemeler
+  const bestsellers = dbProducts.filter(p => p.is_bestseller);
+  const discounted = dbProducts.filter(p => p.discount_price > 0);
+  
+  // Tüm ürünler listesi için arama ve kategori filtresi
+  const filteredProducts = dbProducts.filter((product) => {
     const matchCategory = selectedCategory === "Tümü" || product.category === selectedCategory;
     const matchSearch = product.name.toLowerCase().includes(searchQuery.toLowerCase());
     return matchCategory && matchSearch;
   });
-  
-  const fetchRealData = async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/scrape', {
-        method: 'POST',
-        body: JSON.stringify({ url: 'https://prestigeso.com' }),
-        headers: { 'Content-Type': 'application/json' }
-      });
-      const data = await res.json();
-      
-      if (data.success) {
-        setProducts(data.products);
-      } else {
-        // İŞTE ASIL SİHİR BURADA: GERÇEK HATAYI EKRANA BASIYORUZ
-        alert(`❌ HATA DETAYI:\n\nSebep: ${data.error}\nAyrıntı: ${data.details}`);
-      }
-    } catch (error: any) {
-      console.error("Veri çekilemedi", error);
-      alert("Bağlantı koptu: " + error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setSelectedProduct(null);
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
 
   return (
-    <div className="min-h-screen bg-white font-sans text-black">
+    <div className="min-h-screen bg-white font-sans text-black pb-24">
       
-      <div className="relative w-full h-[70vh] flex items-center overflow-hidden bg-gray-900">
-        <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1469334031218-e382a71b716b?q=80&w=2070&auto=format&fit=crop')] bg-cover bg-center opacity-60"></div>
-        <div className="absolute inset-0 bg-gradient-to-r from-black/80 to-transparent"></div>
-        
-        <div className="relative z-10 container mx-auto px-6 lg:px-12">
-          <h1 className="text-5xl md:text-7xl font-black text-white mb-4 tracking-tight">
-            Tarzını <span className="text-blue-500">Yeniden</span> Keşfet
-          </h1>
-          <p className="text-gray-300 max-w-lg mb-8 text-lg font-medium">
-            Sezonun en trend parçaları, özel koleksiyonlar ve sana özel fırsatlar PrestigeSO'da.
-          </p>
-          <div className="flex flex-wrap gap-4">
-            <button className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3.5 rounded-full font-bold transition-colors">
-              Alışverişe Başla
-            </button>
-            <button className="border border-white/50 hover:bg-white/10 text-white px-8 py-3.5 rounded-full font-bold backdrop-blur-sm transition-colors">
-              Koleksiyonlar
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="container mx-auto px-6 lg:px-12 py-16">
-        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
-          <h2 className="text-3xl font-black tracking-tight">Yeni Gelenler</h2>
-          <button 
-            onClick={fetchRealData}
-            className="bg-black text-white px-6 py-2.5 rounded-full font-bold text-sm hover:bg-gray-800 active:scale-95 transition-all shadow-lg flex items-center gap-2"
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" /></svg>
-            Ürünleri Getir
-          </button>
-        </div>
-        
-        {products.length === 0 && !loading && (
-          <div className="text-center py-20 bg-gray-50 rounded-3xl border border-gray-100">
-            <p className="text-gray-500 font-medium">Şu an mağazada hiç ürün yok. Butona tıklayarak ürünleri çekebilirsin.</p>
-          </div>
-        )}
-
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {loading ? (
-            [1,2,3,4].map(i => <div key={i} className="bg-gray-100 aspect-[3/4] rounded-3xl animate-pulse"/>)
-          ) : (
-            filteredProducts.map((product) => (
-              <div 
-                key={product.id} 
-                className="group relative cursor-pointer" 
-                onClick={() => setSelectedProduct(product)} 
-              >
-                <div className="aspect-[3/4] w-full overflow-hidden rounded-3xl bg-gray-100 relative">
-                  <img 
-                    src={product.image} 
-                    alt={product.name} 
-                    className="h-full w-full object-cover object-center group-hover:scale-105 transition-transform duration-700 ease-out" 
-                  />
-                  <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 transition-opacity" />
-                  <div className="absolute bottom-4 right-4 bg-white/95 backdrop-blur-sm w-12 h-12 rounded-full flex items-center justify-center shadow-xl opacity-0 group-hover:opacity-100 transition-all translate-y-4 group-hover:translate-y-0">
-                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5 text-black"><path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <h3 className="text-sm font-bold text-gray-900 line-clamp-1">{product.name}</h3>
-                  <p className="mt-1 text-sm font-black text-blue-600">{product.price.toLocaleString('tr-TR')} ₺</p>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      {selectedProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
-          <div 
-            className="absolute inset-0 bg-black/60 backdrop-blur-md transition-opacity" 
-            onClick={() => setSelectedProduct(null)}
-          />
-          
-          <div className="relative bg-white rounded-[2rem] shadow-2xl overflow-hidden max-w-4xl w-full flex flex-col md:flex-row animate-in fade-in zoom-in duration-200">
-            <button 
-              onClick={() => setSelectedProduct(null)}
-              className="absolute top-4 right-4 z-20 w-10 h-10 bg-white/80 backdrop-blur-md flex items-center justify-center rounded-full text-gray-900 hover:bg-gray-100 active:scale-90 transition-all shadow-sm"
-            >✕</button>
-
-            <div className="md:w-1/2 h-[40vh] md:h-auto bg-gray-100 relative">
-              <img 
-                src={selectedProduct.image} 
-                alt={selectedProduct.name} 
-                className="absolute inset-0 w-full h-full object-cover"
-              />
-            </div>
-
-            <div className="md:w-1/2 p-8 md:p-10 flex flex-col justify-center bg-white">
-              <div className="uppercase tracking-widest text-[10px] font-bold text-blue-600 mb-3">PrestigeSO Özel</div>
-              <h2 className="text-2xl md:text-3xl font-black text-gray-900 leading-tight mb-4">{selectedProduct.name}</h2>
-              <p className="text-4xl font-black text-gray-900 mb-6 tracking-tighter">{selectedProduct.price.toLocaleString('tr-TR')} ₺</p>
-              
-              <div className="space-y-4 mb-8">
-                <p className="text-sm text-gray-500 leading-relaxed font-medium">
-                  {selectedProduct.description || "Sezonun en trend parçalarından biri. Kaliteli dokusu ve modern kesimiyle tarzınızı yeniden keşfedin. Stoklar tükenmeden sepetinize ekleyin."}
-                </p>
-              </div>
-
-              <button 
-                onClick={() => {
-                  addToCart({ ...selectedProduct, quantity: 1 });
-                  setSelectedProduct(null); 
-                }}
-                className="w-full bg-black text-white py-4 rounded-2xl font-bold uppercase tracking-widest hover:bg-gray-800 active:scale-95 transition-transform shadow-xl shadow-black/20 flex items-center justify-center gap-2"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5"><path strokeLinecap="round" strokeLinejoin="round" d="M15.75 10.5V6a3.75 3.75 0 1 0-7.5 0v4.5m11.356-1.993 1.263 12c.07.665-.45 1.243-1.119 1.243H4.25a1.125 1.125 0 0 1-1.12-1.243l1.264-12A1.125 1.125 0 0 1 5.513 7.5h12.974c.576 0 1.059.435 1.119 1.007ZM8.625 10.5a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Zm7.5 0a.375.375 0 1 1-.75 0 .375.375 0 0 1 .75 0Z" /></svg>
-                Sepete Ekle
-              </button>
-            </div>
-          </div>
+      {/* 🟢 KAYAN YAZI BANDI */}
+      {localCampaign && (
+        <div className="bg-black text-white text-[11px] md:text-xs font-bold uppercase tracking-[0.2em] py-2.5 overflow-hidden flex items-center shadow-md relative z-50">
+          <marquee scrollamount="6" className="w-full">{localCampaign}</marquee>
         </div>
       )}
 
+      {/* 🟢 DİNAMİK BÜYÜK RESİM (HERO SLIDER) */}
+      <div 
+        className="relative w-full h-[60vh] md:h-[75vh] flex items-center justify-center overflow-hidden bg-gray-900 group cursor-pointer"
+        onClick={() => setShowAll(true)}
+      >
+        {heroSlides.length > 0 ? (
+          <>
+            {heroSlides.map((slide, index) => (
+              <div 
+                key={slide.id} 
+                className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${index === currentSlide ? "opacity-100 z-10" : "opacity-0 z-0"}`}
+              >
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-black/20 z-10"></div> 
+                <img src={slide.image_url} alt="Vitrin" className="w-full h-full object-cover" />
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center text-center px-4">
+                  <h1 className="text-4xl md:text-7xl font-black text-white mb-4 tracking-tight drop-shadow-2xl">{slide.title || "Yeni Sezon"}</h1>
+                  <p className="text-gray-200 max-w-lg text-sm md:text-lg font-medium drop-shadow-md">{slide.subtitle}</p>
+                </div>
+              </div>
+            ))}
+          </>
+        ) : (
+          <div className="absolute inset-0 flex items-center justify-center text-white/50 bg-black">
+            <p>Admin panelinden vitrin resmi ekleyin.</p>
+          </div>
+        )}
+
+        {/* 🟢 HOVER EFEKTİ İLE ÇIKAN YAZI */}
+        <div className="absolute inset-0 bg-black/50 z-30 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-500 backdrop-blur-sm">
+          <span className="text-white text-2xl md:text-4xl font-black uppercase tracking-widest translate-y-8 group-hover:translate-y-0 transition-transform duration-500">
+            Tüm Ürünleri Keşfet
+          </span>
+        </div>
+      </div>
+
+      <div className="container mx-auto px-6 lg:px-12 py-12">
+        
+        {/* KATEGORİ BARI */}
+        <div className="flex overflow-x-auto gap-3 mb-10 py-2 hide-scrollbar">
+          {categories.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => { setSelectedCategory(cat); setShowAll(true); }}
+              className={`px-6 py-2.5 rounded-full font-bold text-sm whitespace-nowrap transition-all shadow-sm ${selectedCategory === cat ? "bg-black text-white scale-105" : "bg-white border border-gray-200 text-gray-600 hover:border-gray-900"}`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+
+        {/* 🟢 İÇERİK YÖNETİMİ (TÜMÜ AÇIK / KAPALI) */}
+        {showAll ? (
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex items-center justify-between mb-8 border-b border-gray-100 pb-4">
+              <h2 className="text-2xl font-black">{selectedCategory === "Tümü" ? "Tüm Ürünler" : selectedCategory}</h2>
+              <button onClick={() => setShowAll(false)} className="text-xs font-bold text-gray-500 hover:text-black border border-gray-200 px-4 py-2 rounded-full">✕ Vitrine Dön</button>
+            </div>
+            
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+              {filteredProducts.map((product) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
+              {filteredProducts.length === 0 && <p className="col-span-full text-center py-10 text-gray-400">Bu kategori/aramada ürün bulunamadı.</p>}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-16 animate-in fade-in duration-500">
+            
+            {/* 🔥 EN ÇOK SATANLAR VİTRİNİ */}
+            {bestsellers.length > 0 && (
+              <div>
+                <h2 className="text-2xl font-black uppercase tracking-tight flex items-center gap-2 mb-6">🔥 En Çok Satanlar</h2>
+                <div className="flex gap-4 md:gap-6 overflow-x-auto hide-scrollbar pb-4 snap-x">
+                  {bestsellers.map(product => (
+                    <div key={product.id} className="min-w-[160px] md:min-w-[240px] snap-start">
+                      <ProductCard product={product} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 📉 İNDİRİM FIRSATLARI VİTRİNİ */}
+            {discounted.length > 0 && (
+              <div>
+                <h2 className="text-2xl font-black uppercase tracking-tight flex items-center gap-2 mb-6 text-red-600">📉 İndirim Fırsatları</h2>
+                <div className="flex gap-4 md:gap-6 overflow-x-auto hide-scrollbar pb-4 snap-x">
+                  {discounted.map(product => (
+                    <div key={product.id} className="min-w-[160px] md:min-w-[240px] snap-start">
+                      <ProductCard product={product} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
+            {bestsellers.length === 0 && discounted.length === 0 && !loading && (
+               <p className="text-center text-gray-400 font-medium py-10 border border-dashed border-gray-200 rounded-3xl">Ana vitrin ürünleri henüz belirlenmedi. Lütfen Admin panelinden ürünlere "Çok Satan" veya "İndirimli Fiyat" ekleyin.</p>
+            )}
+          </div>
+        )}
+      </div>
     </div>
+  );
+}
+
+// 🟢 Tıklanınca Yeni Ürün Detay Sayfasına Götüren Özel Kart Bileşeni
+function ProductCard({ product }: { product: any }) {
+  return (
+    <Link href={`/product/${product.id}`} className="group relative block cursor-pointer">
+      <div className="aspect-[3/4] w-full overflow-hidden rounded-2xl bg-gray-100 relative border border-gray-100">
+        <img src={product.image} alt={product.name} className="h-full w-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out" />
+        
+        {/* İndirim Rozeti */}
+        {product.discount_price > 0 && (
+          <div className="absolute top-3 left-3 bg-red-600 text-white text-[9px] font-black px-2 py-1 rounded shadow-md tracking-wider">
+            İNDİRİM
+          </div>
+        )}
+
+        <div className="absolute inset-0 bg-black/5 opacity-0 group-hover:opacity-100 transition-opacity" />
+      </div>
+      <div className="mt-3">
+        <h3 className="text-xs md:text-sm font-bold text-gray-900 line-clamp-1">{product.name}</h3>
+        <div className="flex items-center gap-2 mt-1">
+          <p className="text-sm font-black text-blue-600">{product.price} ₺</p>
+          {product.discount_price > 0 && (
+            <p className="text-[10px] font-bold text-gray-400 line-through">{product.discount_price} ₺</p>
+          )}
+        </div>
+      </div>
+    </Link>
   );
 }

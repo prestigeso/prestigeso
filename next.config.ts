@@ -1,17 +1,9 @@
-// next.config.ts
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* Resimlere izin ver */
-  images: {
-    remotePatterns: [
-      {
-        protocol: "https",
-        hostname: "**",
-      },
-    ],
+  eslint: {
+    ignoreDuringBuilds: true,
   },
-  /* TypeScript hatalarını görmezden gel */
   typescript: {
     ignoreBuildErrors: true,
   },

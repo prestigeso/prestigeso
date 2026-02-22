@@ -18,7 +18,7 @@ export default function Navbar() {
       
       {/* Logo */}
       <div className="font-black text-2xl tracking-widest cursor-pointer">
-        PRESTIGE<span className="text-blue-600">SO</span>
+        <img src="/logo.png" alt="PrestigeSO" className="h-8 md:h-10 object-contain" />
       </div>
 
       {/* Arama Çubuğu */}

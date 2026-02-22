@@ -1,217 +1,414 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import Link from "next/link";
-import { useCart } from "@/context/CartContext";
+import { supabase } from "../../lib/supabase";
 
 export default function AdminPanel() {
-  // 1. Veri Çekme Stateleri
-  const [products, setProducts] = useState<any[]>([]);
+  // --- STATELER ---
+  const [dbProducts, setDbProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({ totalValue: 0, count: 0 });
-
-  // 2. Ayarlar Menüsü ve Kayan Yazı Stateleri (Eski Kodundan)
+  const [searchTerm, setSearchTerm] = useState(""); // 🟢 YENİ: Ürün arama state'i
+  const [newProductImage, setNewProductImage] = useState<string>("");
+  // Menü ve Modallar
+  const [isFabOpen, setIsFabOpen] = useState(false);
+  const [isAddProductOpen, setIsAddProductOpen] = useState(false);
+  const [isCampaignOpen, setIsCampaignOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const { campaignText, updateCampaignText } = useCart();
-  const [inputText, setInputText] = useState("");
+  
+  // Ürün Düzenleme
+  const [editingProduct, setEditingProduct] = useState<any>(null);
 
-  // 3. YENİ: Ürün Ekleme Modalı Stateleri
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [newProduct, setNewProduct] = useState({
-    name: "",
-    price: "",
-    image: "",
-    category: "Yeni Gelenler",
-    stock: ""
-  });
+  // Kampanya Stateleri
+  const [selectedCampaignProducts, setSelectedCampaignProducts] = useState<number[]>([]);
+  const [campaignDates, setCampaignDates] = useState({ start: "", end: "" });
 
-  // Verileri Çekme
-  useEffect(() => {
-    const fetchRealData = async () => {
-      try {
-        const res = await fetch('/api/scrape', {
-          method: 'POST',
-          body: JSON.stringify({ url: 'https://prestigeso.com' }),
-          headers: { 'Content-Type': 'application/json' }
-        });
-        const data = await res.json();
-        
-        if (data.success) {
-          setProducts(data.products);
-          const total = data.products.reduce((acc: number, item: any) => acc + item.price, 0);
-          setStats({ totalValue: total, count: data.products.length });
-        }
-      } catch (error) {
-        console.error("Veri çekilemedi", error);
-      } finally {
-        setLoading(false);
-      }
-    };
+  // Ayarlar Stateleri
+  const [pageSettings, setPageSettings] = useState({ marquee: "", heroTitle: "", heroSubtitle: "" });
 
-    fetchRealData();
+  // --- VERİ ÇEKME ---
+  // --- VERİ ÇEKME ---
+  const fetchData = async () => {
+    setLoading(true);
+    // order() kısmını şimdilik kaldırdık, sadece tüm verileri dümdüz çekiyoruz
+    const { data, error } = await supabase.from("products").select("*");
+    
+    if (error) {
+      alert("HATA VAR KRAL: " + error.message); // Eğer bir hata varsa artık sessiz kalmayacak, bize söyleyecek!
+    }
+    
+    if (data) {
+      setDbProducts(data);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { 
+    fetchData(); 
+    const savedMarquee = localStorage.getItem("prestigeso_campaign") || "";
+    setPageSettings(prev => ({ ...prev, marquee: savedMarquee }));
   }, []);
 
-  // Menü açıldığında mevcut yazıyı kutuya doldur
-  useEffect(() => {
-    setInputText(campaignText || "");
-  }, [campaignText]);
-
-  const handleSaveSettings = () => {
-    if(updateCampaignText) updateCampaignText(inputText);
-    alert("Kayan yazı güncellendi! 🎉");
+  // --- İŞLEMLER ---
+  const handleSaveSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    localStorage.setItem("prestigeso_campaign", pageSettings.marquee);
+    alert("Sayfa ayarları başarıyla kaydedildi!");
     setIsSettingsOpen(false);
   };
 
-  // YENİ: Ürün Ekleme Fonksiyonu
-  const handleAddProduct = (e: React.FormEvent) => {
-    e.preventDefault();
-    alert(`🎉 "${newProduct.name}" mağazaya eklendi!`);
-    setIsAddModalOpen(false);
-    setNewProduct({ name: "", price: "", image: "", category: "Yeni Gelenler", stock: "" });
+  const handleDeleteProduct = async (id: number) => {
+    if (!window.confirm("Bu ürünü KALICI olarak kaldırmak istediğinize emin misiniz?")) return;
+    await supabase.from("products").delete().eq("id", id);
+    setEditingProduct(null);
+    fetchData();
   };
 
+  const handleUpdateProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const { error } = await supabase.from("products").update({
+      name: editingProduct.name,
+      price: Number(editingProduct.price),
+      category: editingProduct.category,
+    }).eq("id", editingProduct.id);
+
+    if (error) return alert("Hata: " + error.message);
+    alert("Ürün başarıyla güncellendi!");
+    setEditingProduct(null);
+    fetchData();
+  };
+
+  const toggleCampaignProduct = (id: number) => {
+    if (selectedCampaignProducts.includes(id)) {
+      setSelectedCampaignProducts(prev => prev.filter(pId => pId !== id));
+    } else {
+      if (selectedCampaignProducts.length >= 3) return alert("En fazla 3 ürün seçebilirsiniz!");
+      setSelectedCampaignProducts(prev => [...prev, id]);
+    }
+  };
+
+  const getCampaignType = () => {
+    if (selectedCampaignProducts.length === 1) return "📉 Fiyat İndirimi Kampanyası";
+    if (selectedCampaignProducts.length > 1) return "🤝 Beraber Alım (Bundle) Kampanyası";
+    return "Lütfen ürün seçin";
+  };
+
+  // 🟢 YENİ: Arama Filtresi (Küçük/büyük harf duyarsız)
+  const filteredProducts = dbProducts.filter(product => 
+    product.name.toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
   return (
-    <div className="min-h-screen bg-white pb-24 select-none font-sans text-black relative">
+    <div className="min-h-screen bg-gray-100 font-sans text-black pb-32">
       
-      {/* HEADER */}
-      <div className="bg-white px-6 pt-14 pb-4 shadow-sm sticky top-0 z-20 flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-black text-gray-900 tracking-tight">Yönetim</h1>
-          <p className="text-xs text-gray-500 font-medium">PrestigeSO Mobile Admin</p>
-        </div>
-        <div className="w-10 h-10 bg-black text-white rounded-full flex items-center justify-center font-bold shadow-lg">YP</div>
+      {/* 🟢 HEADER - ORTALANMIŞ BAŞLIK 🟢 */}
+      <div className="bg-white px-6 py-5 shadow-sm flex items-center justify-center relative mb-6">
+        <h1 className="text-xl font-black text-gray-900 tracking-widest uppercase">PRESTİGESO YÖNETİM PANELİ</h1>
+        <div className="w-9 h-9 bg-black text-white rounded-full flex items-center justify-center font-bold text-sm absolute right-6 shadow-md">A</div>
       </div>
 
-      {/* STATS KARTLARI */}
-      <div className="grid grid-cols-2 gap-4 p-4">
-        <div className="bg-black text-white p-5 rounded-2xl shadow-xl">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"/>
-            <p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Mağaza Değeri</p>
-          </div>
-          <p className="text-xl font-bold">
-            {loading ? "..." : `${stats.totalValue.toLocaleString('tr-TR')} ₺`}
-          </p>
-        </div>
-
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100 flex flex-col justify-between">
-          <p className="text-gray-400 text-[10px] font-bold uppercase tracking-wider">Aktif Ürün</p>
-          <p className="text-3xl font-black text-blue-600 mt-1">
-             {loading ? "..." : stats.count}
-          </p>
-        </div>
-      </div>
-
-      <div className="px-5 mt-4 flex justify-between items-end border-b border-gray-50 pb-4">
-        <h2 className="text-gray-900 font-bold text-lg">Ürün Listesi</h2>
-        <button onClick={() => window.location.reload()} className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full">🔄 Yenile</button>
-      </div>
-      
-      {/* ÜRÜN LİSTESİ */}
-      <div className="px-4 mt-3 space-y-3">
-        {loading ? (
-          [1,2,3,4].map(i => (
-            <div key={i} className="bg-white h-20 rounded-xl animate-pulse shadow-sm border border-gray-100"/>
-          ))
-        ) : (
-          products.map((product) => (
-            <div key={product.id} className="bg-white p-3 rounded-xl shadow-sm border border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 bg-gray-50 rounded-lg overflow-hidden border border-gray-100">
-                    <img src={product.image} alt="" className="w-full h-full object-cover" />
-                </div>
-                <div className="flex flex-col">
-                  <h3 className="font-bold text-gray-900 text-sm line-clamp-1 w-40">{product.name}</h3>
-                  <span className="text-xs font-medium text-gray-500 mt-1">{product.price.toLocaleString('tr-TR')} ₺</span>
-                </div>
-              </div>
-              <button className="text-gray-300 p-2 text-xl font-light hover:text-red-500 transition-colors">✕</button>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* ALT NAVİGASYON */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 px-6 py-4 flex justify-between items-center z-30 pb-safe">
-        <Link href="/" className="flex flex-col items-center gap-1 text-gray-400 hover:text-black">
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M2.25 12l8.954-8.955c.44-.439 1.152-.439 1.591 0L21.75 12M4.5 9.75v10.125c0 .621.504 1.125 1.125 1.125H9.75v-4.875c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125V21h4.125c.621 0 1.125-.504 1.125-1.125V9.75M8.25 21h8.25" /></svg>
-            <span className="text-[10px] font-bold">Mağaza</span>
-        </Link>
+      <div className="px-6 max-w-6xl mx-auto space-y-6">
         
-        {/* YENİ ÜRÜN EKLEME BUTONU (Ortadaki Siyah Buton) */}
+        {/* 1. KISIM: 4'LÜ ÜST PANEL */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Bu Ayki Satışlar</p>
+            <p className="text-2xl font-black text-green-600">0 ₺</p>
+          </div>
+          <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Sipariş Adedi</p>
+            <p className="text-2xl font-black text-gray-900">0</p>
+          </div>
+          <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Site Ziyaretleri</p>
+            <p className="text-2xl font-black text-blue-600">0</p>
+          </div>
+          <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Toplam Ürün</p>
+            <p className="text-2xl font-black text-gray-900">{dbProducts.length}</p>
+          </div>
+        </div>
+
+        {/* 2. KISIM: ORTA ALAN (ÜRÜN LİSTESİ VE ARAMA) */}
+        <div>
+          {/* 🟢 YENİ: Ürün Envanteri Başlığı ve Arama Çubuğu Yanyana 🟢 */}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 px-1 gap-3">
+            <h2 className="font-bold text-sm uppercase tracking-widest text-gray-500">Ürün Envanteri</h2>
+            <div className="relative w-full sm:w-72">
+              <input 
+                type="text" 
+                placeholder="Envanterde ürün ara..." 
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-black shadow-sm"
+              />
+              <span className="absolute left-3 top-2.5 text-gray-400 text-lg">🔍</span>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+            {loading ? <p className="p-6 text-center text-gray-400">Yükleniyor...</p> : 
+             filteredProducts.length === 0 ? <p className="p-6 text-center text-gray-400">Aramanıza uygun ürün bulunamadı.</p> :
+             <div className="divide-y divide-gray-100">
+               {filteredProducts.map(product => (
+                 <div key={product.id} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+                   <div className="flex items-center gap-4">
+                     <img src={product.image} alt="" className="w-12 h-12 rounded-lg object-cover border border-gray-200" />
+                     <div>
+                       <h3 className="font-bold text-sm text-gray-900">{product.name}</h3>
+                       <p className="text-xs text-blue-600 font-black">{product.price} ₺</p>
+                     </div>
+                   </div>
+                   <button 
+                     onClick={() => setEditingProduct(product)}
+                     className="bg-black text-white px-4 py-2 rounded-lg text-xs font-bold active:scale-95 transition-transform"
+                   >
+                     Düzenle
+                   </button>
+                 </div>
+               ))}
+             </div>
+            }
+          </div>
+        </div>
+      </div>
+
+      {/* 3. KISIM: SOL ALT - SAYFAYI DÜZENLE BUTONU */}
+      <div className="fixed bottom-6 left-6 z-40">
+        <button onClick={() => setIsSettingsOpen(true)} className="bg-white text-black border border-gray-200 shadow-xl px-5 py-3.5 rounded-full font-bold flex items-center gap-2 hover:bg-gray-50 active:scale-95 transition-all text-sm">
+          <span>⚙️</span> Özel Panel
+        </button>
+      </div>
+
+      {/* 4. KISIM: SAĞ ALT - AKROBATİK FAB (+) BUTONU */}
+      <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-3">
+        <div className={`flex flex-col items-end gap-3 transition-all duration-300 origin-bottom ${isFabOpen ? "opacity-100 scale-100 translate-y-0" : "opacity-0 scale-50 translate-y-10 pointer-events-none"}`}>
+          <button onClick={() => { setIsFabOpen(false); setIsAddProductOpen(true); }} className="bg-white text-black border border-gray-200 shadow-lg px-4 py-3 rounded-2xl font-bold text-sm flex items-center gap-3 hover:bg-gray-50 w-max">
+            <span>📦</span> Yeni Ürün Ekle
+          </button>
+          <button onClick={() => { setIsFabOpen(false); setIsCampaignOpen(true); }} className="bg-blue-600 text-white shadow-lg px-4 py-3 rounded-2xl font-bold text-sm flex items-center gap-3 hover:bg-blue-700 w-max">
+            <span>🏷️</span> Kampanya Oluştur
+          </button>
+        </div>
+        
         <button 
-          onClick={() => setIsAddModalOpen(true)}
-          className="bg-black text-white w-14 h-14 rounded-full shadow-2xl flex items-center justify-center -mt-8 border-4 border-white text-3xl font-light active:scale-95 transition-transform"
+          onClick={() => setIsFabOpen(!isFabOpen)} 
+          className={`w-16 h-16 rounded-full shadow-2xl flex items-center justify-center text-3xl font-light transition-all duration-300 z-50 ${isFabOpen ? "bg-red-500 text-white rotate-45" : "bg-black text-white rotate-0 hover:scale-105"}`}
         >
           +
         </button>
-        
-        {/* PANEL BUTONU */}
-        <button 
-            onClick={() => setIsSettingsOpen(true)} 
-            className="flex flex-col items-center gap-1 text-blue-600 active:scale-95 transition-transform"
-        >
-             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6"><path strokeLinecap="round" strokeLinejoin="round" d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75" /></svg>
-            <span className="text-[10px] font-bold underline underline-offset-4">Panel</span>
-        </button>
       </div>
-
-      {/* --- 1. GİZLİ AYARLAR PENCERESİ (Kayan Yazı) --- */}
-      {isSettingsOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center backdrop-blur-sm transition-opacity">
-          <div className="bg-white w-full max-w-md rounded-t-3xl p-6 pb-12 shadow-2xl">
+            {/* YENİ ÜRÜN EKLE MODALI (Görsel Yüklemeli Versiyon) */}
+      {isAddProductOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl flex flex-col max-h-[90vh]">
             <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
-              <h2 className="text-xl font-black text-gray-900">Ayarlar / Panel</h2>
-              <button onClick={() => setIsSettingsOpen(false)} className="w-8 h-8 flex items-center justify-center bg-gray-100 text-gray-500 rounded-full font-bold">✕</button>
+              <h2 className="text-xl font-black">Yeni Ürün Ekle</h2>
+              <button onClick={() => { setIsAddProductOpen(false); setNewProductImage(""); }} className="w-8 h-8 bg-gray-100 rounded-full font-bold">✕</button>
             </div>
-            <div className="space-y-4">
+            
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const form = e.target as HTMLFormElement;
+              const name = (form.elements.namedItem("name") as HTMLInputElement).value;
+              const price = Number((form.elements.namedItem("price") as HTMLInputElement).value);
+              const category = (form.elements.namedItem("category") as HTMLSelectElement).value;
+              const stock = Number((form.elements.namedItem("stock") as HTMLInputElement).value);
+              const is_bestseller = (form.elements.namedItem("is_bestseller") as HTMLInputElement).checked;
+
+              if (!newProductImage) return alert("Lütfen bilgisayarınızdan bir ürün görseli seçin!");
+
+              // Görseli Base64 olarak Supabase'e kaydediyoruz
+              const { error } = await supabase.from("products").insert([
+                { name, price, category, image: newProductImage, stock, is_bestseller }
+              ]);
+
+              if (error) return alert("Hata: " + error.message);
+              alert("Ürün başarıyla eklendi!");
+              setIsAddProductOpen(false);
+              setNewProductImage(""); // Formu temizle
+              fetchData();
+            }} className="flex-1 overflow-y-auto space-y-4 pb-4 pr-2">
+              
               <div>
-                <label className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2 block">📢 Kayan Yazı Metni</label>
-                <input type="text" value={inputText} onChange={(e) => setInputText(e.target.value)} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-black" />
+                <label className="text-xs font-bold text-gray-500 uppercase">Ürün Adı</label>
+                <input required name="name" type="text" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium" />
               </div>
-              <button onClick={handleSaveSettings} className="w-full bg-black text-white py-4 rounded-2xl font-bold text-xs uppercase tracking-widest active:scale-95 shadow-xl">
-                Kaydet ve Yayınla
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase">Fiyat (₺)</label>
+                  <input required name="price" type="number" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium" />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-gray-500 uppercase">Stok</label>
+                  <input required name="stock" type="number" defaultValue="1" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium" />
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase">Kategori</label>
+                <select required name="category" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium">
+                  <option value="hediye">Hediye & Dekor</option>
+                  <option value="taki">Takı & Aksesuar</option>
+                  <option value="kutu">Hediye Kutuları</option>
+                </select>
+              </div>
+
+              {/* BİLGİSAYARDAN GÖRSEL SEÇME ALANI */}
+              <div className="bg-gray-50 p-3 border border-gray-200 rounded-xl">
+                <label className="text-xs font-bold text-gray-500 uppercase block mb-2">Ürün Fotoğrafı Yükle</label>
+                <input 
+                  type="file" 
+                  accept="image/*"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      // Dosyayı Base64 formatına çeviriyoruz
+                      const reader = new FileReader();
+                      reader.onloadend = () => setNewProductImage(reader.result as string);
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                  className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-black file:text-white hover:file:bg-gray-800 cursor-pointer" 
+                />
+                
+                {/* Yüklenen Resmin Önizlemesi */}
+                {newProductImage && (
+                  <div className="mt-3 relative w-full h-32 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
+                    <img src={newProductImage} alt="Önizleme" className="w-full h-full object-contain bg-white" />
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-2">
+                <label className="flex items-center gap-3 cursor-pointer p-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition">
+                  <input type="checkbox" name="is_bestseller" className="w-5 h-5 rounded border-gray-300 text-black focus:ring-black" />
+                  <div>
+                    <span className="font-bold text-sm block text-gray-900">Çok Satan Ürün</span>
+                    <span className="text-[10px] text-gray-500 block">Vitrin listesinde 'Çok Satanlar' etiketini alır.</span>
+                  </div>
+                </label>
+              </div>
+              
+              <button type="submit" className="w-full bg-black text-white py-4 rounded-xl font-bold mt-4 shadow-lg hover:bg-gray-800 transition">
+                🚀 VİTRİNE EKLE
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+      {/* --- MODALLAR (Aynı Şekilde Duruyor) --- */}
+      {editingProduct && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl flex flex-col max-h-[90vh]">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-black">Ürün Düzenle</h2>
+              <button onClick={() => setEditingProduct(null)} className="w-8 h-8 bg-gray-100 rounded-full font-bold">✕</button>
+            </div>
+            
+            <form onSubmit={handleUpdateProduct} className="flex-1 overflow-y-auto space-y-4 pb-4">
+              <img src={editingProduct.image} className="w-full h-40 object-cover rounded-xl border border-gray-200" alt=""/>
+              
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase">Başlık</label>
+                <input required type="text" value={editingProduct.name} onChange={e => setEditingProduct({...editingProduct, name: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase">Fiyat (₺)</label>
+                <input required type="number" value={editingProduct.price} onChange={e => setEditingProduct({...editingProduct, price: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium" />
+              </div>
+              
+              <button type="submit" className="w-full bg-black text-white py-4 rounded-xl font-bold mt-4">KAYDET</button>
+            </form>
+
+            <div className="pt-4 border-t border-gray-100 mt-2">
+              <button onClick={() => handleDeleteProduct(editingProduct.id)} className="w-full bg-red-50 text-red-600 py-3 rounded-xl font-bold text-sm border border-red-100">
+                🗑️ Ürünü Kaldır
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* --- 2. ÜRÜN EKLEME MODALI (Yeni Eklenen) --- */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center backdrop-blur-sm transition-opacity">
-          <div className="bg-white w-full max-w-md rounded-t-3xl p-6 pb-12 shadow-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4 sticky top-0 bg-white z-10">
-              <h2 className="text-xl font-black text-gray-900">✨ Yeni Ürün Ekle</h2>
-              <button onClick={() => setIsAddModalOpen(false)} className="w-8 h-8 flex items-center justify-center bg-gray-100 text-gray-500 rounded-full font-bold">✕</button>
+      {isCampaignOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center">
+          <div className="bg-white w-full max-w-lg rounded-t-3xl p-6 pb-12 shadow-2xl max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center border-b border-gray-100 pb-4 mb-4">
+              <h2 className="text-xl font-black">🏷️ Kampanya Oluştur</h2>
+              <button onClick={() => setIsCampaignOpen(false)} className="w-8 h-8 bg-gray-100 rounded-full font-bold">✕</button>
             </div>
-            
-            <form onSubmit={handleAddProduct} className="space-y-4">
-              <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Ürün Adı</label>
-                <input required type="text" value={newProduct.name} onChange={(e) => setNewProduct({...newProduct, name: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black outline-none font-medium" />
+
+            <div className="overflow-y-auto space-y-6 flex-1 pr-2">
+              <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
+                <p className="text-xs text-blue-800 font-bold uppercase tracking-widest mb-1">Kampanya Tipi</p>
+                <p className="text-lg font-black text-blue-900">{getCampaignType()}</p>
+                <p className="text-xs text-blue-600 mt-1">Sistem seçtiğiniz ürün sayısına göre kampanya tipini otomatik belirler.</p>
               </div>
+
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Ürün Seçimi (Maks 3)</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {dbProducts.map(product => (
+                    <div 
+                      key={product.id} 
+                      onClick={() => toggleCampaignProduct(product.id)}
+                      className={`relative aspect-square rounded-xl overflow-hidden cursor-pointer border-2 transition-all ${selectedCampaignProducts.includes(product.id) ? "border-blue-600 scale-95" : "border-transparent opacity-60 hover:opacity-100"}`}
+                    >
+                      <img src={product.image} className="w-full h-full object-cover" alt=""/>
+                      {selectedCampaignProducts.includes(product.id) && (
+                        <div className="absolute inset-0 bg-blue-600/20 flex items-center justify-center backdrop-blur-sm">
+                          <span className="bg-blue-600 text-white w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold">✓</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Fiyat (₺)</label>
-                  <input required type="number" value={newProduct.price} onChange={(e) => setNewProduct({...newProduct, price: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black outline-none font-medium" />
+                  <label className="text-xs font-bold text-gray-500 uppercase">Başlangıç</label>
+                  <input type="date" value={campaignDates.start} onChange={e => setCampaignDates({...campaignDates, start: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 text-sm font-medium"/>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Stok</label>
-                  <input required type="number" value={newProduct.stock} onChange={(e) => setNewProduct({...newProduct, stock: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black outline-none font-medium" />
+                  <label className="text-xs font-bold text-gray-500 uppercase">Bitiş</label>
+                  <input type="date" value={campaignDates.end} onChange={e => setCampaignDates({...campaignDates, end: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 text-sm font-medium"/>
                 </div>
               </div>
+            </div>
+
+            <button className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold uppercase mt-4 active:scale-95 shadow-lg" onClick={() => { alert("Veritabanında kampanya tablosu açıldığında bu işlem aktif olacaktır."); setIsCampaignOpen(false); }}>
+              Kampanyayı Başlat
+            </button>
+          </div>
+        </div>
+      )}
+
+      {isSettingsOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl">
+            <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
+              <h2 className="text-xl font-black">⚙️ Özel Sayfa Paneli</h2>
+              <button onClick={() => setIsSettingsOpen(false)} className="w-8 h-8 bg-gray-100 rounded-full font-bold">✕</button>
+            </div>
+            <form onSubmit={handleSaveSettings} className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Kategori</label>
-                <select value={newProduct.category} onChange={(e) => setNewProduct({...newProduct, category: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-black outline-none font-medium">
-                  <option>Yeni Gelenler</option>
-                  <option>İndirim</option>
-                  <option>Aksesuar</option>
-                </select>
+                <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Kayan Yazı (Kampanya Bandı)</label>
+                <input type="text" value={pageSettings.marquee} onChange={e => setPageSettings({...pageSettings, marquee: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium" />
               </div>
-              <button type="submit" className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold uppercase tracking-widest active:scale-95 shadow-xl mt-4">
-                Mağazaya Ekle
-              </button>
+              <div className="pt-4 border-t border-gray-100">
+                <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Büyük Resim Başlığı</label>
+                <input type="text" value={pageSettings.heroTitle} onChange={e => setPageSettings({...pageSettings, heroTitle: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium" placeholder="Örn: Yeni Sezon" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Büyük Resim Açıklaması</label>
+                <textarea rows={2} value={pageSettings.heroSubtitle} onChange={e => setPageSettings({...pageSettings, heroSubtitle: e.target.value})} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium resize-none" placeholder="Örn: En şık masa süslerini keşfedin..."></textarea>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-500 uppercase block mb-1">Ana Vitrin Görseli</label>
+                <button type="button" className="w-full bg-gray-100 text-gray-500 py-3 rounded-xl text-sm font-bold border border-gray-200">📸 Fotoğraf Seç / Değiştir</button>
+              </div>
+              <button type="submit" className="w-full bg-black text-white py-4 rounded-xl font-bold uppercase tracking-widest mt-2 shadow-xl">Tüm Ayarları Kaydet</button>
             </form>
           </div>
         </div>
