@@ -1,36 +1,45 @@
 "use client";
 
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
 
-type CartItem = {
+export type CartItem = {
   id: number | string;
   name: string;
   price: number;
   image: string;
   quantity: number;
+  category?: string;
 };
 
 type CartContextType = {
   cart: CartItem[];
+  items: CartItem[];
   isCartOpen: boolean;
   setIsCartOpen: (isOpen: boolean) => void;
+  toggleCart: () => void;
+
   addToCart: (item: CartItem) => void;
   removeFromCart: (id: number | string) => void;
   updateQuantity: (id: number | string, amount: number) => void;
+
   cartTotal: number;
+
+  campaignText: string;
+  setCampaignText: (text: string) => void;
 };
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export function CartProvider({ children }: { children: ReactNode }) {
-  // cart her zaman boş bir dizi [] olarak başlar, asla undefined olmaz!
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const [isMounted, setIsMounted] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
-  // Sayfa yüklendiğinde eski sepeti getir
+  const [campaignText, setCampaignText] = useState("");
+
   useEffect(() => {
-    setIsMounted(true);
+    setMounted(true);
+
     const savedCart = localStorage.getItem("prestigeso_cart");
     if (savedCart) {
       try {
@@ -39,14 +48,22 @@ export function CartProvider({ children }: { children: ReactNode }) {
         console.error("Sepet okunurken hata oluştu", e);
       }
     }
+
+    const savedCampaign = localStorage.getItem("prestigeso_campaign") || "";
+    setCampaignText(savedCampaign);
   }, []);
 
-  // Sepet değiştiğinde tarayıcıya kaydet
   useEffect(() => {
-    if (isMounted) {
-      localStorage.setItem("prestigeso_cart", JSON.stringify(cart));
-    }
-  }, [cart, isMounted]);
+    if (!mounted) return;
+    localStorage.setItem("prestigeso_cart", JSON.stringify(cart));
+  }, [cart, mounted]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    localStorage.setItem("prestigeso_campaign", campaignText);
+  }, [campaignText, mounted]);
+
+  const toggleCart = () => setIsCartOpen((v) => !v);
 
   const addToCart = (product: CartItem) => {
     setCart((prev) => {
@@ -58,7 +75,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       }
       return [...prev, { ...product, quantity: 1 }];
     });
-    setIsCartOpen(true); // Ürün eklenince sepeti otomatik aç
+    setIsCartOpen(true);
   };
 
   const removeFromCart = (id: number | string) => {
@@ -77,22 +94,26 @@ export function CartProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  // Güvenli Toplam Hesaplama
-  const cartTotal = (cart || []).reduce((total, item) => total + (item.price * item.quantity), 0);
-
-  return (
-    <CartContext.Provider value={{ 
-      cart: cart || [], 
-      isCartOpen, 
-      setIsCartOpen, 
-      addToCart, 
-      removeFromCart, 
-      updateQuantity, 
-      cartTotal 
-    }}>
-      {children}
-    </CartContext.Provider>
+  const cartTotal = useMemo(
+    () => cart.reduce((total, item) => total + item.price * item.quantity, 0),
+    [cart]
   );
+
+  const value: CartContextType = {
+    cart,
+    items: cart,
+    isCartOpen,
+    setIsCartOpen,
+    toggleCart,
+    addToCart,
+    removeFromCart,
+    updateQuantity,
+    cartTotal,
+    campaignText,
+    setCampaignText
+  };
+
+  return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
 
 export const useCart = () => {

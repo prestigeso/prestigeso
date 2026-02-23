@@ -35,14 +35,14 @@ export default function ProductActions({ product }: { product: ProductLike }) {
     <div className="flex flex-col gap-3">
       <button
         onClick={handleAdd}
-        className="w-full py-4 rounded-xl text-lg font-bold shadow-lg transition-all duration-300 bg-black text-white hover:bg-gray-800 active:scale-95"
+        className="w-full py-4 rounded-xl text-lg font-bold shadow-lg bg-black text-white hover:bg-gray-800 active:scale-95"
       >
         Sepete Ekle
       </button>
 
       <button
         onClick={handleBuyNowWhatsApp}
-        className="w-full py-4 rounded-xl text-lg font-bold shadow-lg transition-all duration-300 bg-green-600 text-white hover:bg-green-700 active:scale-95"
+        className="w-full py-4 rounded-xl text-lg font-bold shadow-lg bg-green-600 text-white hover:bg-green-700 active:scale-95"
       >
         Şimdi Sipariş Ver
       </button>

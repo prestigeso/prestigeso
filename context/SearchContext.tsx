@@ -13,7 +13,7 @@ const SearchContext = createContext<SearchContextType | undefined>(undefined);
 
 export function SearchProvider({ children }: { children: ReactNode }) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("Tümü"); // Varsayılan olarak tüm ürünler
+  const [selectedCategory, setSelectedCategory] = useState("Tümü");
 
   return (
     <SearchContext.Provider value={{ searchQuery, setSearchQuery, selectedCategory, setSelectedCategory }}>

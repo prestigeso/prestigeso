@@ -2,7 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import Navbar from "./Navbar";
-import CartDrawer from "./CartDrawer";
+import CartSidebar from "./CartSidebar";
 
 export default function ConditionalLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -12,7 +12,7 @@ export default function ConditionalLayout({ children }: { children: React.ReactN
     <>
       {!isAdmin && <Navbar />}
       {children}
-      {!isAdmin && <CartDrawer />}
+      {!isAdmin && <CartSidebar />}
     </>
   );
 }
