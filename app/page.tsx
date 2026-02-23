@@ -84,32 +84,34 @@ export default function Home() {
         </div>
       )}
 
-      {/* HERO SLIDER */}
-      <div className="relative w-full h-[60vh] md:h-[75vh] flex items-center justify-center overflow-hidden bg-gray-900 group cursor-pointer" onClick={() => handleSeeAll("Tümü")}>
-        {heroSlides.length > 0 ? (
-          heroSlides.map((slide, index) => (
-            <div key={slide.id} className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${index === currentSlide ? "opacity-100 z-10" : "opacity-0 z-0"}`}>
-              {/* Karartma efekti (Yazılar okunsun diye) */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-black/20 z-10 transition-colors duration-500 group-hover:from-black/80"></div>
-              <img src={slide.image_url} alt="Vitrin" className="w-full h-full object-cover transition-transform duration-[10s] group-hover:scale-105" />
-              
-              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center text-center px-4 transition-transform duration-500 group-hover:-translate-y-4">
-                <h1 className="text-4xl md:text-7xl font-black text-white mb-4 tracking-tight drop-shadow-2xl uppercase">{slide.title || "Yeni Sezon"}</h1>
-                <p className="text-gray-200 max-w-lg text-sm md:text-lg font-medium drop-shadow-md uppercase tracking-widest">{slide.subtitle || ""}</p>
+      {/* HERO SLIDER (ARTIK KATEGORİ SEÇİLİNCE GİZLENECEK) */}
+      {!showAll && (
+        <div className="relative w-full h-[60vh] md:h-[75vh] flex items-center justify-center overflow-hidden bg-gray-900 group cursor-pointer" onClick={() => handleSeeAll("Tümü")}>
+          {heroSlides.length > 0 ? (
+            heroSlides.map((slide, index) => (
+              <div key={slide.id} className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${index === currentSlide ? "opacity-100 z-10" : "opacity-0 z-0"}`}>
+                {/* Karartma efekti (Yazılar okunsun diye) */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-black/20 z-10 transition-colors duration-500 group-hover:from-black/80"></div>
+                <img src={slide.image_url} alt="Vitrin" className="w-full h-full object-cover transition-transform duration-[10s] group-hover:scale-105" />
+                
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center text-center px-4 transition-transform duration-500 group-hover:-translate-y-4">
+                  <h1 className="text-4xl md:text-7xl font-black text-white mb-4 tracking-tight drop-shadow-2xl uppercase">{slide.title || "Yeni Sezon"}</h1>
+                  <p className="text-gray-200 max-w-lg text-sm md:text-lg font-medium drop-shadow-md uppercase tracking-widest">{slide.subtitle || ""}</p>
+                </div>
               </div>
-            </div>
-          ))
-        ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-white/50 bg-black"><p>Vitrin Resmi Yok.</p></div>
-        )}
+            ))
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-white/50 bg-black"><p>Vitrin Resmi Yok.</p></div>
+          )}
 
-        {/* KEŞFET YAZISI */}
+          {/* KEŞFET YAZISI */}
           <div className="absolute bottom-0 left-0 w-full py-8 md:py-12 z-30 translate-y-full group-hover:translate-y-0 opacity-0 group-hover:opacity-100 transition-all duration-500 ease-out flex items-center justify-center pointer-events-none">
-          <span className="text-white text-xs md:text-sm font-black uppercase tracking-[0.4em] flex items-center gap-2 drop-shadow-lg border-b border-white/30 pb-1">
-            TÜM ÜRÜNLERİ KEŞFET <span className="text-lg md:text-xl font-light mb-0.5">›</span>
-          </span>
+            <span className="text-white text-xs md:text-sm font-black uppercase tracking-[0.4em] flex items-center gap-2 drop-shadow-lg border-b border-white/30 pb-1">
+              TÜM ÜRÜNLERİ KEŞFET <span className="text-lg md:text-xl font-light mb-0.5">›</span>
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-10">
         
