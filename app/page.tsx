@@ -79,18 +79,19 @@ export default function Home() {
     <div className="min-h-screen bg-white font-sans text-black pb-24">
       {/* Kampanya Marquee */}
       {localCampaign && (
-        <div className="bg-black text-white text-[11px] md:text-xs font-bold uppercase tracking-[0.2em] py-2.5 overflow-hidden flex items-center shadow-md relative z-50">
-          <marquee scrollamount="6" className="w-full">{localCampaign}</marquee>
+        <div className="bg-black text-white text-[11px] md:text-xs font-bold uppercase tracking-[0.2em] py-2.5 overflow-hidden flex items-center w-full">
+          <marquee scrollamount="8" className="w-full">
+            {Array(15).fill(localCampaign).join(" ✦ ")}
+          </marquee>
         </div>
       )}
 
-      {/* HERO SLIDER (ARTIK KATEGORİ SEÇİLİNCE GİZLENECEK) */}
+      {/* HERO SLIDER (KATEGORİ SEÇİLİNCE GİZLENİR) */}
       {!showAll && (
         <div className="relative w-full h-[60vh] md:h-[75vh] flex items-center justify-center overflow-hidden bg-gray-900 group cursor-pointer" onClick={() => handleSeeAll("Tümü")}>
           {heroSlides.length > 0 ? (
             heroSlides.map((slide, index) => (
               <div key={slide.id} className={`absolute inset-0 transition-opacity duration-1000 ease-in-out ${index === currentSlide ? "opacity-100 z-10" : "opacity-0 z-0"}`}>
-                {/* Karartma efekti (Yazılar okunsun diye) */}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-black/20 z-10 transition-colors duration-500 group-hover:from-black/80"></div>
                 <img src={slide.image_url} alt="Vitrin" className="w-full h-full object-cover transition-transform duration-[10s] group-hover:scale-105" />
                 
@@ -148,12 +149,12 @@ export default function Home() {
             
             <ProductCarousel title="İndirim Fırsatları" products={discountedFull.slice(0, 5)} badgeLabel="İndirimli" onSeeAll={() => handleSeeAll("İndirimler")} />
 
-            {/* Kalan Tüm Kategorileri Otomatik Döndür (Her birinden en çok satan 5 tane) */}
+            {/* Kalan Tüm Kategorileri Otomatik Döndür */}
             {baseCategories.map((cat) => {
               const catProducts = dbProducts
                 .filter((p) => p.category === cat)
-                .sort((a, b) => (b.is_bestseller ? 1 : 0) - (a.is_bestseller ? 1 : 0)) // Önce çok satanları alır
-                .slice(0, 5); // Sadece 5 ürün alır
+                .sort((a, b) => (b.is_bestseller ? 1 : 0) - (a.is_bestseller ? 1 : 0))
+                .slice(0, 5);
 
               if (catProducts.length === 0) return null;
 
@@ -191,7 +192,6 @@ function ProductCarousel({ title, products, badgeLabel, onSeeAll }: { title: str
         )}
       </div>
 
-      {/* Sadece 5 Ürün Gösterildiği İçin Masaüstünde Grid, Mobilde Kaydırmalı */}
       <div className="flex overflow-x-auto md:grid md:grid-cols-5 gap-4 md:gap-5 hide-scrollbar pb-4 snap-x pl-1">
         {products.map((p) => (
           <div key={p.id} className="snap-start w-[160px] md:w-auto flex-shrink-0">
@@ -203,9 +203,50 @@ function ProductCarousel({ title, products, badgeLabel, onSeeAll }: { title: str
   );
 }
 
-// 2. PrestigeSO Premium Ürün Kartı
+// 2. PrestigeSO Premium Ürün Kartı (GÜVENLİK DUVARLI VE FAVORİ SİSTEMLİ)
+// 2. PrestigeSO Premium Ürün Kartı (GÜVENLİK DUVARLI VE DİNAMİK KALP SİSTEMLİ)
 function PrestigeCard({ product, badgeLabel }: { product: any, badgeLabel?: string }) {
   const displayImage = product.images?.[0] || product.image || "/logo.jpeg";
+  
+  // DİNAMİK KALP: Ürünün favorilerde olup olmadığını tutar
+  const [isFavorite, setIsFavorite] = useState(false);
+
+  // SAYFA YÜKLENDİĞİNDE: Bu ürün daha önceden favorilere eklenmiş mi kontrol et
+  useEffect(() => {
+    const currentFavs = JSON.parse(localStorage.getItem("prestige_favorites") || "[]");
+    const isFav = currentFavs.find((fav: any) => fav.id === product.id);
+    setIsFavorite(!!isFav); // Varsa true, yoksa false yapar (kalbin içini doldurur/boşaltır)
+  }, [product.id]);
+
+  // KALP BUTONU FONKSİYONU
+  const handleFavoriteClick = async (e: React.MouseEvent) => {
+    e.preventDefault(); 
+    e.stopPropagation(); 
+    
+    // 1. KONTROL: Adam giriş yapmış mı?
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
+      alert("Ürünleri favorilemek için lütfen önce asilce giriş yapın! 🛡️");
+      return; 
+    }
+
+    // 2. KAYIT: Giriş yapmışsa ürünü LocalStorage'a ekle veya çıkar
+    const currentFavs = JSON.parse(localStorage.getItem("prestige_favorites") || "[]");
+    const isExist = currentFavs.find((fav: any) => fav.id === product.id);
+    
+    if (!isExist) {
+      const newFavs = [...currentFavs, product];
+      localStorage.setItem("prestige_favorites", JSON.stringify(newFavs));
+      setIsFavorite(true); // Tıklandığı an kalbi siyah yap
+      alert("Ürün asilce favorilere eklendi! ❤️");
+    } else {
+      const newFavs = currentFavs.filter((fav: any) => fav.id !== product.id);
+      localStorage.setItem("prestige_favorites", JSON.stringify(newFavs));
+      setIsFavorite(false); // Tıklandığı an kalbi boşalt
+      alert("Ürün favorilerden çıkarıldı. 💔");
+    }
+  };
 
   return (
     <Link href={`/product/${product.id}`} className="group relative block cursor-pointer w-full h-full flex flex-col">
@@ -216,11 +257,21 @@ function PrestigeCard({ product, badgeLabel }: { product: any, badgeLabel?: stri
           className="h-full w-full object-cover mix-blend-multiply group-hover:scale-105 transition-transform duration-700 ease-out"
         />
 
+        {/* İŞTE O YENİ DİNAMİK KALP BUTONU (DETAY SAYFASIYLA BİREBİR AYNI) */}
         <button 
-          onClick={(e) => { e.preventDefault(); }} 
-          className="absolute top-2 right-2 w-8 h-8 bg-white/90 rounded-full shadow-sm flex items-center justify-center text-gray-300 hover:text-black transition-colors z-10 hover:scale-110 active:scale-95"
+          onClick={handleFavoriteClick} 
+          className="absolute top-2 right-2 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full shadow-sm flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-10 group/btn"
+          title="Favorilere Ekle"
         >
-          <svg viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+          <svg 
+            viewBox="0 0 24 24" 
+            fill={isFavorite ? "currentColor" : "none"} 
+            stroke="currentColor" 
+            strokeWidth={isFavorite ? "0" : "2"} 
+            className={`w-4 h-4 transition-colors ${isFavorite ? "text-black" : "text-gray-400 group-hover/btn:text-black"}`}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+          </svg>
         </button>
 
         {badgeLabel && (
@@ -239,13 +290,17 @@ function PrestigeCard({ product, badgeLabel }: { product: any, badgeLabel?: stri
         </h3>
         
         <div className="flex items-end gap-2 mt-2">
-          <p className="text-base md:text-lg font-black text-black tracking-tight">{Number(product.price).toLocaleString("tr-TR")} ₺</p>
-          {Number(product.discount_price) > 0 && (
-            <p className="text-[10px] md:text-xs font-bold text-gray-400 line-through mb-0.5">
-              {Number(product.discount_price).toLocaleString("tr-TR")} ₺
-            </p>
-          )}
-        </div>
+  {Number(product.discount_price) > 0 ? (
+    <>
+      <p className="text-base md:text-lg font-black text-black tracking-tight">{Number(product.discount_price).toLocaleString("tr-TR")} ₺</p>
+      <p className="text-[10px] md:text-xs font-bold text-gray-400 line-through mb-0.5">
+        {Number(product.price).toLocaleString("tr-TR")} ₺
+      </p>
+    </>
+  ) : (
+    <p className="text-base md:text-lg font-black text-black tracking-tight">{Number(product.price).toLocaleString("tr-TR")} ₺</p>
+  )}
+      </div>
       </div>
     </Link>
   );

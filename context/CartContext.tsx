@@ -1,6 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
+import { supabase } from "@/lib/supabase"; // EKLENDİ: Supabase bağlantısı
 
 export type CartItem = {
   id: number | string;
@@ -40,14 +41,60 @@ export function CartProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setMounted(true);
 
-    const savedCart = localStorage.getItem("prestigeso_cart");
-    if (savedCart) {
-      try {
-        setCart(JSON.parse(savedCart));
-      } catch (e) {
-        console.error("Sepet okunurken hata oluştu", e);
+    // JİLET GİBİ SENKRONİZASYON FONKSİYONU
+    const loadAndSyncCart = async () => {
+      const savedCart = localStorage.getItem("prestigeso_cart");
+      if (savedCart) {
+        try {
+          const localCart: CartItem[] = JSON.parse(savedCart);
+          
+          // 1. Önce adamın hafızasındaki sepeti ekrana veriyoruz ki beklemesin
+          setCart(localCart);
+
+          // 2. Arka planda ajan gibi Supabase'e gidip güncel fiyatları kontrol ediyoruz
+          if (localCart.length > 0) {
+            const ids = localCart.map(item => item.id);
+            const { data, error } = await supabase
+              .from("products")
+              .select("id, price, discount_price")
+              .in("id", ids);
+
+            if (data && !error) {
+              let isChanged = false;
+
+              const syncedCart = localCart.map(item => {
+                const dbItem = data.find(p => p.id === item.id);
+                
+                if (dbItem) {
+                  // Kampanya/İndirim varsa onu, yoksa normal fiyatı baz al
+                  const activePrice = Number(dbItem.discount_price) > 0 
+                    ? Number(dbItem.discount_price) 
+                    : Number(dbItem.price);
+
+                  // Eğer fiyat değişmişse (Zam veya indirim gelmişse) sepeti güncelle
+                  if (item.price !== activePrice) {
+                    isChanged = true;
+                    return { ...item, price: activePrice };
+                  }
+                }
+                return item;
+              });
+
+              // Eğer fiyatlarda değişim yakaladıysak, sepet state'ini güncelliyoruz
+              if (isChanged) {
+                setCart(syncedCart);
+                // Opsiyonel: Müşteriye uyarı da verebilirsin
+                console.log("Sepetteki ürünlerin fiyatı güncel piyasaya göre senkronize edildi!");
+              }
+            }
+          }
+        } catch (e) {
+          console.error("Sepet okunurken hata oluştu", e);
+        }
       }
-    }
+    };
+
+    loadAndSyncCart();
 
     const savedCampaign = localStorage.getItem("prestigeso_campaign") || "";
     setCampaignText(savedCampaign);
@@ -75,7 +122,6 @@ export function CartProvider({ children }: { children: ReactNode }) {
       }
       return [...prev, { ...product, quantity: 1 }];
     });
-    setIsCartOpen(true);
   };
 
   const removeFromCart = (id: number | string) => {

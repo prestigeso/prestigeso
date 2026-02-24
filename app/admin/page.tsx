@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { supabase } from "../../lib/supabase";
 
 type Slide = {
@@ -20,88 +20,76 @@ type ProductRow = {
   is_bestseller: boolean;
   discount_price: number;
   created_at?: string;
-  // image intentionally omitted in list fetch
 };
 
-async function compressImageToDataUrl(file: File, maxW = 900, quality = 0.75): Promise<string> {
-  const img = document.createElement("img");
-  const url = URL.createObjectURL(file);
+const STORAGE_BUCKET = "products";
 
-  return new Promise((resolve, reject) => {
-    img.onload = () => {
-      try {
-        const ratio = img.width / img.height;
-        const w = Math.min(maxW, img.width);
-        const h = Math.round(w / ratio);
-
-        const canvas = document.createElement("canvas");
-        canvas.width = w;
-        canvas.height = h;
-
-        const ctx = canvas.getContext("2d");
-        if (!ctx) throw new Error("Canvas context alınamadı");
-
-        ctx.drawImage(img, 0, 0, w, h);
-        URL.revokeObjectURL(url);
-
-        const dataUrl = canvas.toDataURL("image/jpeg", quality);
-        resolve(dataUrl);
-      } catch (e) {
-        reject(e);
-      }
-    };
-
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("Görsel okunamadı"));
-    };
-
-    img.src = url;
+function revokeUrls(urls: string[]) {
+  urls.forEach((u) => {
+    try {
+      URL.revokeObjectURL(u);
+    } catch {}
   });
 }
 
+async function uploadToStorageAndGetPublicUrl(file: File, prefix: string) {
+  const ext = file.name.split(".").pop() || "jpg";
+  const fileName = `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}.${ext}`;
+
+  const { error: uploadError } = await supabase.storage.from(STORAGE_BUCKET).upload(fileName, file);
+  if (uploadError) throw uploadError;
+
+  const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(fileName);
+  return data.publicUrl;
+}
+
 export default function AdminPanel() {
-  // --- ÜRÜNLER ---
+  // --- ÜRÜNLER (LİSTE - HAFİF) ---
   const [dbProducts, setDbProducts] = useState<ProductRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  
-  // Ürün ekleme resmi (sıkıştırılmış base64)
-  // YENİ: Çoklu resim ve açıklama stateleri
-  const [newProductFiles, setNewProductFiles] = useState<File[]>([]);
-  const [newProductImages, setNewProductImages] = useState<string[]>([]); // Önizleme için
-  // YENİ EKLEDİĞİMİZ SATIR: Asıl dosyayı tutacak state
-  const [newProductFile, setNewProductFile] = useState<File | null>(null);
-  // Menü ve Modallar
+
+  // --- MODALLAR ---
   const [isFabOpen, setIsFabOpen] = useState(false);
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [isCampaignOpen, setIsCampaignOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  // Ürün Düzenleme (full product)
+  // --- YENİ ÜRÜN ---
+  const [newProductFiles, setNewProductFiles] = useState<File[]>([]);
+  const [newProductPreviews, setNewProductPreviews] = useState<string[]>([]);
+  const [creating, setCreating] = useState(false);
+
+  // --- ÜRÜN DÜZENLE (FULL) ---
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [editLoading, setEditLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // --- YENİ EKLENEN SLIDER STATELERİ ---
-  const [newSlideFiles, setNewSlideFiles] = useState<File[]>([]);
-  const [newSlidePreviews, setNewSlidePreviews] = useState<string[]>([]);
-  // Kampanya
-  const [selectedCampaignProducts, setSelectedCampaignProducts] = useState<number[]>([]);
-  const [campaignDates, setCampaignDates] = useState({ start: "", end: "" });
+  // edit: yeni foto ekleme
+  const [editAddFiles, setEditAddFiles] = useState<File[]>([]);
+  const [editAddPreviews, setEditAddPreviews] = useState<string[]>([]);
+  const [editAddUploading, setEditAddUploading] = useState(false);
 
-  // Ayarlar (marquee)
-  const [pageSettings, setPageSettings] = useState({ marquee: "" });
-
-  // --- HERO SLIDES ---
+  // --- SLIDES ---
   const [dbSlides, setDbSlides] = useState<Slide[]>([]);
   const [slideLoading, setSlideLoading] = useState(false);
-  const [newSlide, setNewSlide] = useState({ image_url: "", title: "", subtitle: "" });
+  const [newSlideFiles, setNewSlideFiles] = useState<File[]>([]);
+  const [newSlidePreviews, setNewSlidePreviews] = useState<string[]>([]);
+  const [newSlide, setNewSlide] = useState({ title: "", subtitle: "" });
 
-  // --- HAFİF FETCH (ÜRÜN LİSTESİ) ---
+  // --- AYARLAR ---
+  const [pageSettings, setPageSettings] = useState({ marquee: "" });
+
+  // --- KAMPANYA / İNDİRİM ---
+  const [selectedCampaignProducts, setSelectedCampaignProducts] = useState<number[]>([]);
+  const [campaignDates, setCampaignDates] = useState({ start: "", end: "" });
+  const [discountPercent, setDiscountPercent] = useState<number>(20);
+
+  // ---------------------------------------
+  // FETCH: ÜRÜN LİSTESİ (image çekmiyoruz)
+  // ---------------------------------------
   const fetchProductsList = async () => {
     setLoading(true);
-
-    // ✅ DİKKAT: image alanını çekmiyoruz (base64 ağır)
     const { data, error } = await supabase
       .from("products")
       .select("id,name,price,category,stock,is_bestseller,discount_price,created_at")
@@ -112,29 +100,13 @@ export default function AdminPanel() {
       setLoading(false);
       return;
     }
-
     setDbProducts((data as any) || []);
     setLoading(false);
   };
 
-  // --- TEK ÜRÜNÜ FULL ÇEK (image dahil) ---
-  const openEditProduct = async (id: number) => {
-    setEditLoading(true);
-    setEditingProduct(null);
-
-    const { data, error } = await supabase
-      .from("products")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    setEditLoading(false);
-
-    if (error) return alert("Ürün detayı çekilemedi: " + error.message);
-    setEditingProduct(data);
-  };
-
-  // --- SLIDES ---
+  // ---------------------------------------
+  // FETCH: SLIDES
+  // ---------------------------------------
   const fetchSlides = async () => {
     setSlideLoading(true);
     const { data, error } = await supabase
@@ -153,9 +125,18 @@ export default function AdminPanel() {
 
     const savedMarquee = localStorage.getItem("prestigeso_campaign") || "";
     setPageSettings({ marquee: savedMarquee });
+
+    return () => {
+      revokeUrls(newProductPreviews);
+      revokeUrls(newSlidePreviews);
+      revokeUrls(editAddPreviews);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // --- SETTINGS SAVE ---
+  // ---------------------------------------
+  // SETTINGS SAVE
+  // ---------------------------------------
   const handleSaveSettings = (e: FormEvent) => {
     e.preventDefault();
     localStorage.setItem("prestigeso_campaign", pageSettings.marquee);
@@ -163,7 +144,44 @@ export default function AdminPanel() {
     setIsSettingsOpen(false);
   };
 
-  // --- ÜRÜN SİL (OPTIMISTIC) ---
+  // ---------------------------------------
+  // ÜRÜN: EDIT AÇ (FULL)
+  // Kapak = images[0]
+  // DB'de image kolonu varsa, onu da images[0] ile senkron tutacağız.
+  // ---------------------------------------
+  const openEditProduct = async (id: number) => {
+    setEditLoading(true);
+    setEditingProduct(null);
+
+    // edit file state temizle
+    revokeUrls(editAddPreviews);
+    setEditAddFiles([]);
+    setEditAddPreviews([]);
+
+    const { data, error } = await supabase.from("products").select("*").eq("id", id).single();
+    setEditLoading(false);
+
+    if (error) {
+      alert("Ürün detayı çekilemedi: " + error.message);
+      return;
+    }
+
+    const row: any = data;
+    const arr = Array.isArray(row.images) ? row.images : [];
+    // Eğer eski kayıtlarda images boş ama image varsa, images = [image] olarak normalize et
+    const normalizedImages = arr.length > 0 ? arr : (row.image ? [row.image] : []);
+
+    setEditingProduct({
+      ...row,
+      images: normalizedImages, // kapak = images[0]
+      // image alanını da senkron tutuyoruz (müşteri tarafı bozulmasın)
+      image: normalizedImages[0] || "",
+    });
+  };
+
+  // ---------------------------------------
+  // ÜRÜN: SİL
+  // ---------------------------------------
   const handleDeleteProduct = async (id: number) => {
     if (!window.confirm("Bu ürünü KALICI olarak silmek istiyor musun?")) return;
 
@@ -176,26 +194,47 @@ export default function AdminPanel() {
       setDbProducts(old);
       return;
     }
-
     setEditingProduct(null);
   };
 
-  // --- ÜRÜN GÜNCELLE (OPTIMISTIC) ---
+  // ---------------------------------------
+  // ÜRÜN: KAYDET (UPDATE)
+  // En kritik nokta: images[0] kapaktır.
+  // Ayrıca DB'de image kolonu varsa image=images[0] senkron.
+  // ---------------------------------------
   const handleUpdateProduct = async (e: FormEvent) => {
     e.preventDefault();
     if (!editingProduct) return;
 
-    const payload = {
+    setSaving(true);
+
+    // images normalize + cover
+    const images: string[] = Array.isArray(editingProduct.images) ? editingProduct.images : [];
+    const cover = images[0] || "";
+
+    const payload: any = {
       name: editingProduct.name,
       price: Number(editingProduct.price),
       category: editingProduct.category,
       stock: Number(editingProduct.stock ?? 0),
       is_bestseller: !!editingProduct.is_bestseller,
-      discount_price: Number(editingProduct.discount_price ?? 0),
-      image: editingProduct.image, // base64 kalabilir (şimdilik)
+      description: editingProduct.description ?? "",
+      images,
+      image: cover, // müşteri tarafı uyumluluk için (asıl kapak images[0])
+      // discount_price ELLE DEĞİŞTİRİLMEZ -> kampanyadan yönetilecek
     };
 
-    // listede image yok, ama diğer alanları update ediyoruz
+    const { error } = await supabase.from("products").update(payload).eq("id", editingProduct.id);
+
+    setSaving(false);
+
+    if (error) {
+      // Burada net hata göreceksin (RLS update policy yoksa burası patlar)
+      alert("KAYDET HATASI: " + error.message);
+      return;
+    }
+
+    // listeyi tazele (hafif)
     setDbProducts((prev) =>
       prev.map((p) =>
         p.id === editingProduct.id
@@ -206,27 +245,76 @@ export default function AdminPanel() {
               category: payload.category,
               stock: payload.stock,
               is_bestseller: payload.is_bestseller,
-              discount_price: payload.discount_price,
+              // discount_price listede aynen kalır, kampanya değiştirir
             }
           : p
       )
     );
 
-    const { error } = await supabase.from("products").update(payload).eq("id", editingProduct.id);
-
-    if (error) {
-      alert("Güncelleme hatası: " + error.message);
-      // garanti olsun diye tekrar çek
-      fetchProductsList();
-      return;
-    }
-
-    alert("Ürün güncellendi ✅");
+    alert("Kaydedildi ✅");
     setEditingProduct(null);
   };
 
-  // --- ÜRÜN EKLE ---
-  // --- ÜRÜN EKLE (ÇOKLU RESİM VE AÇIKLAMA) ---
+  // ---------------------------------------
+  // ÜRÜN: KAPAK SEÇ (images[0] yap)
+  // Seçilen url'yi dizinin başına taşıyoruz.
+  // ---------------------------------------
+  const setCoverFromExisting = (url: string) => {
+    if (!editingProduct) return;
+    const images: string[] = Array.isArray(editingProduct.images) ? editingProduct.images : [];
+    const next = [url, ...images.filter((x) => x !== url)];
+    setEditingProduct((prev: any) => ({ ...prev, images: next, image: next[0] || "" }));
+  };
+
+  // ---------------------------------------
+  // ÜRÜN: FOTO SİL (images içinden kaldır)
+  // Kapak silinirse yeni kapak images[0] olur.
+  // ---------------------------------------
+  const removeImageFromGallery = (url: string) => {
+    if (!editingProduct) return;
+    const images: string[] = Array.isArray(editingProduct.images) ? editingProduct.images : [];
+    const next = images.filter((x) => x !== url);
+    setEditingProduct((prev: any) => ({ ...prev, images: next, image: next[0] || "" }));
+  };
+
+  // ---------------------------------------
+  // ÜRÜN: GALERİYE FOTO EKLE (Storage upload)
+  // Eklediklerimiz dizi sonuna eklenir, kapak değişmez (kapak = images[0])
+  // ---------------------------------------
+  const addMoreImagesToProduct = async () => {
+    if (!editingProduct) return;
+    if (editAddFiles.length === 0) return alert("Eklemek için en az 1 fotoğraf seç!");
+
+    setEditAddUploading(true);
+    try {
+      const urls: string[] = [];
+      for (const f of editAddFiles) {
+        const u = await uploadToStorageAndGetPublicUrl(f, "product_extra");
+        urls.push(u);
+      }
+
+      const images: string[] = Array.isArray(editingProduct.images) ? editingProduct.images : [];
+      const next = [...images, ...urls];
+
+      setEditingProduct((prev: any) => ({ ...prev, images: next, image: next[0] || "" }));
+
+      revokeUrls(editAddPreviews);
+      setEditAddFiles([]);
+      setEditAddPreviews([]);
+
+      alert("Fotoğraflar eklendi ✅ (Kaydet'e basmayı unutma)");
+    } catch (e: any) {
+      alert("Fotoğraf eklenemedi: " + e.message);
+    } finally {
+      setEditAddUploading(false);
+    }
+  };
+
+  // ---------------------------------------
+  // ÜRÜN: EKLE (Storage)
+  // Kapak = images[0] ve image = images[0] senkron
+  // discount_price her zaman 0 başlar (elle yok)
+  // ---------------------------------------
   const handleAddProduct = async (e: FormEvent) => {
     e.preventDefault();
     const form = e.target as HTMLFormElement;
@@ -235,113 +323,89 @@ export default function AdminPanel() {
     const price = Number((form.elements.namedItem("price") as HTMLInputElement).value);
     const category = (form.elements.namedItem("category") as HTMLSelectElement).value;
     const stock = Number((form.elements.namedItem("stock") as HTMLInputElement).value);
-    const description = (form.elements.namedItem("description") as HTMLTextAreaElement).value; // YENİ EKLENDİ
+    const description = (form.elements.namedItem("description") as HTMLTextAreaElement).value;
     const is_bestseller = (form.elements.namedItem("is_bestseller") as HTMLInputElement).checked;
 
     if (newProductFiles.length === 0) return alert("Lütfen en az bir ürün görseli seçin!");
 
+    setCreating(true);
     try {
-      const uploadedImageUrls: string[] = [];
-
-      // Seçilen tüm dosyaları sırayla Storage'a yüklüyoruz
-      for (const file of newProductFiles) {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${Math.random()}.${fileExt}`; 
-
-        const { error: uploadError } = await supabase.storage
-          .from('products')
-          .upload(fileName, file);
-
-        if (uploadError) throw uploadError;
-
-        const { data: publicUrlData } = supabase.storage
-          .from('products')
-          .getPublicUrl(fileName);
-        
-        uploadedImageUrls.push(publicUrlData.publicUrl);
+      const urls: string[] = [];
+      for (const f of newProductFiles) {
+        const u = await uploadToStorageAndGetPublicUrl(f, "product");
+        urls.push(u);
       }
 
-      // Veritabanına diziyi (Array) ve açıklamayı kaydediyoruz
+      const cover = urls[0] || "";
+
       const { data, error } = await supabase
         .from("products")
-        .insert([{ 
-          name, 
-          price, 
-          category, 
-          stock, 
-          is_bestseller, 
-          description, // Yeni alan
-          images: uploadedImageUrls // Yeni çoklu resim alanı
-        }])
-        .select("*")
+        .insert([
+          {
+            name,
+            price,
+            category,
+            stock,
+            is_bestseller,
+            description,
+            images: urls,     // ✅ kapak = images[0]
+            image: cover,     // ✅ uyumluluk için senkron
+            discount_price: 0 // ✅ elle girilmez
+          },
+        ])
+        .select("id,name,price,category,stock,is_bestseller,discount_price,created_at")
         .single();
 
       if (error) throw error;
 
       setDbProducts((prev) => [data as any, ...prev]);
-      setIsAddProductOpen(false);
-      setNewProductImages([]);
+
+      revokeUrls(newProductPreviews);
+      setNewProductPreviews([]);
       setNewProductFiles([]);
-      alert("Ürün başarıyla eklendi! 🚀");
-    } catch (err: any) {
-      alert("Ürün eklenemedi: " + err.message);
+      setIsAddProductOpen(false);
+
+      alert("Ürün eklendi ✅");
+    } catch (e: any) {
+      alert("Ürün eklenemedi: " + e.message);
+    } finally {
+      setCreating(false);
     }
   };
 
-  // --- SLIDE EKLE/SİL/KAYDET ---
- // --- SLIDE EKLE (ÇOKLU DOSYA YÜKLEME) ---
+  // ---------------------------------------
+  // SLIDE: EKLE (ÇOKLU)
+  // ---------------------------------------
   const handleAddSlide = async () => {
     if (newSlideFiles.length === 0) return alert("Lütfen en az bir görsel seçin!");
 
     try {
-      // 1. Seçilen tüm dosyaları Storage'a (products klasörüne) paralel yüklüyoruz
-      const uploadPromises = newSlideFiles.map(async (file) => {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `hero_${Math.random()}.${fileExt}`; 
-
-        const { error: uploadError } = await supabase.storage
-          .from('products') // Resimleri aynı depoya atıyoruz, ekstra depo açmaya gerek yok
-          .upload(fileName, file);
-
-        if (uploadError) throw uploadError;
-
-        const { data: publicUrlData } = supabase.storage
-          .from('products')
-          .getPublicUrl(fileName);
-        
-        return publicUrlData.publicUrl;
-      });
-
-      const uploadedUrls = await Promise.all(uploadPromises);
-
-      // 2. Yüklenen her resim için, kullanıcının girdiği ortak başlık ve alt yazıyla DB'ye kayıt açıyoruz
-      const inserts = uploadedUrls.map(url => ({
+      const urls = await Promise.all(newSlideFiles.map((f) => uploadToStorageAndGetPublicUrl(f, "hero")));
+      const inserts = urls.map((url) => ({
         image_url: url,
         title: newSlide.title.trim(),
-        subtitle: newSlide.subtitle.trim()
+        subtitle: newSlide.subtitle.trim(),
       }));
 
       const { error } = await supabase.from("hero_slides").insert(inserts);
       if (error) throw error;
 
-      alert("Slide'lar başarıyla eklendi! 🚀");
-      
-      // Formu Temizle
-      setNewSlide({ image_url: "", title: "", subtitle: "" });
-      setNewSlideFiles([]);
+      alert("Slide'lar eklendi ✅");
+
+      revokeUrls(newSlidePreviews);
       setNewSlidePreviews([]);
+      setNewSlideFiles([]);
+      setNewSlide({ title: "", subtitle: "" });
       fetchSlides();
-    } catch (err: any) {
-      alert("Slide eklenemedi: " + err.message);
+    } catch (e: any) {
+      alert("Slide eklenemedi: " + e.message);
     }
   };
 
   const handleDeleteSlide = async (id: number) => {
     if (!window.confirm("Bu slide'ı silmek istediğine emin misin?")) return;
-
     const { error } = await supabase.from("hero_slides").delete().eq("id", id);
     if (error) return alert("Slide silinemedi: " + error.message);
-
     fetchSlides();
   };
 
@@ -352,32 +416,67 @@ export default function AdminPanel() {
       .eq("id", slide.id);
 
     if (error) return alert("Slide güncellenemedi: " + error.message);
-
-    alert("Slide güncellendi ✅");
+    alert("Slide kaydedildi ✅");
     fetchSlides();
   };
 
-  // --- Kampanya tipi ---
+  // ---------------------------------------
+  // KAMPANYA/İNDİRİM (OTOMATİK)
+  // ---------------------------------------
   const toggleCampaignProduct = (id: number) => {
-    if (selectedCampaignProducts.includes(id)) {
-      setSelectedCampaignProducts((prev) => prev.filter((x) => x !== id));
-    } else {
-      if (selectedCampaignProducts.length >= 3) return alert("En fazla 3 ürün seçebilirsin!");
-      setSelectedCampaignProducts((prev) => [...prev, id]);
+    setSelectedCampaignProducts((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  const applyDiscountCampaign = async () => {
+    if (selectedCampaignProducts.length === 0) return alert("İndirim için ürün seç!");
+    if (discountPercent <= 0 || discountPercent >= 90) return alert("İndirim yüzdesi 1-89 arası olsun.");
+
+    try {
+      const { data, error } = await supabase
+        .from("products")
+        .select("id,price")
+        .in("id", selectedCampaignProducts);
+
+      if (error) throw error;
+
+      for (const p of (data as any[]) || []) {
+        const newDiscount = Number(p.price) * (1 - discountPercent / 100);
+        const { error: upErr } = await supabase.from("products").update({ discount_price: newDiscount }).eq("id", p.id);
+        if (upErr) throw upErr;
+      }
+
+      alert("İndirim uygulandı ✅");
+      setSelectedCampaignProducts([]);
+      fetchProductsList();
+      setIsCampaignOpen(false);
+    } catch (e: any) {
+      alert("İndirim uygulanamadı: " + e.message);
     }
   };
 
-  const getCampaignType = () => {
-    if (selectedCampaignProducts.length === 1) return "📉 Fiyat İndirimi Kampanyası";
-    if (selectedCampaignProducts.length > 1) return "🤝 Beraber Alım (Bundle) Kampanyası";
-    return "Lütfen ürün seçin";
+  const removeDiscountCampaign = async () => {
+    if (selectedCampaignProducts.length === 0) return alert("İndirimi kaldırmak için ürün seç!");
+    const { error } = await supabase.from("products").update({ discount_price: 0 }).in("id", selectedCampaignProducts);
+    if (error) return alert("İndirim kaldırılamadı: " + error.message);
+
+    alert("İndirim kaldırıldı ✅");
+    setSelectedCampaignProducts([]);
+    fetchProductsList();
+    setIsCampaignOpen(false);
   };
 
-  // --- filtre ---
-  const filteredProducts = dbProducts.filter((p) =>
-    (p.name || "").toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  // ---------------------------------------
+  // Filtre
+  // ---------------------------------------
+  const filteredProducts = useMemo(() => {
+    return dbProducts.filter((p) => (p.name || "").toLowerCase().includes(searchTerm.toLowerCase()));
+  }, [dbProducts, searchTerm]);
 
+  // ---------------------------------------
+  // UI
+  // ---------------------------------------
   return (
     <div className="min-h-screen bg-gray-100 font-sans text-black pb-32">
       {/* HEADER */}
@@ -389,26 +488,6 @@ export default function AdminPanel() {
       </div>
 
       <div className="px-6 max-w-6xl mx-auto space-y-6">
-        {/* İstatistik */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Bu Ayki Satışlar</p>
-            <p className="text-2xl font-black text-green-600">0 ₺</p>
-          </div>
-          <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Sipariş Adedi</p>
-            <p className="text-2xl font-black text-gray-900">0</p>
-          </div>
-          <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Site Ziyaretleri</p>
-            <p className="text-2xl font-black text-blue-600">0</p>
-          </div>
-          <div className="bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
-            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1">Toplam Ürün</p>
-            <p className="text-2xl font-black text-gray-900">{dbProducts.length}</p>
-          </div>
-        </div>
-
         {/* Ürün listesi + arama */}
         <div>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 px-1 gap-3">
@@ -438,6 +517,15 @@ export default function AdminPanel() {
                       <h3 className="font-bold text-sm text-gray-900">{p.name}</h3>
                       <p className="text-xs text-blue-600 font-black">{p.price} ₺</p>
                       <p className="text-[10px] text-gray-400">{p.category || "Kategori yok"}</p>
+
+                      {/* indirim sadece bilgi */}
+                      {Number(p.discount_price) > 0 ? (
+                        <p className="text-[10px] font-bold text-red-600 mt-1">
+                          İndirimli: {Number(p.discount_price).toFixed(0)} ₺
+                        </p>
+                      ) : (
+                        <p className="text-[10px] font-bold text-gray-400 mt-1">İndirim: Yok</p>
+                      )}
                     </div>
 
                     <button
@@ -497,7 +585,7 @@ export default function AdminPanel() {
             }}
             className="bg-blue-600 text-white shadow-lg px-4 py-3 rounded-2xl font-bold text-sm flex items-center gap-3 hover:bg-blue-700 w-max"
           >
-            <span>🏷️</span> Kampanya Oluştur
+            <span>🏷️</span> Kampanya / İndirim
           </button>
         </div>
 
@@ -519,9 +607,10 @@ export default function AdminPanel() {
               <h2 className="text-xl font-black">Yeni Ürün Ekle</h2>
               <button
                 onClick={() => {
+                  revokeUrls(newProductPreviews);
+                  setNewProductPreviews([]);
+                  setNewProductFiles([]);
                   setIsAddProductOpen(false);
-                  setNewProductImages([]); // Form kapanınca önizlemeleri temizle
-                  setNewProductFiles([]);  // Form kapanınca seçili dosyaları temizle
                 }}
                 className="w-8 h-8 bg-gray-100 rounded-full font-bold"
               >
@@ -557,13 +646,15 @@ export default function AdminPanel() {
                 </select>
               </div>
 
-              {/* YENİ: Açıklama Alanı */}
               <div>
                 <label className="text-xs font-bold text-gray-500 uppercase">Ürün Açıklaması</label>
-                <textarea required name="description" rows={3} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium resize-none" placeholder="Ürünün detaylarını, boyutlarını, malzemesini buraya yazın..." />
+                <textarea required name="description" rows={3} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium resize-none" placeholder="Ürünün detaylarını buraya yazın..." />
               </div>
 
-              {/* YENİ: Çoklu Görsel Yükleme Alanı */}
+              <div className="bg-yellow-50 border border-yellow-100 p-3 rounded-xl text-xs text-yellow-700 font-bold">
+                İndirimli fiyat burada girilmez. Kampanya/İndirim panelinden uygulanır.
+              </div>
+
               <div className="bg-gray-50 p-3 border border-gray-200 rounded-xl">
                 <label className="text-xs font-bold text-gray-500 uppercase block mb-2">Ürün Fotoğrafları</label>
                 <input
@@ -573,22 +664,20 @@ export default function AdminPanel() {
                   onChange={(e) => {
                     const files = Array.from(e.target.files || []);
                     if (files.length === 0) return;
-                    
+
+                    revokeUrls(newProductPreviews);
                     setNewProductFiles(files);
-                    
-                    const previewUrls = files.map(file => URL.createObjectURL(file));
-                    setNewProductImages(previewUrls);
+                    setNewProductPreviews(files.map((f) => URL.createObjectURL(f)));
                   }}
                   className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-black file:text-white hover:file:bg-gray-800 cursor-pointer"
                 />
 
-                {/* Yüklenen Resimlerin Önizleme Galerisi */}
-                {newProductImages.length > 0 && (
+                {newProductPreviews.length > 0 && (
                   <div className="mt-3 grid grid-cols-3 gap-2">
-                    {newProductImages.map((url, index) => (
-                      <div key={index} className="w-full h-20 rounded-lg overflow-hidden border border-gray-200 shadow-sm bg-white flex items-center justify-center relative">
-                        <span className="absolute top-1 left-1 bg-black text-white text-[10px] px-1.5 py-0.5 rounded-md z-10">{index + 1}</span>
-                        <img src={url} alt={`Önizleme ${index + 1}`} className="max-h-full object-contain" />
+                    {newProductPreviews.map((url, i) => (
+                      <div key={i} className="w-full h-20 rounded-lg overflow-hidden border border-gray-200 bg-white relative">
+                        <span className="absolute top-1 left-1 bg-black text-white text-[10px] px-1.5 py-0.5 rounded-md">{i + 1}</span>
+                        <img src={url} className="w-full h-20 object-cover" alt="" />
                       </div>
                     ))}
                   </div>
@@ -605,32 +694,136 @@ export default function AdminPanel() {
                 </label>
               </div>
 
-              <button type="submit" className="w-full bg-black text-white py-4 rounded-xl font-bold mt-4 shadow-lg hover:bg-gray-800 transition">
-                🚀 Ürünü Ekle
+              <button
+                type="submit"
+                disabled={creating}
+                className="w-full bg-black text-white py-4 rounded-xl font-bold mt-4 shadow-lg hover:bg-gray-800 transition disabled:opacity-60"
+              >
+                {creating ? "Ekleniyor..." : "🚀 Ürünü Ekle"}
               </button>
             </form>
           </div>
         </div>
       )}
-      
+
       {/* ÜRÜN DÜZENLE MODALI */}
       {(editLoading || editingProduct) && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl flex flex-col max-h-[90vh]">
+          <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-black">Ürün Düzenle</h2>
-              <button onClick={() => setEditingProduct(null)} className="w-8 h-8 bg-gray-100 rounded-full font-bold">✕</button>
+              <button
+                onClick={() => {
+                  revokeUrls(editAddPreviews);
+                  setEditAddPreviews([]);
+                  setEditAddFiles([]);
+                  setEditingProduct(null);
+                }}
+                className="w-8 h-8 bg-gray-100 rounded-full font-bold"
+              >
+                ✕
+              </button>
             </div>
 
             {editLoading && <p className="text-center text-gray-400">Ürün detayı yükleniyor...</p>}
 
             {editingProduct && (
               <>
-                {editingProduct.image && (
-                  <img src={editingProduct.image} className="w-full h-40 object-cover rounded-xl border border-gray-200" alt="" />
+                {/* Kapak = images[0] */}
+                {Array.isArray(editingProduct.images) && editingProduct.images[0] && (
+                  <img src={editingProduct.images[0]} className="w-full h-40 object-cover rounded-xl border border-gray-200" alt="" />
                 )}
 
-                <form onSubmit={handleUpdateProduct} className="flex-1 overflow-y-auto space-y-4 pb-4">
+                {/* Galeri */}
+                <div className="mt-4">
+                  <p className="text-xs font-black text-gray-700 mb-2">📸 Fotoğraflar (Tıkla: Kapak yap)</p>
+
+                  {Array.isArray(editingProduct.images) && editingProduct.images.length > 0 ? (
+                    <div className="grid grid-cols-3 gap-2">
+                      {editingProduct.images.map((url: string, idx: number) => (
+                        <div key={idx} className="relative border border-gray-200 rounded-xl overflow-hidden bg-gray-50">
+                          <button
+                            type="button"
+                            onClick={() => setCoverFromExisting(url)}
+                            className="w-full h-20"
+                            title="Kapak yap"
+                          >
+                            <img src={url} className="w-full h-20 object-cover" alt="" />
+                          </button>
+
+                          {idx === 0 && (
+                            <span className="absolute top-1 left-1 bg-black text-white text-[10px] px-2 py-0.5 rounded">
+                              Kapak
+                            </span>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => removeImageFromGallery(url)}
+                            className="absolute top-1 right-1 bg-white/90 text-red-600 text-xs font-black w-6 h-6 rounded-full"
+                            title="Sil"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-400">Galeride fotoğraf yok.</p>
+                  )}
+                </div>
+
+                {/* Galeriye yeni foto ekle */}
+                <div className="mt-4 bg-gray-50 border border-gray-200 rounded-2xl p-3">
+                  <p className="text-xs font-black mb-2">➕ Galeriye Fotoğraf Ekle</p>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={(e) => {
+                      const files = Array.from(e.target.files || []);
+                      if (files.length === 0) return;
+
+                      revokeUrls(editAddPreviews);
+                      setEditAddFiles(files);
+                      setEditAddPreviews(files.map((f) => URL.createObjectURL(f)));
+                    }}
+                    className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-black file:text-white hover:file:bg-gray-800 cursor-pointer"
+                  />
+
+                  {editAddPreviews.length > 0 && (
+                    <div className="flex gap-2 overflow-x-auto mt-3 pb-2">
+                      {editAddPreviews.map((u, i) => (
+                        <img key={i} src={u} className="w-16 h-16 object-cover rounded-lg border border-gray-200" alt="" />
+                      ))}
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    disabled={editAddUploading}
+                    onClick={addMoreImagesToProduct}
+                    className="w-full mt-2 bg-blue-600 text-white py-2 rounded-xl font-bold text-sm hover:bg-blue-700 transition disabled:opacity-60"
+                  >
+                    {editAddUploading ? "Yükleniyor..." : "Fotoğrafları Ekle (Kaydet gerektirir)"}
+                  </button>
+                </div>
+
+                {/* İndirim sadece bilgi */}
+                <div className="mt-4 bg-gray-50 border border-gray-200 rounded-xl p-3">
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">İndirim Durumu</p>
+                  {Number(editingProduct.discount_price) > 0 ? (
+                    <p className="text-sm font-black text-red-600">
+                      İndirimli Fiyat: {Number(editingProduct.discount_price).toFixed(0)} ₺
+                    </p>
+                  ) : (
+                    <p className="text-sm font-black text-gray-500">İndirim Yok</p>
+                  )}
+                  <p className="text-[10px] text-gray-400 mt-1">İndirim burada düzenlenmez, kampanyadan yönetilir.</p>
+                </div>
+
+                {/* Form */}
+                <form onSubmit={handleUpdateProduct} className="space-y-4 mt-5">
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase">Başlık</label>
                     <input
@@ -678,6 +871,16 @@ export default function AdminPanel() {
                     />
                   </div>
 
+                  <div>
+                    <label className="text-xs font-bold text-gray-500 uppercase">Açıklama</label>
+                    <textarea
+                      rows={3}
+                      value={editingProduct.description ?? ""}
+                      onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })}
+                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium resize-none"
+                    />
+                  </div>
+
                   <div className="pt-2">
                     <label className="flex items-center gap-3 cursor-pointer p-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition">
                       <input
@@ -693,12 +896,16 @@ export default function AdminPanel() {
                     </label>
                   </div>
 
-                  <button type="submit" className="w-full bg-black text-white py-4 rounded-xl font-bold mt-4">
-                    KAYDET
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="w-full bg-black text-white py-4 rounded-xl font-bold mt-2 disabled:opacity-60"
+                  >
+                    {saving ? "Kaydediliyor..." : "KAYDET"}
                   </button>
                 </form>
 
-                <div className="pt-4 border-t border-gray-100 mt-2">
+                <div className="pt-4 border-t border-gray-100 mt-4">
                   <button
                     onClick={() => handleDeleteProduct(editingProduct.id)}
                     className="w-full bg-red-50 text-red-600 py-3 rounded-xl font-bold text-sm border border-red-100"
@@ -712,46 +919,50 @@ export default function AdminPanel() {
         </div>
       )}
 
-      {/* KAMPANYA MODALI (şimdilik placeholder) */}
+      {/* KAMPANYA / İNDİRİM MODALI */}
       {isCampaignOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center">
-          <div className="bg-white w-full max-w-lg rounded-t-3xl p-6 pb-12 shadow-2xl max-h-[90vh] flex flex-col">
+          <div className="bg-white w-full max-w-lg rounded-t-3xl p-6 pb-10 shadow-2xl max-h-[90vh] flex flex-col">
             <div className="flex justify-between items-center border-b border-gray-100 pb-4 mb-4">
-              <h2 className="text-xl font-black">🏷️ Kampanya Oluştur</h2>
+              <h2 className="text-xl font-black">🏷️ Kampanya / İndirim</h2>
               <button onClick={() => setIsCampaignOpen(false)} className="w-8 h-8 bg-gray-100 rounded-full font-bold">
                 ✕
               </button>
             </div>
 
-            <div className="overflow-y-auto space-y-6 flex-1 pr-2">
-              <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
-                <p className="text-xs text-blue-800 font-bold uppercase tracking-widest mb-1">Kampanya Tipi</p>
-                <p className="text-lg font-black text-blue-900">{getCampaignType()}</p>
-                <p className="text-xs text-blue-600 mt-1">Sistem seçtiğiniz ürün sayısına göre kampanya tipini belirler.</p>
+            <div className="overflow-y-auto space-y-5 flex-1 pr-2">
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                <label className="text-xs font-bold text-gray-500 uppercase block mb-2">İndirim Yüzdesi (%)</label>
+                <input
+                  type="number"
+                  value={discountPercent}
+                  onChange={(e) => setDiscountPercent(Number(e.target.value))}
+                  className="w-full p-3 bg-white border border-gray-200 rounded-xl font-medium"
+                  min={1}
+                  max={89}
+                />
+                <p className="text-[10px] text-gray-400 mt-2">
+                  Seçili ürünlerin discount_price alanı otomatik hesaplanır.
+                </p>
               </div>
 
               <div>
-                <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Ürün Seçimi (Maks 3)</label>
-                <div className="grid grid-cols-3 gap-2">
+                <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Ürün Seçimi</label>
+                <div className="grid grid-cols-2 gap-2">
                   {dbProducts.map((p) => (
-                    <div
+                    <button
                       key={p.id}
+                      type="button"
                       onClick={() => toggleCampaignProduct(p.id)}
-                      className={`relative aspect-square rounded-xl overflow-hidden cursor-pointer border-2 transition-all ${
-                        selectedCampaignProducts.includes(p.id) ? "border-blue-600 scale-95" : "border-transparent opacity-60 hover:opacity-100"
+                      className={`p-3 rounded-xl border text-left transition ${
+                        selectedCampaignProducts.includes(p.id)
+                          ? "border-blue-600 bg-blue-50"
+                          : "border-gray-200 bg-white hover:bg-gray-50"
                       }`}
                     >
-                      <div className="w-full h-full bg-gray-100 flex items-center justify-center text-xs text-gray-500 p-2 text-center">
-                        {p.name}
-                      </div>
-                      {selectedCampaignProducts.includes(p.id) && (
-                        <div className="absolute inset-0 bg-blue-600/20 flex items-center justify-center backdrop-blur-sm">
-                          <span className="bg-blue-600 text-white w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold">
-                            ✓
-                          </span>
-                        </div>
-                      )}
-                    </div>
+                      <p className="font-bold text-sm">{p.name}</p>
+                      <p className="text-[11px] text-gray-500">{p.price} ₺</p>
+                    </button>
                   ))}
                 </div>
               </div>
@@ -776,34 +987,41 @@ export default function AdminPanel() {
                   />
                 </div>
               </div>
-            </div>
 
-            <button
-              className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold uppercase mt-4 active:scale-95 shadow-lg"
-              onClick={() => {
-                alert("Kampanya DB tablosu açılınca bu işlem aktif olacak.");
-                setIsCampaignOpen(false);
-              }}
-            >
-              Kampanyayı Başlat
-            </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={applyDiscountCampaign}
+                  className="flex-1 bg-green-600 text-white py-3 rounded-xl font-black hover:bg-green-700 active:scale-95"
+                >
+                  İndirim Uygula
+                </button>
+                <button
+                  type="button"
+                  onClick={removeDiscountCampaign}
+                  className="flex-1 bg-red-50 text-red-600 py-3 rounded-xl font-black border border-red-100 hover:bg-red-100 active:scale-95"
+                >
+                  İndirimi Kaldır
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
 
-      {/* ÖZEL PANEL (marquee + slides) */}
       {/* ÖZEL PANEL (marquee + slides) */}
       {isSettingsOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
               <h2 className="text-xl font-black">⚙️ Özel Sayfa Paneli</h2>
-              <button 
+              <button
                 onClick={() => {
-                  setIsSettingsOpen(false);
-                  setNewSlideFiles([]);
+                  revokeUrls(newSlidePreviews);
                   setNewSlidePreviews([]);
-                }} 
+                  setNewSlideFiles([]);
+                  setIsSettingsOpen(false);
+                }}
                 className="w-8 h-8 bg-gray-100 rounded-full font-bold"
               >
                 ✕
@@ -826,25 +1044,24 @@ export default function AdminPanel() {
 
                 <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 mb-5">
                   <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2">Yeni Slide(lar) Ekle</p>
+
                   <div className="space-y-3">
-                    
-                    {/* YENİ: ÇOKLU DOSYA SEÇİCİ */}
                     <div className="bg-white border border-gray-200 rounded-xl p-2">
                       <input
                         type="file"
                         accept="image/*"
-                        multiple // BİRDEN FAZLA SEÇMEYE YARAR
+                        multiple
                         onChange={(e) => {
                           const files = Array.from(e.target.files || []);
                           if (files.length === 0) return;
-                          
+
+                          revokeUrls(newSlidePreviews);
                           setNewSlideFiles(files);
-                          setNewSlidePreviews(files.map(f => URL.createObjectURL(f)));
+                          setNewSlidePreviews(files.map((f) => URL.createObjectURL(f)));
                         }}
                         className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-black file:text-white hover:file:bg-gray-800 cursor-pointer"
                       />
-                      
-                      {/* Önizleme Resimleri */}
+
                       {newSlidePreviews.length > 0 && (
                         <div className="flex gap-2 overflow-x-auto mt-3 pb-2 snap-x">
                           {newSlidePreviews.map((url, i) => (
@@ -897,21 +1114,27 @@ export default function AdminPanel() {
                           <input
                             type="text"
                             value={s.title || ""}
-                            onChange={(e) => setDbSlides((prev) => prev.map((x) => (x.id === s.id ? { ...x, title: e.target.value } : x)))}
+                            onChange={(e) =>
+                              setDbSlides((prev) => prev.map((x) => (x.id === s.id ? { ...x, title: e.target.value } : x)))
+                            }
                             placeholder="Başlık"
                             className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium"
                           />
                           <input
                             type="text"
                             value={s.subtitle || ""}
-                            onChange={(e) => setDbSlides((prev) => prev.map((x) => (x.id === s.id ? { ...x, subtitle: e.target.value } : x)))}
+                            onChange={(e) =>
+                              setDbSlides((prev) => prev.map((x) => (x.id === s.id ? { ...x, subtitle: e.target.value } : x)))
+                            }
                             placeholder="Alt Yazı"
                             className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium"
                           />
                           <input
                             type="text"
                             value={s.image_url || ""}
-                            onChange={(e) => setDbSlides((prev) => prev.map((x) => (x.id === s.id ? { ...x, image_url: e.target.value } : x)))}
+                            onChange={(e) =>
+                              setDbSlides((prev) => prev.map((x) => (x.id === s.id ? { ...x, image_url: e.target.value } : x)))
+                            }
                             placeholder="Görsel URL"
                             className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium"
                           />

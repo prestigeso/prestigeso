@@ -74,16 +74,64 @@ export default function ShopPage() {
   );
 }
 
+// ------------------------------------------------------------------
+// İŞTE BÜTÜN SİHRİN GERÇEKLEŞTİĞİ O YENİ SHOPCARD BİLEŞENİ
+// ------------------------------------------------------------------
 function ShopCard({ product }: { product: any }) {
   const displayImage = product.images?.[0] || product.image || "/logo.jpeg";
+
+  // JİLET GÜVENLİK DUVARI VE FAVORİ EKLEME FONKSİYONU
+  const handleFavoriteClick = async (e: React.MouseEvent) => {
+    e.preventDefault(); // Ürün detay sayfasına yönlenmesini engeller!
+    e.stopPropagation(); // Link tıklamasını durdurur!
+    
+    // 1. KONTROL: Adam giriş yapmış mı?
+    const { data: { session } } = await supabase.auth.getSession();
+    
+    if (!session) {
+      alert("Ürünleri favorilemek için lütfen önce asilce giriş yapın! 🛡️");
+      return; 
+    }
+
+    // 2. KAYIT: Giriş yapmışsa ürünü LocalStorage'a ekle
+    const currentFavs = JSON.parse(localStorage.getItem("prestige_favorites") || "[]");
+    
+    // Ürün zaten favorilerde var mı kontrolü
+    const isExist = currentFavs.find((fav: any) => fav.id === product.id);
+    
+    if (!isExist) {
+      const newFavs = [...currentFavs, product];
+      localStorage.setItem("prestige_favorites", JSON.stringify(newFavs));
+      alert("Ürün asilce favorilere eklendi! ❤️");
+    } else {
+      const newFavs = currentFavs.filter((fav: any) => fav.id !== product.id);
+      localStorage.setItem("prestige_favorites", JSON.stringify(newFavs));
+      alert("Ürün favorilerden çıkarıldı. 💔");
+    }
+  };
+
   return (
-    <Link href={`/product/${product.id}`} className="group block">
+    <Link href={`/product/${product.id}`} className="group block relative">
       <div className="aspect-[3/4] rounded-2xl overflow-hidden bg-gray-50 border border-gray-100 relative mb-3">
+        
+        {/* İŞTE KALP BUTONU BURADA ÇAKILI */}
+        <button 
+          onClick={handleFavoriteClick} 
+          className="absolute top-3 right-3 z-20 w-8 h-8 bg-white/90 backdrop-blur rounded-full flex items-center justify-center shadow-md hover:scale-110 transition-transform text-lg"
+          title="Favorilere Ekle"
+        >
+          🤍
+        </button>
+
         <img src={displayImage} alt={product.name} className="w-full h-full object-cover mix-blend-multiply group-hover:scale-110 transition-transform duration-700" />
+        
         {product.is_bestseller && (
-          <div className="absolute bottom-0 w-full bg-black text-white text-[10px] font-black text-center py-1.5 uppercase tracking-widest">Çok Satan</div>
+          <div className="absolute bottom-0 w-full bg-black text-white text-[10px] font-black text-center py-1.5 uppercase tracking-widest z-10">
+            Çok Satan
+          </div>
         )}
       </div>
+      
       <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">{product.category}</p>
       <h3 className="text-sm font-bold text-black line-clamp-1 mb-1">{product.name}</h3>
       <p className="text-lg font-black text-black">{Number(product.price).toLocaleString("tr-TR")} ₺</p>

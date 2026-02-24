@@ -1,21 +1,35 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useSearch } from "@/context/SearchContext";
 import { useCart } from "@/context/CartContext";
+import { supabase } from "@/lib/supabase";
 
 export default function Navbar() {
+  const router = useRouter();
   const { searchQuery, setSearchQuery, selectedCategory, setSelectedCategory } = useSearch();
   const { items, setIsCartOpen } = useCart();
 
   const categories = ["Tümü", "Masa Süsleri", "Yüzükler", "Setler", "Bilezikler", "Küpeler"];
   const totalItemsInCart = (items || []).reduce((total, item) => total + item.quantity, 0);
 
+  // TRENDYOL MANTIĞI: Oturum kontrolü yapan fonksiyon
+  const handleProfileClick = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      router.push("/profile");
+    } else {
+      router.push("/login");
+    }
+  };
+
   return (
     <nav className="p-4 bg-white shadow-sm border-b border-gray-100 flex flex-col md:flex-row gap-4 items-center justify-between sticky top-0 z-40">
-      <Link href="/" className="font-black text-2xl tracking-widest cursor-pointer">
+      
+      {/* Logo: Hard reset için <a> kullanıldı */}
+      <a href="/" className="font-black text-2xl tracking-widest cursor-pointer">
         <img src="/logo.jpeg" alt="PrestigeSO" className="h-9 md:h-10 object-contain" />
-      </Link>
+      </a>
 
       <div className="relative w-full max-w-md">
         <input
@@ -31,7 +45,6 @@ export default function Navbar() {
       </div>
 
       <div className="flex items-center gap-4">
-        {/* Kategoriler */}
         <div className="hidden md:flex gap-4">
           {categories.map((category) => (
             <button
@@ -46,14 +59,14 @@ export default function Navbar() {
           ))}
         </div>
 
-        {/* Profil */}
-        <Link
-          href="/profile"
+        {/* Profil: Akıllı yönlendirme butonu */}
+        <button
+          onClick={handleProfileClick}
           className="p-2 text-gray-800 hover:text-black hover:bg-gray-100 rounded-full transition-colors"
           title="Profil"
         >
           👤
-        </Link>
+        </button>
 
         {/* Sepet */}
         <button
