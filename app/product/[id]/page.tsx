@@ -14,9 +14,14 @@ export default function ProductDetailPage() {
   const [loading, setLoading] = useState(true);
   const [isFavorite, setIsFavorite] = useState(false);
 
+  // GALERİ İÇİN STATE
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+
   useEffect(() => {
     const fetchProductAndRecordView = async () => {
       if (!params.id) return;
+      setSelectedImageIndex(0);
+      setLoading(true);
 
       const { data, error } = await supabase
         .from("products")
@@ -69,15 +74,23 @@ export default function ProductDetailPage() {
     }
   };
 
-  // SEPETE EKLE (İndirimli Fiyat Zekası Eklendi)
+  if (loading) return <div className="min-h-screen flex items-center justify-center font-black uppercase tracking-widest text-gray-400">Ürün Hazırlanıyor...</div>;
+  if (!product) return <div className="min-h-screen flex items-center justify-center font-black uppercase tracking-widest text-black">Ürün Bulunamadı</div>;
+
+  // Resim listesini güvenli hale getir
+  const productImages = product.images && product.images.length > 0 
+    ? product.images 
+    : [product.image || "/logo.jpeg"];
+
+  const activePrice = product ? (Number(product.discount_price) > 0 ? Number(product.discount_price) : Number(product.price)) : 0;
+
   const handleAddToCart = () => {
     if (product) {
       addToCart({ 
         id: product.id,
         name: product.name,
-        // EĞER İNDİRİM VARSA SEPETE İNDİRİMLİ FİYAT GİDER
-        price: Number(product.discount_price) > 0 ? Number(product.discount_price) : Number(product.price),
-        image: product.images?.[0] || product.image || "/logo.jpeg",
+        price: activePrice,
+        image: productImages[selectedImageIndex],
         category: product.category,
         quantity: 1 
       });
@@ -85,14 +98,13 @@ export default function ProductDetailPage() {
     }
   };
 
-  // ŞİMDİ AL (İndirimli Fiyat Zekası Eklendi)
   const handleBuyNow = () => {
     if (product) {
       addToCart({ 
         id: product.id,
         name: product.name,
-        price: Number(product.discount_price) > 0 ? Number(product.discount_price) : Number(product.price),
-        image: product.images?.[0] || product.image || "/logo.jpeg",
+        price: activePrice,
+        image: productImages[selectedImageIndex],
         category: product.category,
         quantity: 1 
       });
@@ -100,20 +112,78 @@ export default function ProductDetailPage() {
     }
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center font-black uppercase tracking-widest text-gray-400">Ürün Hazırlanıyor...</div>;
-  if (!product) return <div className="min-h-screen flex items-center justify-center font-black uppercase tracking-widest text-black">Ürün Bulunamadı</div>;
+  // --- OK TUŞLARI FONKSİYONLARI ---
+  const handlePrevImage = () => {
+    setSelectedImageIndex((prev) => (prev === 0 ? productImages.length - 1 : prev - 1));
+  };
 
-  const displayImage = product.images?.[0] || product.image || "/logo.jpeg";
+  const handleNextImage = () => {
+    setSelectedImageIndex((prev) => (prev === productImages.length - 1 ? 0 : prev + 1));
+  };
+  // --------------------------------
 
   return (
     <div className="min-h-screen bg-white pt-24 pb-20 px-4 md:px-10">
       <div className="max-w-6xl mx-auto flex flex-col md:flex-row gap-10 lg:gap-16">
         
-        {/* SOL: ÜRÜN GÖRSELİ */}
-        <div className="w-full md:w-1/2">
-          <div className="aspect-[4/5] md:aspect-[3/4] bg-gray-50 rounded-3xl border border-gray-100 overflow-hidden relative">
-            <img src={displayImage} alt={product.name} className="w-full h-full object-cover mix-blend-multiply" />
+        {/* SOL: ÜRÜN GÖRSELİ VE GALERİ */}
+        <div className="w-full md:w-1/2 group relative">
+          {/* ANA RESİM ÇERÇEVESİ */}
+          <div className="aspect-square bg-gray-50 rounded-3xl border border-gray-100 overflow-hidden relative transition-all">
+            <img 
+              src={productImages[selectedImageIndex]} 
+              alt={product.name} 
+              className="w-full h-full object-cover mix-blend-multiply transition-opacity duration-300" 
+            />
+
+            {/* --- OK TUŞLARI (Sadece birden fazla resim varsa göster) --- */}
+            {productImages.length > 1 && (
+              <>
+                {/* SOL OK */}
+                <button 
+                  onClick={handlePrevImage}
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-black p-3 rounded-full shadow-lg transition-all opacity-0 group-hover:opacity-100 active:scale-95"
+                  aria-label="Önceki Resim"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+                  </svg>
+                </button>
+
+                {/* SAĞ OK */}
+                <button 
+                  onClick={handleNextImage}
+                  className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-black p-3 rounded-full shadow-lg transition-all opacity-0 group-hover:opacity-100 active:scale-95"
+                  aria-label="Sonraki Resim"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                  </svg>
+                </button>
+              </>
+            )}
+            {/* ------------------------------------------------------- */}
+
           </div>
+
+          {/* KÜÇÜK RESİMLER (THUMBNAILS) */}
+          {productImages.length > 1 && (
+            <div className="flex gap-3 mt-4 overflow-x-auto pb-2 scrollbar-hide snap-x">
+              {productImages.map((url: string, index: number) => (
+                <button 
+                  key={index} 
+                  onClick={() => setSelectedImageIndex(index)}
+                  className={`w-20 h-20 flex-shrink-0 rounded-xl border-2 overflow-hidden snap-center transition-all ${
+                    index === selectedImageIndex 
+                      ? "border-black opacity-100 shadow-md scale-105" 
+                      : "border-transparent opacity-60 hover:opacity-100 hover:border-gray-300"
+                  }`}
+                >
+                  <img src={url} alt="" className="w-full h-full object-cover" />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* SAĞ: ÜRÜN DETAYLARI */}
@@ -122,7 +192,7 @@ export default function ProductDetailPage() {
             {product.name}
           </h1>
           
-          {/* FİYAT ALANI (GÖRSEL HATA DÜZELTİLDİ) */}
+          {/* FİYAT ALANI */}
           <div className="flex items-baseline gap-4 mb-8">
             {Number(product.discount_price) > 0 ? (
               <>
@@ -158,7 +228,7 @@ export default function ProductDetailPage() {
             </div>
           </div>
 
-          {/* GERÇEK ÜRÜN AÇIKLAMASI (HATA DÜZELTİLDİ) */}
+          {/* ÜRÜN AÇIKLAMASI */}
           <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100">
              <h3 className="text-xs font-black uppercase tracking-widest text-black border-b-2 border-black inline-block pb-1 mb-4">
                Ürün Açıklaması
