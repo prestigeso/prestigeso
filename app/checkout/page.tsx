@@ -3,14 +3,16 @@
 import { useCart } from "@/context/CartContext";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 
 export default function CheckoutPage() {
   const { cart, cartTotal } = useCart();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false); // İyzico bekleme state'i
 
-  // Form stateleri
+  // Teslimat Bilgileri
   const [formData, setFormData] = useState({
     fullName: "",
     phone: "",
@@ -18,8 +20,15 @@ export default function CheckoutPage() {
     city: "",
   });
 
+  // Kredi Kartı Bilgileri (Simülasyon)
+  const [cardData, setCardData] = useState({
+    cardName: "",
+    cardNumber: "",
+    expDate: "",
+    cvv: ""
+  });
+
   useEffect(() => {
-    // Sayfa yüklendiğinde eğer sepet boşsa adamı mağazaya geri şutla
     if (cart.length === 0) {
       router.push("/shop");
     } else {
@@ -27,61 +36,131 @@ export default function CheckoutPage() {
     }
   }, [cart, router]);
 
-  const handleCompleteOrder = (e: React.FormEvent) => {
+  const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Arkadaşının dükkanı için şimdilik en kral yöntem WhatsApp Sipariş hattıdır!
-    // Müşterinin form bilgilerini ve sepetini birleştirip WhatsApp mesajına çeviriyoruz:
-    const orderDetails = cart.map(item => `${item.quantity}x ${item.name} (${item.price} TL)`).join("%0A");
-    
-    const message = `*YENİ PRESTİGESO SİPARİŞİ* 🚀%0A%0A*Müşteri:* ${formData.fullName}%0A*Telefon:* ${formData.phone}%0A*Şehir:* ${formData.city}%0A*Adres:* ${formData.address}%0A%0A*SİPARİŞ DETAYI:*%0A${orderDetails}%0A%0A*TOPLAM TUTAR:* ${cartTotal} TL`;
-    
-    // WhatsApp'a yönlendir (Kendi numaranızı yazın, örn: 905551234567)
-    window.open(`https://wa.me/905555555555?text=${message}`, '_blank');
+    setIsProcessing(true); // Ödeme dönüyor animasyonunu başlat
+
+    // IYZICO SİMÜLASYONU: 2 Saniye sahte bekleme süresi
+    setTimeout(async () => {
+      try {
+        // 1. SİPARİŞİ VERİTABANINA (SUPABASE) KAYDET
+        const { error } = await supabase.from("orders").insert([
+          {
+            full_name: formData.fullName,
+            phone: formData.phone,
+            city: formData.city,
+            address: formData.address,
+            total_amount: cartTotal,
+            items: cart, 
+            status: "Ödendi" // Iyzico başarılı dönerse statü Ödendi olur
+          }
+        ]);
+
+        if (error) throw error;
+
+        // 2. SEPETİ BOŞALT (LocalStorage temizlenip anasayfaya atılır)
+        localStorage.removeItem("prestigeso_cart");
+        
+        alert("Ödeme Başarılı! Siparişiniz asilce alındı. 🚀");
+        
+        // Sayfayı tamamen yenileyerek anasayfaya yönlendir (Sepet context'inin sıfırlanması için)
+        window.location.href = "/";
+        
+      } catch (err: any) {
+        alert("Ödeme sırasında bir hata oluştu: " + err.message);
+        setIsProcessing(false);
+      }
+    }, 2000); // 2000 milisaniye (2 saniye) Iyzico bekleme süresi
   };
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center font-black uppercase tracking-widest text-gray-400">Yönlendiriliyor...</div>;
+  if (loading) return <div className="min-h-screen flex items-center justify-center font-black uppercase tracking-widest text-gray-400">Güvenli Ödeme Noktasına Bağlanılıyor...</div>;
 
   return (
     <div className="min-h-screen bg-gray-50 pt-24 pb-20 px-4 font-sans text-black">
       <div className="max-w-6xl mx-auto">
-        <h1 className="text-2xl md:text-3xl font-black uppercase tracking-widest mb-8 border-l-4 border-black pl-4">Ödeme Adımı</h1>
+        
+        <div className="flex items-center gap-4 mb-8">
+           <h1 className="text-2xl md:text-3xl font-black uppercase tracking-widest border-l-4 border-black pl-4">Güvenli Ödeme</h1>
+           <span className="bg-green-100 text-green-700 px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-widest flex items-center gap-1">
+             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
+             SSL Korumalı
+           </span>
+        </div>
 
-        <div className="flex flex-col lg:flex-row gap-8">
+        <form id="checkoutForm" onSubmit={handlePayment} className="flex flex-col lg:flex-row gap-8">
           
-          {/* SOL: TESLİMAT BİLGİLERİ FORMU */}
-          <div className="w-full lg:w-2/3 bg-white p-6 md:p-10 rounded-[2rem] shadow-sm border border-gray-100">
-            <h2 className="text-lg font-black uppercase tracking-tight mb-6">Teslimat Bilgileri</h2>
+          {/* SOL: FORMLAR (Teslimat + Kredi Kartı) */}
+          <div className="w-full lg:w-2/3 flex flex-col gap-6">
             
-            <form id="checkoutForm" onSubmit={handleCompleteOrder} className="space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Ad Soyad</label>
-                  <input required type="text" value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-bold focus:ring-2 focus:ring-black outline-none transition-all" placeholder="Tam adınızı giriniz" />
+            {/* 1. TESLİMAT BİLGİLERİ */}
+            <div className="bg-white p-6 md:p-10 rounded-[2rem] shadow-sm border border-gray-100">
+              <h2 className="text-lg font-black uppercase tracking-tight mb-6 flex items-center gap-2">
+                <span className="w-6 h-6 bg-black text-white rounded-full flex items-center justify-center text-xs">1</span> 
+                Teslimat Bilgileri
+              </h2>
+              
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Ad Soyad</label>
+                    <input required type="text" value={formData.fullName} onChange={e => setFormData({...formData, fullName: e.target.value})} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-bold focus:ring-2 focus:ring-black outline-none transition-all" placeholder="Kimlikteki tam adınız" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Telefon Numarası</label>
+                    <input required type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-bold focus:ring-2 focus:ring-black outline-none transition-all" placeholder="05XX XXX XX XX" />
+                  </div>
                 </div>
+
                 <div>
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Telefon Numarası</label>
-                  <input required type="tel" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-bold focus:ring-2 focus:ring-black outline-none transition-all" placeholder="05XX XXX XX XX" />
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Şehir / İlçe</label>
+                  <input required type="text" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-bold focus:ring-2 focus:ring-black outline-none transition-all" placeholder="Örn: İstanbul, Kadıköy" />
+                </div>
+
+                <div>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Açık Adres</label>
+                  <textarea required rows={3} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-medium text-sm resize-none focus:ring-2 focus:ring-black outline-none transition-all" placeholder="Mahalle, sokak, bina ve daire no..." />
                 </div>
               </div>
+            </div>
 
-              <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Şehir / İlçe</label>
-                <input required type="text" value={formData.city} onChange={e => setFormData({...formData, city: e.target.value})} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-bold focus:ring-2 focus:ring-black outline-none transition-all" placeholder="Örn: İstanbul, Kadıköy" />
+            {/* 2. KREDİ KARTI BİLGİLERİ (IYZICO SİMÜLASYONU) */}
+            <div className="bg-white p-6 md:p-10 rounded-[2rem] shadow-sm border border-gray-100">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-lg font-black uppercase tracking-tight flex items-center gap-2">
+                  <span className="w-6 h-6 bg-black text-white rounded-full flex items-center justify-center text-xs">2</span> 
+                  Ödeme Bilgileri
+                </h2>
+                <div className="flex gap-2">
+                  {/* Kart Logoları (Görsel) */}
+                  <div className="w-8 h-5 bg-blue-900 rounded flex items-center justify-center text-[8px] text-white font-black italic">VISA</div>
+                  <div className="w-8 h-5 bg-orange-500 rounded flex items-center justify-center text-[8px] text-white font-black italic">MC</div>
+                </div>
               </div>
+              
+              <div className="space-y-6">
+                <div>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Kart Üzerindeki İsim</label>
+                  <input required type="text" value={cardData.cardName} onChange={e => setCardData({...cardData, cardName: e.target.value})} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-bold uppercase focus:ring-2 focus:ring-black outline-none transition-all tracking-widest" placeholder="AD SOYAD" />
+                </div>
 
-              <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Açık Adres</label>
-                <textarea required rows={3} value={formData.address} onChange={e => setFormData({...formData, address: e.target.value})} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-medium text-sm resize-none focus:ring-2 focus:ring-black outline-none transition-all" placeholder="Mahalle, sokak, bina ve daire no..." />
-              </div>
+                <div>
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Kart Numarası</label>
+                  <input required type="text" maxLength={19} value={cardData.cardNumber} onChange={e => setCardData({...cardData, cardNumber: e.target.value})} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-black text-lg focus:ring-2 focus:ring-black outline-none transition-all tracking-widest" placeholder="0000 0000 0000 0000" />
+                </div>
 
-              <div className="bg-green-50 border border-green-100 p-4 rounded-2xl flex items-start gap-3">
-                <span className="text-xl">🛡️</span>
-                <p className="text-xs font-bold text-green-800 leading-relaxed">
-                  Siparişiniz WhatsApp üzerinden mağazamıza iletilecektir. Müşteri temsilcimiz onay ve ödeme adımları için sizinle iletişime geçecektir.
-                </p>
+                <div className="grid grid-cols-2 gap-6">
+                  <div>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Son Kullanma (AY/YIL)</label>
+                    <input required type="text" maxLength={5} value={cardData.expDate} onChange={e => setCardData({...cardData, expDate: e.target.value})} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-bold focus:ring-2 focus:ring-black outline-none transition-all text-center tracking-widest" placeholder="12/25" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Güvenlik Kodu (CVV)</label>
+                    <input required type="text" maxLength={3} value={cardData.cvv} onChange={e => setCardData({...cardData, cvv: e.target.value})} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-bold focus:ring-2 focus:ring-black outline-none transition-all text-center tracking-widest" placeholder="***" />
+                  </div>
+                </div>
               </div>
-            </form>
+            </div>
+
           </div>
 
           {/* SAĞ: SİPARİŞ ÖZETİ */}
@@ -114,29 +193,39 @@ export default function CheckoutPage() {
                   <span className="text-green-600">Ücretsiz</span>
                 </div>
                 <div className="flex justify-between items-center text-xl font-black text-black pt-4 border-t border-gray-100">
-                  <span>TOPLAM</span>
+                  <span>TOPLAM TUTAR</span>
                   <span>{cartTotal} ₺</span>
                 </div>
               </div>
 
+              {/* ÖDEME BUTONU */}
               <button 
-                form="checkoutForm" 
                 type="submit" 
-                className="w-full bg-black text-white py-5 rounded-2xl font-black uppercase tracking-widest shadow-xl hover:bg-gray-800 active:scale-95 transition-all flex justify-center items-center gap-2"
+                disabled={isProcessing}
+                className="w-full bg-black text-white py-5 rounded-2xl font-black uppercase tracking-widest shadow-xl hover:bg-gray-800 active:scale-95 transition-all flex justify-center items-center gap-2 disabled:opacity-70 disabled:hover:bg-black disabled:active:scale-100"
               >
-                <span>SİPARİŞİ TAMAMLA</span>
-                <span className="text-lg">›</span>
+                {isProcessing ? (
+                  <span className="animate-pulse">ÖDEME ALINIYOR... 🔄</span>
+                ) : (
+                  <>
+                    <span>ÖDEMEYİ TAMAMLA</span>
+                    <span className="text-lg">💳</span>
+                  </>
+                )}
               </button>
               
-              <div className="mt-4 text-center">
-                <Link href="/shop" className="text-[10px] font-black text-gray-400 uppercase tracking-widest border-b border-gray-400 hover:text-black hover:border-black transition-colors">
+              <div className="mt-6 flex flex-col items-center gap-2">
+                <p className="text-[9px] text-gray-400 font-bold uppercase tracking-widest text-center">
+                  Kart bilgileriniz 256-bit SSL sertifikası ile şifrelenmektedir.
+                </p>
+                <Link href="/shop" className="text-[10px] font-black text-black uppercase tracking-widest border-b border-black hover:text-gray-500 hover:border-gray-500 transition-colors mt-2">
                   Alışverişe Dön
                 </Link>
               </div>
             </div>
           </div>
 
-        </div>
+        </form>
       </div>
     </div>
   );

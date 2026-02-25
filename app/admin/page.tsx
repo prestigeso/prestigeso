@@ -48,7 +48,11 @@ export default function AdminPanel() {
   const [dbProducts, setDbProducts] = useState<ProductRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-
+  const activeMonth = new Date().toLocaleString('tr-TR', { month: 'long' }).toUpperCase();
+  
+  const [totalRevenue, setTotalRevenue] = useState(0);
+  const [totalOrders, setTotalOrders] = useState(0);
+  const [totalVisits, setTotalVisits] = useState(0);
   // --- MODALLAR ---
   const [isFabOpen, setIsFabOpen] = useState(false);
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
@@ -455,7 +459,32 @@ export default function AdminPanel() {
       alert("İndirim uygulanamadı: " + e.message);
     }
   };
+  const fetchData = async () => {
+    setLoading(true);
+    
+    // 1. Ürünleri Çek
+    const { data: pData } = await supabase.from("products").select("id,name,price,category,stock,is_bestseller,discount_price").order("created_at", { ascending: false });
+    if (pData) setDbProducts(pData);
 
+    // 2. Sliderları Çek
+    const { data: sData } = await supabase.from("hero_slides").select("*").order("created_at", { ascending: false });
+    if (sData) setDbSlides(sData);
+
+    // 3. SİPARİŞLERİ VE CİROYU ÇEK
+    const { data: oData } = await supabase.from("orders").select("total_amount");
+    if (oData) {
+      setTotalOrders(oData.length);
+      const revenue = oData.reduce((acc, order) => acc + Number(order.total_amount), 0);
+      setTotalRevenue(revenue);
+    }
+
+    // 4. ZİYARETÇİ SAYISINI ÇEK
+    const { count: vCount } = await supabase.from("page_views").select("*", { count: 'exact', head: true });
+    if (vCount !== null) setTotalVisits(vCount);
+
+    setPageSettings({ marquee: localStorage.getItem("prestigeso_campaign") || "" });
+    setLoading(false);
+  };
   const removeDiscountCampaign = async () => {
     if (selectedCampaignProducts.length === 0) return alert("İndirimi kaldırmak için ürün seç!");
     const { error } = await supabase.from("products").update({ discount_price: 0 }).in("id", selectedCampaignProducts);
@@ -488,6 +517,36 @@ export default function AdminPanel() {
       </div>
 
       <div className="px-6 max-w-6xl mx-auto space-y-6">
+        {/* İSTATİSTİKLER (PATRON EKRANI) */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+          {/* 1. CİRO */}
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center text-center hover:border-green-200 hover:shadow-md transition-all">
+            <span className="text-3xl mb-2">💸</span>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">{activeMonth} CİROSU</p>
+            <p className="text-3xl font-black text-green-600">{totalRevenue.toLocaleString("tr-TR")} ₺</p>
+          </div>
+
+          {/* 2. SİPARİŞ */}
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center text-center hover:border-black hover:shadow-md transition-all">
+            <span className="text-3xl mb-2">📦</span>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">{activeMonth} SİPARİŞİ</p>
+            <p className="text-3xl font-black text-black">{totalOrders}</p>
+          </div>
+
+          {/* 3. ZİYARETÇİ */}
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center text-center hover:border-blue-200 hover:shadow-md transition-all">
+            <span className="text-3xl mb-2">👁️</span>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">{activeMonth} ZİYARETİ</p>
+            <p className="text-3xl font-black text-blue-600">{totalVisits}</p>
+          </div>
+
+          {/* 4. TOPLAM ÜRÜN */}
+          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center text-center hover:border-black hover:shadow-md transition-all">
+            <span className="text-3xl mb-2">🛍️</span>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">TOPLAM ÜRÜN</p>
+            <p className="text-3xl font-black text-black">{dbProducts.length}</p>
+          </div>
+        </div>
         {/* Ürün listesi + arama */}
         <div>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 px-1 gap-3">
@@ -918,7 +977,7 @@ export default function AdminPanel() {
           </div>
         </div>
       )}
-
+      
       {/* KAMPANYA / İNDİRİM MODALI */}
       {isCampaignOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center">

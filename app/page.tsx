@@ -32,6 +32,7 @@ export default function Home() {
       if (productsData) setDbProducts(productsData);
 
       setLoading(false);
+      supabase.from("page_views").insert([{}]).then();
     };
 
     fetchData();
