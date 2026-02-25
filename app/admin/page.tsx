@@ -94,7 +94,42 @@ export default function AdminPanel() {
   
 
   
+  // ---------------------------------------
+  // FOTOĞRAF SIRALAMA MOTORLARI
+  // ---------------------------------------
+  // 1. Yeni Ürün Eklerken Sıralama
+  const moveNewImage = (index: number, direction: "left" | "right") => {
+    const newFiles = [...newProductFiles];
+    const newPreviews = [...newProductPreviews];
 
+    if (direction === "left" && index > 0) {
+      // Solundakiyle yer değiştir
+      [newFiles[index], newFiles[index - 1]] = [newFiles[index - 1], newFiles[index]];
+      [newPreviews[index], newPreviews[index - 1]] = [newPreviews[index - 1], newPreviews[index]];
+    } else if (direction === "right" && index < newFiles.length - 1) {
+      // Sağındakiyle yer değiştir
+      [newFiles[index], newFiles[index + 1]] = [newFiles[index + 1], newFiles[index]];
+      [newPreviews[index], newPreviews[index + 1]] = [newPreviews[index + 1], newPreviews[index]];
+    }
+
+    setNewProductFiles(newFiles);
+    setNewProductPreviews(newPreviews);
+  };
+
+  // 2. Ürün Düzenlerken Sıralama
+  const moveEditImage = (index: number, direction: "left" | "right") => {
+    if (!editingProduct || !editingProduct.images) return;
+    const newImages = [...editingProduct.images];
+    
+    if (direction === "left" && index > 0) {
+      [newImages[index], newImages[index - 1]] = [newImages[index - 1], newImages[index]];
+    } else if (direction === "right" && index < newImages.length - 1) {
+      [newImages[index], newImages[index + 1]] = [newImages[index + 1], newImages[index]];
+    }
+    
+    // İlk sıraya (index 0) geçen otomatik kapak olur (image: newImages[0])
+    setEditingProduct((prev: any) => ({ ...prev, images: newImages, image: newImages[0] || "" }));
+  };
   // ---------------------------------------
   // SETTINGS SAVE
   // ---------------------------------------
@@ -714,9 +749,17 @@ export default function AdminPanel() {
                 {newProductPreviews.length > 0 && (
                   <div className="mt-3 grid grid-cols-3 gap-2">
                     {newProductPreviews.map((url, i) => (
-                      <div key={i} className="w-full h-20 rounded-lg overflow-hidden border border-gray-200 bg-white relative">
-                        <span className="absolute top-1 left-1 bg-black text-white text-[10px] px-1.5 py-0.5 rounded-md">{i + 1}</span>
+                      <div key={i} className="w-full h-20 rounded-lg overflow-hidden border border-gray-200 bg-white relative group">
+                        <span className="absolute top-1 left-1 bg-black text-white text-[10px] px-1.5 py-0.5 rounded-md z-10">
+                          {i + 1} {i === 0 && "(Kapak)"}
+                        </span>
                         <img src={url} className="w-full h-20 object-cover" alt="" />
+                        
+                        {/* KAYDIRMA BUTONLARI (Hover olunca çıkar) */}
+                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-between px-1">
+                          <button type="button" onClick={() => moveNewImage(i, "left")} disabled={i === 0} className="w-6 h-6 bg-white text-black rounded-full flex items-center justify-center text-xs disabled:opacity-30">◀</button>
+                          <button type="button" onClick={() => moveNewImage(i, "right")} disabled={i === newProductPreviews.length - 1} className="w-6 h-6 bg-white text-black rounded-full flex items-center justify-center text-xs disabled:opacity-30">▶</button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -751,59 +794,31 @@ export default function AdminPanel() {
           <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-black">Ürün Düzenle</h2>
-              <button
-                onClick={() => {
-                  revokeUrls(editAddPreviews);
-                  setEditAddPreviews([]);
-                  setEditAddFiles([]);
-                  setEditingProduct(null);
-                }}
-                className="w-8 h-8 bg-gray-100 rounded-full font-bold"
-              >
-                ✕
-              </button>
+              <button onClick={() => { revokeUrls(editAddPreviews); setEditAddPreviews([]); setEditAddFiles([]); setEditingProduct(null); }} className="w-8 h-8 bg-gray-100 rounded-full font-bold">✕</button>
             </div>
 
             {editLoading && <p className="text-center text-gray-400">Ürün detayı yükleniyor...</p>}
 
             {editingProduct && (
               <>
-                {/* Kapak = images[0] */}
-                {Array.isArray(editingProduct.images) && editingProduct.images[0] && (
-                  <img src={editingProduct.images[0]} className="w-full h-40 object-cover rounded-xl border border-gray-200" alt="" />
-                )}
-
-                {/* Galeri */}
-                <div className="mt-4">
-                  <p className="text-xs font-black text-gray-700 mb-2">📸 Fotoğraflar (Tıkla: Kapak yap)</p>
-
+                {/* 1. KISIM: SIRALAMA EKLENMİŞ GALERİ */}
+                <div className="mt-2">
+                  <p className="text-xs font-black text-gray-700 mb-2">📸 Fotoğrafları Sırala veya Sil</p>
                   {Array.isArray(editingProduct.images) && editingProduct.images.length > 0 ? (
                     <div className="grid grid-cols-3 gap-2">
                       {editingProduct.images.map((url: string, idx: number) => (
-                        <div key={idx} className="relative border border-gray-200 rounded-xl overflow-hidden bg-gray-50">
-                          <button
-                            type="button"
-                            onClick={() => setCoverFromExisting(url)}
-                            className="w-full h-20"
-                            title="Kapak yap"
-                          >
-                            <img src={url} className="w-full h-20 object-cover" alt="" />
-                          </button>
-
+                        <div key={idx} className="relative border border-gray-200 rounded-xl overflow-hidden bg-gray-50 group">
+                          <img src={url} className="w-full h-20 object-cover" alt="" />
                           {idx === 0 && (
-                            <span className="absolute top-1 left-1 bg-black text-white text-[10px] px-2 py-0.5 rounded">
-                              Kapak
-                            </span>
+                            <span className="absolute top-1 left-1 bg-black text-white text-[10px] px-2 py-0.5 rounded z-10">Kapak</span>
                           )}
-
-                          <button
-                            type="button"
-                            onClick={() => removeImageFromGallery(url)}
-                            className="absolute top-1 right-1 bg-white/90 text-red-600 text-xs font-black w-6 h-6 rounded-full"
-                            title="Sil"
-                          >
-                            ✕
-                          </button>
+                          <button type="button" onClick={() => removeImageFromGallery(url)} className="absolute top-1 right-1 bg-white/90 text-red-600 text-xs font-black w-6 h-6 rounded-full z-10 shadow-sm" title="Sil">✕</button>
+                          
+                          {/* KAYDIRMA BUTONLARI */}
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-between px-1">
+                            <button type="button" onClick={() => moveEditImage(idx, "left")} disabled={idx === 0} className="w-6 h-6 bg-white text-black rounded-full flex items-center justify-center text-xs shadow-md disabled:opacity-30 active:scale-90">◀</button>
+                            <button type="button" onClick={() => moveEditImage(idx, "right")} disabled={idx === editingProduct.images.length - 1} className="w-6 h-6 bg-white text-black rounded-full flex items-center justify-center text-xs shadow-md disabled:opacity-30 active:scale-90">▶</button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -812,24 +827,10 @@ export default function AdminPanel() {
                   )}
                 </div>
 
-                {/* Galeriye yeni foto ekle */}
+                {/* 2. KISIM: SİLİNEN YENİ FOTOĞRAF EKLEME ALANI */}
                 <div className="mt-4 bg-gray-50 border border-gray-200 rounded-2xl p-3">
                   <p className="text-xs font-black mb-2">➕ Galeriye Fotoğraf Ekle</p>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    onChange={(e) => {
-                      const files = Array.from(e.target.files || []);
-                      if (files.length === 0) return;
-
-                      revokeUrls(editAddPreviews);
-                      setEditAddFiles(files);
-                      setEditAddPreviews(files.map((f) => URL.createObjectURL(f)));
-                    }}
-                    className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-black file:text-white hover:file:bg-gray-800 cursor-pointer"
-                  />
-
+                  <input type="file" accept="image/*" multiple onChange={(e) => { const files = Array.from(e.target.files || []); if (files.length === 0) return; revokeUrls(editAddPreviews); setEditAddFiles(files); setEditAddPreviews(files.map((f) => URL.createObjectURL(f))); }} className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-black file:text-white hover:file:bg-gray-800 cursor-pointer" />
                   {editAddPreviews.length > 0 && (
                     <div className="flex gap-2 overflow-x-auto mt-3 pb-2">
                       {editAddPreviews.map((u, i) => (
@@ -837,61 +838,24 @@ export default function AdminPanel() {
                       ))}
                     </div>
                   )}
-
-                  <button
-                    type="button"
-                    disabled={editAddUploading}
-                    onClick={addMoreImagesToProduct}
-                    className="w-full mt-2 bg-blue-600 text-white py-2 rounded-xl font-bold text-sm hover:bg-blue-700 transition disabled:opacity-60"
-                  >
-                    {editAddUploading ? "Yükleniyor..." : "Fotoğrafları Ekle (Kaydet gerektirir)"}
+                  <button type="button" disabled={editAddUploading} onClick={addMoreImagesToProduct} className="w-full mt-2 bg-blue-600 text-white py-2 rounded-xl font-bold text-sm hover:bg-blue-700 transition disabled:opacity-60">
+                    {editAddUploading ? "Yükleniyor..." : "Fotoğrafları Ekle (Sonra Kaydet'e Bas)"}
                   </button>
                 </div>
 
-                {/* İndirim sadece bilgi */}
-                <div className="mt-4 bg-gray-50 border border-gray-200 rounded-xl p-3">
-                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">İndirim Durumu</p>
-                  {Number(editingProduct.discount_price) > 0 ? (
-                    <p className="text-sm font-black text-red-600">
-                      İndirimli Fiyat: {Number(editingProduct.discount_price).toFixed(0)} ₺
-                    </p>
-                  ) : (
-                    <p className="text-sm font-black text-gray-500">İndirim Yok</p>
-                  )}
-                  <p className="text-[10px] text-gray-400 mt-1">İndirim burada düzenlenmez, kampanyadan yönetilir.</p>
-                </div>
-
-                {/* Form */}
+                {/* 3. KISIM: SİLİNEN FORM BİLGİLERİ (AD, FİYAT, KAYDET BUTONU) */}
                 <form onSubmit={handleUpdateProduct} className="space-y-4 mt-5">
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase">Başlık</label>
-                    <input
-                      required
-                      type="text"
-                      value={editingProduct.name}
-                      onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })}
-                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium"
-                    />
+                    <input required type="text" value={editingProduct.name} onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium" />
                   </div>
-
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase">Fiyat (₺)</label>
-                    <input
-                      required
-                      type="number"
-                      value={editingProduct.price}
-                      onChange={(e) => setEditingProduct({ ...editingProduct, price: e.target.value })}
-                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium"
-                    />
+                    <input required type="number" value={editingProduct.price} onChange={(e) => setEditingProduct({ ...editingProduct, price: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium" />
                   </div>
-
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase">Kategori</label>
-                    <select
-                      value={editingProduct.category || "Masa Süsleri"}
-                      onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })}
-                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium"
-                    >
+                    <select value={editingProduct.category || "Masa Süsleri"} onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium">
                       <option value="Masa Süsleri">Masa Süsleri</option>
                       <option value="Yüzükler">Yüzükler</option>
                       <option value="Setler">Setler</option>
@@ -899,56 +863,30 @@ export default function AdminPanel() {
                       <option value="Küpeler">Küpeler</option>
                     </select>
                   </div>
-
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase">Stok</label>
-                    <input
-                      type="number"
-                      value={editingProduct.stock ?? 0}
-                      onChange={(e) => setEditingProduct({ ...editingProduct, stock: Number(e.target.value) })}
-                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium"
-                    />
+                    <input type="number" value={editingProduct.stock ?? 0} onChange={(e) => setEditingProduct({ ...editingProduct, stock: Number(e.target.value) })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium" />
                   </div>
-
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase">Açıklama</label>
-                    <textarea
-                      rows={3}
-                      value={editingProduct.description ?? ""}
-                      onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })}
-                      className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium resize-none"
-                    />
+                    <textarea rows={3} value={editingProduct.description ?? ""} onChange={(e) => setEditingProduct({ ...editingProduct, description: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium resize-none" />
                   </div>
-
                   <div className="pt-2">
                     <label className="flex items-center gap-3 cursor-pointer p-3 border border-gray-200 rounded-xl hover:bg-gray-50 transition">
-                      <input
-                        type="checkbox"
-                        checked={!!editingProduct.is_bestseller}
-                        onChange={(e) => setEditingProduct({ ...editingProduct, is_bestseller: e.target.checked })}
-                        className="w-5 h-5 rounded border-gray-300 text-black focus:ring-black"
-                      />
+                      <input type="checkbox" checked={!!editingProduct.is_bestseller} onChange={(e) => setEditingProduct({ ...editingProduct, is_bestseller: e.target.checked })} className="w-5 h-5 rounded border-gray-300 text-black focus:ring-black" />
                       <div>
                         <span className="font-bold text-sm block text-gray-900">Çok Satan Ürün</span>
                         <span className="text-[10px] text-gray-500 block">Ana vitrinde görünür.</span>
                       </div>
                     </label>
                   </div>
-
-                  <button
-                    type="submit"
-                    disabled={saving}
-                    className="w-full bg-black text-white py-4 rounded-xl font-bold mt-2 disabled:opacity-60"
-                  >
+                  <button type="submit" disabled={saving} className="w-full bg-black text-white py-4 rounded-xl font-bold mt-2 disabled:opacity-60">
                     {saving ? "Kaydediliyor..." : "KAYDET"}
                   </button>
                 </form>
-
+                
                 <div className="pt-4 border-t border-gray-100 mt-4">
-                  <button
-                    onClick={() => handleDeleteProduct(editingProduct.id)}
-                    className="w-full bg-red-50 text-red-600 py-3 rounded-xl font-bold text-sm border border-red-100"
-                  >
+                  <button onClick={() => handleDeleteProduct(editingProduct.id)} className="w-full bg-red-50 text-red-600 py-3 rounded-xl font-bold text-sm border border-red-100">
                     🗑️ Ürünü Kaldır
                   </button>
                 </div>
