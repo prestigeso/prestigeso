@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { supabase } from "../../lib/supabase";
+import { supabase } from "@/lib/supabase";
 
 type Slide = {
   id: number;
@@ -89,65 +89,11 @@ export default function AdminPanel() {
   const [campaignDates, setCampaignDates] = useState({ start: "", end: "" });
   const [discountPercent, setDiscountPercent] = useState<number>(20);
 
-  // ---------------------------------------
-  // FETCH: ÜRÜN LİSTESİ (image çekmiyoruz)
-  // ---------------------------------------
-  const fetchProductsList = async () => {
-    setLoading(true);
-    const { data, error } = await supabase
-      .from("products")
-      .select("id,name,price,category,stock,is_bestseller,discount_price,created_at")
-      .order("created_at", { ascending: false });
+  
 
-    if (error) {
-      alert("HATA VAR KRAL: " + error.message);
-      setLoading(false);
-      return;
-    }
-    setDbProducts((data as any) || []);
-    setLoading(false);
-  };
+  
 
-  // ---------------------------------------
-  // FETCH: SLIDES
-  // ---------------------------------------
-  const fetchSlides = async () => {
-    setSlideLoading(true);
-    const { data, error } = await supabase
-      .from("hero_slides")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (error) alert("SLIDE HATA: " + error.message);
-    setDbSlides((data as any) || []);
-    setSlideLoading(false);
-  };
-
-  useEffect(() => {
-    // Zeki Ziyaretçi Kaydetme (Sadece Yeni Oturumlarda Çalışır)
-    const recordVisit = async () => {
-      // Adamın tarayıcı hafızasına bak: "Bu adam siteye daha önce girmiş mi?"
-      const alreadyVisited = sessionStorage.getItem("prestigeso_visited");
-
-      // Eğer girmediyse (yani siteyi yeni açtıysa)
-      if (!alreadyVisited) {
-        const { error } = await supabase.from("page_views").insert([
-          { created_at: new Date().toISOString() }
-        ]);
-        
-        if (error) {
-          console.error("ZİYARETÇİ KAYDEDİLEMEDİ! Hata:", error.message);
-        } else {
-          console.log("Gerçek Ziyaret Çentiği Atıldı! +1 👁️");
-          // Çentiği attıktan sonra adamın hafızasına "Bu girdi" damgası vur!
-          // Artık F5 atsa da, sayfalar arası gezse de sayaç artmayacak.
-          sessionStorage.setItem("prestigeso_visited", "true");
-        }
-      }
-    };
-
-    recordVisit();
-  }, []);
+  
 
   // ---------------------------------------
   // SETTINGS SAVE
@@ -291,7 +237,55 @@ export default function AdminPanel() {
     const next = images.filter((x) => x !== url);
     setEditingProduct((prev: any) => ({ ...prev, images: next, image: next[0] || "" }));
   };
+  // ---------------------------------------
+  // ANA MOTOR: TÜM VERİLERİ TEK SEFERDE ÇEK (KURŞUN GEÇİRMEZ)
+  // ---------------------------------------
+  const loadAllData = async () => {
+    setLoading(true);
 
+    try {
+      // 1. Ürünleri Çek
+      const { data: pData } = await supabase.from("products").select("id,name,price,category,stock,is_bestseller,discount_price,created_at").order("created_at", { ascending: false });
+      if (pData) setDbProducts(pData as any);
+
+      // 2. Sliderları Çek
+      const { data: sData } = await supabase.from("hero_slides").select("*").order("created_at", { ascending: false });
+      if (sData) setDbSlides(sData as any);
+
+      // 3. Siparişler ve Ciro
+      const { data: oData } = await supabase.from("orders").select("total_amount");
+      if (oData) {
+        setTotalOrders(oData.length);
+        setTotalRevenue(oData.reduce((acc, order) => acc + Number(order.total_amount), 0));
+      }
+
+      // 4. Ziyaretçiler
+      const { data: vData } = await supabase.from("page_views").select("id");
+      if (vData) setTotalVisits(vData.length);
+
+    } catch (error) {
+      console.error("Veri çekilirken beklenmedik hata:", error);
+    } finally {
+      // NE OLURSA OLSUN YÜKLENİYOR YAZISINI KAPAT!
+      setLoading(false);
+    }
+  };
+
+  // SAYFA AÇILDIĞINDA MOTORU ÇALIŞTIR
+  useEffect(() => {
+    loadAllData();
+    
+    // Ayarları Çek
+    const savedMarquee = localStorage.getItem("prestigeso_campaign") || "";
+    setPageSettings({ marquee: savedMarquee });
+
+    return () => {
+      revokeUrls(newProductPreviews);
+      revokeUrls(newSlidePreviews);
+      revokeUrls(editAddPreviews);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   // ---------------------------------------
   // ÜRÜN: GALERİYE FOTO EKLE (Storage upload)
   // Eklediklerimiz dizi sonuna eklenir, kapak değişmez (kapak = images[0])
@@ -470,38 +464,7 @@ export default function AdminPanel() {
       alert("İndirim uygulanamadı: " + e.message);
     }
   };
-  const fetchData = async () => {
-    setLoading(true);
-    
-    // 1. Ürünleri Çek
-    const { data: pData } = await supabase.from("products").select("id,name,price,category,stock,is_bestseller,discount_price").order("created_at", { ascending: false });
-    if (pData) setDbProducts(pData);
-
-    // 2. Sliderları Çek
-    const { data: sData } = await supabase.from("hero_slides").select("*").order("created_at", { ascending: false });
-    if (sData) setDbSlides(sData);
-
-    // 3. SİPARİŞLERİ VE CİROYU ÇEK
-    const { data: oData } = await supabase.from("orders").select("total_amount");
-    if (oData) {
-      setTotalOrders(oData.length);
-      const revenue = oData.reduce((acc, order) => acc + Number(order.total_amount), 0);
-      setTotalRevenue(revenue);
-    }
-
-    // 4. ZİYARETÇİ SAYISINI ÇEK
-    const { data: vData, error: vErr } = await supabase.from("page_views").select("id");
-    
-    if (vErr) {
-      console.error("Ziyaretçi çekerken hata kral:", vErr.message);
-    } else if (vData) {
-      // Gelen satırların direkt uzunluğunu sayıyoruz
-      setTotalVisits(vData.length);
-    }
-
-    setPageSettings({ marquee: localStorage.getItem("prestigeso_campaign") || "" });
-    setLoading(false);
-  };
+  
   const removeDiscountCampaign = async () => {
     if (selectedCampaignProducts.length === 0) return alert("İndirimi kaldırmak için ürün seç!");
     const { error } = await supabase.from("products").update({ discount_price: 0 }).in("id", selectedCampaignProducts);
@@ -618,7 +581,7 @@ export default function AdminPanel() {
 
           <div className="pt-3">
             <button
-              onClick={fetchProductsList}
+              onClick={loadAllData}
               className="text-xs font-bold text-gray-500 hover:text-black border border-gray-200 px-4 py-2 rounded-full"
             >
               ↻ Listeyi Yenile
