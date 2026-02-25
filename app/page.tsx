@@ -23,12 +23,17 @@ export default function Home() {
 
   useEffect(() => {
     setLocalCampaign(localStorage.getItem("prestigeso_campaign") || "");
+    // Ziyaretçi Kaydetme (Garantili Versiyon)
     const recordVisit = async () => {
-      const { error } = await supabase.from("page_views").insert([{}]);
+      // DİKKAT: Boş obje {} yerine, tarihi zorla gönderiyoruz ki veritabanı boş geçmesin!
+      const { error } = await supabase.from("page_views").insert([
+        { created_at: new Date().toISOString() }
+      ]);
+      
       if (error) {
-        console.error("ZİYARETÇİ KAYDEDİLEMEDİ KRAL! Hata:", error.message);
+        console.error("ZİYARETÇİ KAYDEDİLEMEDİ! Hata:", error.message);
       } else {
-        console.log("Ziyaret başarıyla kaydedildi! +1 👁️");
+        console.log("Gerçek Ziyaret Çentiği Atıldı! +1 👁️");
       }
     };
 

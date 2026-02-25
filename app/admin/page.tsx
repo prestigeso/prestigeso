@@ -124,18 +124,29 @@ export default function AdminPanel() {
   };
 
   useEffect(() => {
-    fetchProductsList();
-    fetchSlides();
+    // Zeki Ziyaretçi Kaydetme (Sadece Yeni Oturumlarda Çalışır)
+    const recordVisit = async () => {
+      // Adamın tarayıcı hafızasına bak: "Bu adam siteye daha önce girmiş mi?"
+      const alreadyVisited = sessionStorage.getItem("prestigeso_visited");
 
-    const savedMarquee = localStorage.getItem("prestigeso_campaign") || "";
-    setPageSettings({ marquee: savedMarquee });
-
-    return () => {
-      revokeUrls(newProductPreviews);
-      revokeUrls(newSlidePreviews);
-      revokeUrls(editAddPreviews);
+      // Eğer girmediyse (yani siteyi yeni açtıysa)
+      if (!alreadyVisited) {
+        const { error } = await supabase.from("page_views").insert([
+          { created_at: new Date().toISOString() }
+        ]);
+        
+        if (error) {
+          console.error("ZİYARETÇİ KAYDEDİLEMEDİ! Hata:", error.message);
+        } else {
+          console.log("Gerçek Ziyaret Çentiği Atıldı! +1 👁️");
+          // Çentiği attıktan sonra adamın hafızasına "Bu girdi" damgası vur!
+          // Artık F5 atsa da, sayfalar arası gezse de sayaç artmayacak.
+          sessionStorage.setItem("prestigeso_visited", "true");
+        }
+      }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
+    recordVisit();
   }, []);
 
   // ---------------------------------------
@@ -479,13 +490,13 @@ export default function AdminPanel() {
     }
 
     // 4. ZİYARETÇİ SAYISINI ÇEK
-    const { count: vCount, error: vErr } = await supabase.from("page_views").select("*", { count: 'exact', head: true });
+    const { data: vData, error: vErr } = await supabase.from("page_views").select("id");
     
-    // Eğer bir sorun varsa konsola yazdırsın
-    if (vErr) console.error("Ziyaretçi çekerken hata kral:", vErr.message);
-    
-    if (vCount !== null) {
-      setTotalVisits(vCount);
+    if (vErr) {
+      console.error("Ziyaretçi çekerken hata kral:", vErr.message);
+    } else if (vData) {
+      // Gelen satırların direkt uzunluğunu sayıyoruz
+      setTotalVisits(vData.length);
     }
 
     setPageSettings({ marquee: localStorage.getItem("prestigeso_campaign") || "" });
