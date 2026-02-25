@@ -14,8 +14,15 @@ export default function ProductDetailPage() {
   const [loading, setLoading] = useState(true);
   const [isFavorite, setIsFavorite] = useState(false);
 
-  // GALERİ İÇİN STATE
+  // GALERİ İÇİN STATELER
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
+
+  // SWIPE (KAYDIRMA) İÇİN STATELER
+  const [touchStartX, setTouchStartX] = useState(0);
+  const [touchEndX, setTouchEndX] = useState(0);
+
+  // DEVAMINI OKU İÇİN STATE
+  const [isDescExpanded, setIsDescExpanded] = useState(false);
 
   useEffect(() => {
     const fetchProductAndRecordView = async () => {
@@ -112,7 +119,7 @@ export default function ProductDetailPage() {
     }
   };
 
-  // --- OK TUŞLARI FONKSİYONLARI ---
+  // --- OK TUŞLARI & SWIPE (KAYDIRMA) FONKSİYONLARI ---
   const handlePrevImage = () => {
     setSelectedImageIndex((prev) => (prev === 0 ? productImages.length - 1 : prev - 1));
   };
@@ -120,7 +127,40 @@ export default function ProductDetailPage() {
   const handleNextImage = () => {
     setSelectedImageIndex((prev) => (prev === productImages.length - 1 ? 0 : prev + 1));
   };
-  // --------------------------------
+
+  // Ekrana Dokunma Başlangıcı
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setTouchStartX(e.targetTouches[0].clientX);
+  };
+
+  // Ekranda Parmağı Sürükleme
+  const handleTouchMove = (e: React.TouchEvent) => {
+    setTouchEndX(e.targetTouches[0].clientX);
+  };
+
+  // Dokunma Bittiğinde Yönü Hesapla
+  const handleTouchEnd = () => {
+    if (!touchStartX || !touchEndX) return;
+    
+    const distance = touchStartX - touchEndX;
+    const isLeftSwipe = distance > 50; // Sola kaydırma (Sonraki resim)
+    const isRightSwipe = distance < -50; // Sağa kaydırma (Önceki resim)
+
+    if (isLeftSwipe) {
+      handleNextImage();
+    } else if (isRightSwipe) {
+      handlePrevImage();
+    }
+
+    // Değerleri sıfırla
+    setTouchStartX(0);
+    setTouchEndX(0);
+  };
+  // ----------------------------------------------------
+
+  // --- AÇIKLAMA METNİ LİMİTİ ---
+  const DESC_MAX_LENGTH = 150;
+  const hasLongDesc = product.description && product.description.length > DESC_MAX_LENGTH;
 
   return (
     <div className="min-h-screen bg-white pt-24 pb-20 px-4 md:px-10">
@@ -128,21 +168,27 @@ export default function ProductDetailPage() {
         
         {/* SOL: ÜRÜN GÖRSELİ VE GALERİ */}
         <div className="w-full md:w-1/2 group relative">
-          {/* ANA RESİM ÇERÇEVESİ */}
-          <div className="aspect-square bg-gray-50 rounded-3xl border border-gray-100 overflow-hidden relative transition-all">
+          
+          {/* ANA RESİM ÇERÇEVESİ (SWIPE EKLENDİ) */}
+          <div 
+            className="aspect-square bg-gray-50 rounded-3xl border border-gray-100 overflow-hidden relative transition-all"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+          >
             <img 
               src={productImages[selectedImageIndex]} 
               alt={product.name} 
-              className="w-full h-full object-cover mix-blend-multiply transition-opacity duration-300" 
+              className="w-full h-full object-cover mix-blend-multiply transition-opacity duration-300 pointer-events-none" 
             />
 
-            {/* --- OK TUŞLARI (Sadece birden fazla resim varsa göster) --- */}
+            {/* --- OK TUŞLARI (Sadece birden fazla resim varsa ve Mouse ile üzerine gelince göster) --- */}
             {productImages.length > 1 && (
               <>
                 {/* SOL OK */}
                 <button 
                   onClick={handlePrevImage}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-black p-3 rounded-full shadow-lg transition-all opacity-0 group-hover:opacity-100 active:scale-95"
+                  className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-black p-3 rounded-full shadow-lg transition-all opacity-0 md:group-hover:opacity-100 active:scale-95 hidden md:block"
                   aria-label="Önceki Resim"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
@@ -153,17 +199,21 @@ export default function ProductDetailPage() {
                 {/* SAĞ OK */}
                 <button 
                   onClick={handleNextImage}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-black p-3 rounded-full shadow-lg transition-all opacity-0 group-hover:opacity-100 active:scale-95"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-black p-3 rounded-full shadow-lg transition-all opacity-0 md:group-hover:opacity-100 active:scale-95 hidden md:block"
                   aria-label="Sonraki Resim"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-5 h-5">
                     <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
                   </svg>
                 </button>
+                
+                {/* MOBİL İÇİN MİNİK KAYDIRMA BİLGİSİ */}
+                <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-sm text-white text-[10px] font-bold px-3 py-1 rounded-full tracking-widest uppercase md:hidden pointer-events-none">
+                  Kaydırarak İncele
+                </div>
               </>
             )}
             {/* ------------------------------------------------------- */}
-
           </div>
 
           {/* KÜÇÜK RESİMLER (THUMBNAILS) */}
@@ -228,15 +278,45 @@ export default function ProductDetailPage() {
             </div>
           </div>
 
-          {/* ÜRÜN AÇIKLAMASI */}
-          <div className="p-6 bg-gray-50 rounded-2xl border border-gray-100">
+          {/* ÜRÜN AÇIKLAMASI (DEVAMINI OKU SİSTEMİ) */}
+          <div className="p-6 bg-white rounded-2xl border border-gray-100 shadow-sm mt-4">
              <h3 className="text-xs font-black uppercase tracking-widest text-black border-b-2 border-black inline-block pb-1 mb-4">
                Ürün Açıklaması
              </h3>
              {product.description ? (
-               <p className="text-sm font-medium text-gray-600 leading-relaxed whitespace-pre-line">
-                 {product.description}
-               </p>
+               <div className="transition-all duration-300">
+                 <p className="text-sm font-medium text-gray-600 leading-relaxed whitespace-pre-line">
+                   {isDescExpanded || !hasLongDesc 
+                     ? product.description 
+                     : `${product.description.substring(0, DESC_MAX_LENGTH)}...`}
+                 </p>
+                 
+                 {/* YENİ PREMIUM BUTON TASARIMI */}
+                 {hasLongDesc && (
+                   <div className="relative mt-8 flex justify-center items-center">
+                     {/* Arkadaki ince yatay çizgi */}
+                     <div className="absolute w-full border-t border-gray-200"></div>
+                     
+                     {/* Hap Tasarımlı Buton */}
+                     <button 
+                       onClick={() => setIsDescExpanded(!isDescExpanded)}
+                       className="relative z-10 bg-gray-50 hover:bg-gray-100 border border-gray-200 text-gray-800 text-[11px] font-bold tracking-widest uppercase px-6 py-3 rounded-full flex items-center gap-2 transition-all active:scale-95 shadow-sm"
+                     >
+                       {isDescExpanded ? "AÇIKLAMAYI DARALT" : "ÜRÜNÜN TÜM ÖZELLİKLERİ"}
+                       <svg 
+                         xmlns="http://www.w3.org/2000/svg" 
+                         fill="none" 
+                         viewBox="0 0 24 24" 
+                         strokeWidth={3} 
+                         stroke="currentColor" 
+                         className={`w-3.5 h-3.5 transition-transform duration-300 ${isDescExpanded ? "rotate-180" : ""}`}
+                       >
+                         <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 8.25l-7.5 7.5-7.5-7.5" />
+                       </svg>
+                     </button>
+                   </div>
+                 )}
+               </div>
              ) : (
                <p className="text-sm font-medium text-gray-400 italic">
                  Bu ürün için henüz detaylı bir açıklama girilmemiş.

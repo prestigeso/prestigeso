@@ -244,7 +244,7 @@ function PrestigeCard({ product, badgeLabel }: { product: any, badgeLabel?: stri
 
   return (
     <Link href={`/product/${product.id}`} className="group relative block cursor-pointer w-full h-full flex flex-col">
-      <div className="aspect-[3/4] w-full overflow-hidden rounded-2xl bg-gray-50 relative border border-gray-200">
+      <div className="aspect-square w-full overflow-hidden rounded-2xl bg-gray-50 relative border border-gray-200">
         <img src={displayImage} alt={product.name} className="h-full w-full object-cover mix-blend-multiply group-hover:scale-105 transition-transform duration-700 ease-out" />
         <button onClick={handleFavoriteClick} className="absolute top-2 right-2 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full shadow-sm flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-10 group/btn" title="Favorilere Ekle">
           <svg viewBox="0 0 24 24" fill={isFavorite ? "currentColor" : "none"} stroke="currentColor" strokeWidth={isFavorite ? "0" : "2"} className={`w-4 h-4 transition-colors ${isFavorite ? "text-black" : "text-gray-400 group-hover/btn:text-black"}`}>
