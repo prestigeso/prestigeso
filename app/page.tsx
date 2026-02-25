@@ -23,7 +23,17 @@ export default function Home() {
 
   useEffect(() => {
     setLocalCampaign(localStorage.getItem("prestigeso_campaign") || "");
+    const recordVisit = async () => {
+      const { error } = await supabase.from("page_views").insert([{}]);
+      if (error) {
+        console.error("ZİYARETÇİ KAYDEDİLEMEDİ KRAL! Hata:", error.message);
+      } else {
+        console.log("Ziyaret başarıyla kaydedildi! +1 👁️");
+      }
+    };
 
+    recordVisit();
+  
     const fetchData = async () => {
       const { data: slidesData } = await supabase.from("hero_slides").select("*").order("created_at", { ascending: false });
       if (slidesData) setHeroSlides(slidesData);

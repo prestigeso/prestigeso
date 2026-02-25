@@ -479,8 +479,14 @@ export default function AdminPanel() {
     }
 
     // 4. ZİYARETÇİ SAYISINI ÇEK
-    const { count: vCount } = await supabase.from("page_views").select("*", { count: 'exact', head: true });
-    if (vCount !== null) setTotalVisits(vCount);
+    const { count: vCount, error: vErr } = await supabase.from("page_views").select("*", { count: 'exact', head: true });
+    
+    // Eğer bir sorun varsa konsola yazdırsın
+    if (vErr) console.error("Ziyaretçi çekerken hata kral:", vErr.message);
+    
+    if (vCount !== null) {
+      setTotalVisits(vCount);
+    }
 
     setPageSettings({ marquee: localStorage.getItem("prestigeso_campaign") || "" });
     setLoading(false);
