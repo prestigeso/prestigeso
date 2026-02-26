@@ -15,6 +15,10 @@ export default function ProfilePage() {
   
   const [favorites, setFavorites] = useState<any[]>([]);
   const [recentlyViewed, setRecentlyViewed] = useState<any[]>([]);
+  
+  // YENİ: Yorumlar ve Sorular Stateleri
+  const [myReviews, setMyReviews] = useState<any[]>([]);
+  const [myQuestions, setMyQuestions] = useState<any[]>([]);
 
   useEffect(() => {
     const checkUserAndLoadData = async () => {
@@ -25,44 +29,57 @@ export default function ProfilePage() {
       }
       setUser(session.user);
       
-      // 1. Tarayıcıdan Donuk Verileri (ID'leri) Çek
+      // 1. Canlı Favori ve Geçmiş Motoru
       const savedFavs = JSON.parse(localStorage.getItem("prestige_favorites") || "[]");
       const savedViewed = JSON.parse(localStorage.getItem("prestige_viewed") || "[]");
 
-      // 2. Eğer ürün varsa, ID'lerini topla
       const favIds = savedFavs.map((item: any) => item.id);
       const viewedIds = savedViewed.map((item: any) => item.id);
-      
-      // Tüm benzersiz ID'leri birleştir
       const allIds = Array.from(new Set([...favIds, ...viewedIds]));
 
       if (allIds.length > 0) {
-        // 3. Supabase'e gidip bu ID'lerin EN GÜNCEL halini çek!
-        const { data: freshProducts, error } = await supabase
-          .from("products")
-          .select("*")
-          .in("id", allIds);
+        // Ürünleri Çek
+        const { data: freshProducts, error } = await supabase.from("products").select("*").in("id", allIds);
+        
+        // Bu ürünlere ait onaylanmış yorumları çek (Yıldız hesabı için)
+        const { data: productReviews } = await supabase.from("reviews").select("product_id, rating").in("product_id", allIds).eq("is_approved", true);
 
         if (!error && freshProducts) {
-          // Gelen taze verilerle favorileri güncelle
-          const liveFavs = favIds.map((id: any) => freshProducts.find((p) => p.id === id)).filter(Boolean);
-          const liveViewed = viewedIds.map((id: any) => freshProducts.find((p) => p.id === id)).filter(Boolean);
+          // Ürünlere Yıldız ve Yorum Sayısı bilgisini ekle
+          const productsWithStats = freshProducts.map(p => {
+            const pRevs = productReviews?.filter(r => r.product_id === p.id) || [];
+            const avg = pRevs.length > 0 ? (pRevs.reduce((acc, r) => acc + r.rating, 0) / pRevs.length) : 0;
+            return { ...p, ratingAvg: avg, reviewCount: pRevs.length };
+          });
 
+          const liveFavs = favIds.map((id: any) => productsWithStats.find((p) => p.id === id)).filter(Boolean);
+          const liveViewed = viewedIds.map((id: any) => productsWithStats.find((p) => p.id === id)).filter(Boolean);
+          
           setFavorites(liveFavs);
           setRecentlyViewed(liveViewed);
-
-          // Tarayıcının hafızasını da bu taze fiyatlarla güncelle ki bir dahaki sefere hazır olsun
           localStorage.setItem("prestige_favorites", JSON.stringify(liveFavs));
           localStorage.setItem("prestige_viewed", JSON.stringify(liveViewed));
         } else {
-          // Hata olursa en azından eski hallerini göster
           setFavorites(savedFavs);
           setRecentlyViewed(savedViewed);
         }
-      } else {
-        setFavorites([]);
-        setRecentlyViewed([]);
       }
+
+      // 2. YENİ: Müşterinin Kendi Yorumlarını Çek (Ürün bilgisiyle birlikte)
+      const { data: revData } = await supabase
+        .from("reviews")
+        .select("*, products(id, name, image, images)")
+        .eq("user_id", session.user.id)
+        .order("created_at", { ascending: false });
+      if (revData) setMyReviews(revData);
+
+      // 3. YENİ: Müşterinin Kendi Sorularını Çek (Ürün bilgisiyle birlikte)
+      const { data: qData } = await supabase
+        .from("questions")
+        .select("*, products(id, name, image, images)")
+        .eq("user_id", session.user.id)
+        .order("created_at", { ascending: false });
+      if (qData) setMyQuestions(qData);
 
       setLoading(false);
     };
@@ -79,7 +96,7 @@ export default function ProfilePage() {
   if (loading) return <div className="min-h-screen flex items-center justify-center font-black uppercase tracking-widest text-gray-400">Yükleniyor...</div>;
   if (!user) return null;
 
-  const profileCompletion = 60;
+  const profileCompletion = 85;
 
   return (
     <div className="min-h-screen bg-gray-50 py-10 px-4 mt-16 font-sans">
@@ -114,18 +131,21 @@ export default function ProfilePage() {
             <button onClick={() => setActiveTab("coupons")} className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${activeTab === "coupons" ? "bg-black text-white" : "text-gray-600 hover:bg-gray-50"}`}>
               <span className="text-lg">🎟️</span> İndirim Kuponlarım
             </button>
+            
+            {/* DEĞERLENDİRMELERİM VE SORULARIM SEKME BUTONLARI */}
             <button onClick={() => setActiveTab("reviews")} className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${activeTab === "reviews" ? "bg-black text-white" : "text-gray-600 hover:bg-gray-50"}`}>
-              <span className="text-lg">⭐</span> Değerlendirmelerim
+              <span className="text-lg">⭐</span> Değerlendirmelerim ({myReviews.length})
             </button>
+            <button onClick={() => setActiveTab("questions")} className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${activeTab === "questions" ? "bg-black text-white" : "text-gray-600 hover:bg-gray-50"}`}>
+              <span className="text-lg">💬</span> Sorularım ({myQuestions.length})
+            </button>
+
             <button onClick={() => setActiveTab("settings")} className={`text-left p-4 font-bold text-sm transition-all flex items-center gap-3 ${activeTab === "settings" ? "bg-black text-white" : "text-gray-600 hover:bg-gray-50"}`}>
               <span className="text-lg">⚙️</span> Hesap Ayarlarım
             </button>
           </div>
 
           <div className="flex flex-col gap-2 mt-2">
-             <a href="https://wa.me/905555555555" target="_blank" rel="noopener noreferrer" className="w-full text-center bg-green-50 p-4 rounded-2xl border border-green-100 font-bold text-green-700 text-sm hover:bg-green-100 transition-all flex items-center justify-center gap-2 shadow-sm">
-               <span className="text-lg">🎧</span> WhatsApp Destek
-             </a>
              <button onClick={() => supabase.auth.signOut().then(() => router.push("/login"))} className="w-full text-center bg-white p-4 rounded-2xl border border-gray-100 font-bold text-red-500 text-sm hover:bg-red-50 transition-all shadow-sm">
                Güvenli Çıkış
              </button>
@@ -150,22 +170,21 @@ export default function ProfilePage() {
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                        {favorites.map((product) => {
                           const displayImage = product.images?.[0] || product.image || "/logo.jpeg";
-                          
-                          // İndirimli fiyat varsa onu göster, yoksa normal fiyatı göster (CANLI GÜNCELLEME)
                           const activePrice = Number(product.discount_price) > 0 ? Number(product.discount_price) : Number(product.price);
+                          const ratingCount = product.reviewCount || 0;
+                          const avgRating = product.ratingAvg || 0;
 
                           return (
-                            <Link href={`/product/${product.id}`} key={product.id} className="group relative block w-full h-full flex flex-col cursor-pointer">
-                               <div className="aspect-[3/4] w-full overflow-hidden rounded-2xl bg-gray-50 relative border border-gray-200 mb-3">
+                            // DÜZENLEME: KARTIN DIŞINA İNCE ÇERÇEVE VE PADDING EKLENDİ
+                            <Link href={`/product/${product.id}`} key={product.id} className="group relative block w-full h-full flex flex-col cursor-pointer border border-gray-100 p-2 rounded-2xl hover:border-black transition-all bg-white">
+                               {/* DÜZENLEME: aspect-square (KARE) YAPILDI ve iç çerçeve kaldırıldı */}
+                               <div className="aspect-square w-full overflow-hidden rounded-xl bg-gray-50 relative mb-3">
                                  <img src={displayImage} alt={product.name} className="h-full w-full object-cover mix-blend-multiply group-hover:scale-105 transition-transform duration-700 ease-out" />
-                                 
-                                 {/* Eğer indirim varsa küçük bir etiket göster */}
                                  {Number(product.discount_price) > 0 && (
                                    <div className="absolute bottom-0 w-full bg-red-600 text-white text-[10px] font-black text-center py-1.5 uppercase tracking-widest z-10">
                                      İndirimli
                                    </div>
                                  )}
-
                                  <button 
                                    onClick={(e) => { e.preventDefault(); removeFavorite(product.id); }} 
                                    className="absolute top-2 right-2 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full shadow-sm flex items-center justify-center text-black hover:scale-110 active:scale-95 transition-all z-10"
@@ -174,12 +193,21 @@ export default function ProfilePage() {
                                    <svg viewBox="0 0 24 24" fill="currentColor" className="w-4 h-4"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
                                  </button>
                                </div>
+                               
                                <div className="px-1 flex-1 flex flex-col">
                                  <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-0.5 truncate">{product.category || "PRESTİGESO"}</p>
                                  <h4 className="font-bold text-xs uppercase truncate text-black mb-1">{product.name}</h4>
-                                 <div className="flex items-end gap-2 mt-auto">
+                                 
+                                 {/* MİNİ YILDIZLAR */}
+                                 <div className="flex items-center gap-1 mb-2 mt-auto">
+                                    <span className={`text-[10px] ${ratingCount > 0 ? "text-yellow-400" : "text-gray-300"}`}>
+                                      {"★".repeat(Math.round(avgRating))}{"☆".repeat(5 - Math.round(avgRating))}
+                                    </span>
+                                    <span className="text-[9px] font-bold text-gray-400">({ratingCount})</span>
+                                 </div>
+
+                                 <div className="flex items-end gap-2">
                                    <p className="text-sm font-black text-black">{activePrice.toLocaleString("tr-TR")} ₺</p>
-                                   {/* Eski fiyatı üstü çizili göster */}
                                    {Number(product.discount_price) > 0 && (
                                       <p className="text-[10px] font-bold text-gray-400 line-through mb-0.5">{Number(product.price).toLocaleString("tr-TR")} ₺</p>
                                    )}
@@ -193,7 +221,105 @@ export default function ProfilePage() {
                </div>
              )}
 
-             {/* SİPARİŞLERİM (İade uyarısı eklendi) */}
+             {/* DEĞERLENDİRMELERİM */}
+             {activeTab === "reviews" && (
+               <div className="animate-in fade-in duration-300">
+                 <h3 className="text-xl font-black uppercase tracking-tight mb-6 text-black border-b-2 border-gray-100 pb-4">Değerlendirmelerim</h3>
+                 {myReviews.length === 0 ? (
+                   <div className="flex flex-col items-center justify-center py-20 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                     <span className="text-4xl mb-4 opacity-50">⭐</span>
+                     <p className="text-gray-400 font-black uppercase tracking-widest text-xs">Henüz bir ürün değerlendirmesi yapmadınız.</p>
+                   </div>
+                 ) : (
+                   <div className="space-y-4">
+                     {myReviews.map((rev) => {
+                       const prod = rev.products;
+                       const displayImage = prod?.images?.[0] || prod?.image || "/logo.jpeg";
+                       return (
+                         <div key={rev.id} className="bg-gray-50 border border-gray-100 p-4 rounded-2xl flex flex-col md:flex-row gap-4">
+                           <Link href={`/product/${rev.product_id}`} className="w-full md:w-24 h-24 bg-white rounded-xl border border-gray-200 flex-shrink-0 overflow-hidden group">
+                             <img src={displayImage} alt="" className="w-full h-full object-cover mix-blend-multiply group-hover:scale-110 transition-transform" />
+                           </Link>
+                           <div className="flex-1">
+                             <div className="flex justify-between items-start mb-1">
+                               <h4 className="font-bold text-sm text-black">{prod?.name || "Bilinmeyen Ürün"}</h4>
+                               {rev.is_approved ? (
+                                 <span className="bg-green-100 text-green-700 px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest">Yayında</span>
+                               ) : (
+                                 <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest">Onay Bekliyor</span>
+                               )}
+                             </div>
+                             <div className="flex items-center gap-2 mb-2">
+                               <span className="text-yellow-400 text-xs">{"★".repeat(rev.rating)}{"☆".repeat(5-rev.rating)}</span>
+                               <span className="text-[9px] font-bold text-gray-400">{new Date(rev.created_at).toLocaleDateString("tr-TR")}</span>
+                             </div>
+                             <p className="text-sm text-gray-600 font-medium mb-3">{rev.comment}</p>
+                             {rev.images && rev.images.length > 0 && (
+                               <div className="flex gap-2">
+                                 {rev.images.map((img: string, i: number) => (
+                                   <img key={i} src={img} className="w-12 h-12 rounded-lg object-cover border border-gray-200" alt="Yorum foto" />
+                                 ))}
+                               </div>
+                             )}
+                           </div>
+                         </div>
+                       );
+                     })}
+                   </div>
+                 )}
+               </div>
+             )}
+
+             {/* SORULARIM */}
+             {activeTab === "questions" && (
+               <div className="animate-in fade-in duration-300">
+                 <h3 className="text-xl font-black uppercase tracking-tight mb-6 text-black border-b-2 border-gray-100 pb-4">Ürün Sorularım</h3>
+                 {myQuestions.length === 0 ? (
+                   <div className="flex flex-col items-center justify-center py-20 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                     <span className="text-4xl mb-4 opacity-50">💬</span>
+                     <p className="text-gray-400 font-black uppercase tracking-widest text-xs">Satıcılara henüz soru sormadınız.</p>
+                   </div>
+                 ) : (
+                   <div className="space-y-4">
+                     {myQuestions.map((q) => {
+                       const prod = q.products;
+                       const displayImage = prod?.images?.[0] || prod?.image || "/logo.jpeg";
+                       return (
+                         <div key={q.id} className="bg-white border border-gray-200 p-4 rounded-2xl flex flex-col md:flex-row gap-4 shadow-sm">
+                           <Link href={`/product/${q.product_id}`} className="w-full md:w-20 h-20 bg-gray-50 rounded-xl border border-gray-100 flex-shrink-0 overflow-hidden group">
+                             <img src={displayImage} alt="" className="w-full h-full object-cover mix-blend-multiply group-hover:scale-110 transition-transform" />
+                           </Link>
+                           <div className="flex-1">
+                             <h4 className="font-bold text-xs text-gray-500 mb-2 truncate">{prod?.name || "Bilinmeyen Ürün"}</h4>
+                             <div className="mb-3">
+                               <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Sorunuz:</p>
+                               <p className="text-sm font-bold text-black">{q.question}</p>
+                             </div>
+                             
+                             {q.answer ? (
+                               <div className="pl-4 border-l-2 border-green-500 bg-green-50/50 p-2 rounded-r-xl">
+                                 <div className="flex items-center gap-2 mb-1">
+                                   <p className="text-[10px] font-black text-green-700 uppercase tracking-widest">Satıcı Cevabı</p>
+                                   <span className="text-[9px] text-gray-400 font-bold">{new Date(q.answered_at).toLocaleDateString("tr-TR")}</span>
+                                 </div>
+                                 <p className="text-sm font-medium text-gray-700">{q.answer}</p>
+                               </div>
+                             ) : (
+                               <div className="inline-flex items-center gap-2 bg-orange-50 text-orange-600 px-3 py-1.5 rounded-lg border border-orange-100">
+                                 <span className="animate-pulse">⏳</span>
+                                 <p className="text-[10px] font-black uppercase tracking-widest">Satıcı Cevabı Bekleniyor...</p>
+                               </div>
+                             )}
+                           </div>
+                         </div>
+                       );
+                     })}
+                   </div>
+                 )}
+               </div>
+             )}
+
+             {/* SİPARİŞLERİM */}
              {activeTab === "orders" && (
                <div className="animate-in fade-in duration-300">
                  <h3 className="text-xl font-black uppercase tracking-tight mb-2 text-black">Tüm Siparişlerim</h3>
@@ -207,7 +333,7 @@ export default function ProfilePage() {
                </div>
              )}
 
-             {/* KAYITLI ADRESLERİM */}
+             {/* ADRESLERİM */}
              {activeTab === "addresses" && (
                <div className="animate-in fade-in duration-300">
                  <div className="flex justify-between items-center mb-6 border-b-2 border-gray-100 pb-4">
@@ -223,7 +349,7 @@ export default function ProfilePage() {
                </div>
              )}
 
-             {/* İNDİRİM KUPONLARIM */}
+             {/* KUPONLARIM */}
              {activeTab === "coupons" && (
                <div className="animate-in fade-in duration-300">
                  <h3 className="text-xl font-black uppercase tracking-tight mb-6 text-black border-b-2 border-gray-100 pb-4">İndirim Kuponlarım</h3>
@@ -235,19 +361,8 @@ export default function ProfilePage() {
                  </div>
                </div>
              )}
-
-             {/* DEĞERLENDİRMELERİM */}
-             {activeTab === "reviews" && (
-               <div className="animate-in fade-in duration-300">
-                 <h3 className="text-xl font-black uppercase tracking-tight mb-6 text-black border-b-2 border-gray-100 pb-4">Değerlendirmelerim</h3>
-                 <div className="flex flex-col items-center justify-center py-20 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
-                   <span className="text-4xl mb-4 opacity-50">⭐</span>
-                   <p className="text-gray-400 font-black uppercase tracking-widest text-xs">Henüz bir ürün değerlendirmesi yapmadınız.</p>
-                 </div>
-               </div>
-             )}
              
-             {/* HESAP AYARLARI */}
+             {/* AYARLAR */}
              {activeTab === "settings" && (
                <div className="animate-in fade-in duration-300">
                  <h3 className="text-xl font-black uppercase tracking-tight mb-6 text-black border-b-2 border-gray-100 pb-4">Hesap Ayarlarım</h3>
@@ -267,22 +382,34 @@ export default function ProfilePage() {
 
            </div>
 
-           {/* GÖZ ATTIKLARIM ALANI (Kartlar Küçültüldü) */}
+           {/* GÖZ ATTIKLARIM ALANI */}
            {recentlyViewed.length > 0 && (
              <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 animate-in slide-in-from-bottom-5">
                 <h3 className="text-sm font-black uppercase tracking-tight mb-4 text-black border-l-4 border-black pl-3">Son Gezdikleriniz</h3>
                 <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x">
                    {recentlyViewed.map((item) => {
                       const displayImage = item.images?.[0] || item.image || "/logo.jpeg";
-                      // Burada da canlı fiyat gösterimi eklendi
                       const activePrice = Number(item.discount_price) > 0 ? Number(item.discount_price) : Number(item.price);
+                      const ratingCount = item.reviewCount || 0;
+                      const avgRating = item.ratingAvg || 0;
 
                       return (
-                        <Link href={`/product/${item.id}`} key={item.id} className="min-w-[90px] w-[90px] md:min-w-[100px] md:w-[100px] snap-start group relative block cursor-pointer flex-shrink-0">
-                           <div className="aspect-[3/4] w-full overflow-hidden rounded-xl bg-gray-50 relative border border-gray-100 mb-2">
+                        // DÜZENLEME: KARTIN DIŞINA İNCE ÇERÇEVE VE PADDING EKLENDİ
+                        <Link href={`/product/${item.id}`} key={item.id} className="min-w-[90px] w-[90px] md:min-w-[100px] md:w-[100px] snap-start group relative block cursor-pointer flex-shrink-0 border border-gray-100 p-1.5 rounded-xl hover:border-black transition-all bg-white">
+                           {/* DÜZENLEME: aspect-square (KARE) YAPILDI ve iç çerçeve kaldırıldı */}
+                           <div className="aspect-square w-full overflow-hidden rounded-lg bg-gray-50 relative mb-2">
                              <img src={displayImage} alt={item.name} className="h-full w-full object-cover mix-blend-multiply group-hover:scale-110 transition-transform duration-500 ease-out" />
                            </div>
                            <h4 className="font-bold text-[9px] uppercase truncate text-black">{item.name}</h4>
+                           
+                           {/* MİNİ YILDIZLAR */}
+                           <div className="flex items-center gap-0.5 mt-0.5">
+                             <span className={`text-[8px] ${ratingCount > 0 ? "text-yellow-400" : "text-gray-300"}`}>
+                               {"★".repeat(Math.round(avgRating))}{"☆".repeat(5 - Math.round(avgRating))}
+                             </span>
+                             <span className="text-[7px] font-bold text-gray-400">({ratingCount})</span>
+                           </div>
+
                            <div className="flex items-end gap-1 mt-0.5">
                              <p className="text-[10px] font-black text-black">{activePrice.toLocaleString("tr-TR")} ₺</p>
                            </div>

@@ -52,13 +52,24 @@ export default function Home() {
         console.error("Sayaç hatası:", err);
       }
 
-      // 2. ADIM: VİTRİN VERİLERİNİ ÇEK (Sinsi kodlar temizlendi)
+      // 2. ADIM: VİTRİN VERİLERİNİ ÇEK
       try {
         const { data: slidesData } = await supabase.from("hero_slides").select("*").order("created_at", { ascending: false });
         if (slidesData) setHeroSlides(slidesData);
 
+        // Ürünleri ve onaylanmış yorumları aynı anda çek
         const { data: productsData } = await supabase.from("products").select("*").order("created_at", { ascending: false });
-        if (productsData) setDbProducts(productsData);
+        const { data: reviewsData } = await supabase.from("reviews").select("product_id, rating").eq("is_approved", true);
+
+        if (productsData) {
+          // YENİ: Ürünlerin içine yıldız ortalamasını ve yorum sayısını gömüyoruz
+          const productsWithStats = productsData.map(p => {
+            const pRevs = reviewsData?.filter(r => r.product_id === p.id) || [];
+            const avg = pRevs.length > 0 ? (pRevs.reduce((acc, r) => acc + r.rating, 0) / pRevs.length) : 0;
+            return { ...p, ratingAvg: avg, reviewCount: pRevs.length };
+          });
+          setDbProducts(productsWithStats);
+        }
       } catch (err) {
         console.error("Veri çekme hatası:", err);
       } finally {
@@ -208,6 +219,9 @@ function ProductCarousel({ title, products, badgeLabel, onSeeAll }: { title: str
 
 function PrestigeCard({ product, badgeLabel }: { product: any, badgeLabel?: string }) {
   const displayImage = product.images?.[0] || product.image || "/logo.jpeg";
+  const activePrice = Number(product.discount_price) > 0 ? Number(product.discount_price) : Number(product.price);
+  const ratingCount = product.reviewCount || 0;
+  const avgRating = product.ratingAvg || 0;
   const [isFavorite, setIsFavorite] = useState(false);
 
   useEffect(() => {
@@ -243,8 +257,10 @@ function PrestigeCard({ product, badgeLabel }: { product: any, badgeLabel?: stri
   };
 
   return (
-    <Link href={`/product/${product.id}`} className="group relative block cursor-pointer w-full h-full flex flex-col">
-      <div className="aspect-square w-full overflow-hidden rounded-2xl bg-gray-50 relative border border-gray-200">
+    // DÜZENLEME: En dışa ince, yuvarlak bir çerçeve ve ufak iç boşluk (p-2) eklendi
+    <Link href={`/product/${product.id}`} className="group relative block cursor-pointer w-full h-full flex flex-col border border-gray-100 p-2 rounded-2xl hover:border-black transition-all bg-white shadow-sm hover:shadow-md">
+      {/* DÜZENLEME: aspect-square (KARE FOTOĞRAF) korundu ve köşeleri kartın içine uyumlu yapıldı */}
+      <div className="aspect-square w-full overflow-hidden rounded-xl bg-gray-50 relative mb-3">
         <img src={displayImage} alt={product.name} className="h-full w-full object-cover mix-blend-multiply group-hover:scale-105 transition-transform duration-700 ease-out" />
         <button onClick={handleFavoriteClick} className="absolute top-2 right-2 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full shadow-sm flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-10 group/btn" title="Favorilere Ekle">
           <svg viewBox="0 0 24 24" fill={isFavorite ? "currentColor" : "none"} stroke="currentColor" strokeWidth={isFavorite ? "0" : "2"} className={`w-4 h-4 transition-colors ${isFavorite ? "text-black" : "text-gray-400 group-hover/btn:text-black"}`}>
@@ -255,10 +271,21 @@ function PrestigeCard({ product, badgeLabel }: { product: any, badgeLabel?: stri
           <div className="absolute bottom-0 w-full bg-black text-white text-[10px] font-black text-center py-1.5 uppercase tracking-[0.2em] z-10">{badgeLabel}</div>
         )}
       </div>
-      <div className="mt-3 px-1 flex-1 flex flex-col">
+      
+      {/* İÇERİK KISMI: Eski fontlar tamamen aynı, araya sadece yıldız girdi */}
+      <div className="px-1 flex-1 flex flex-col">
         <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-0.5 truncate">{product.category || "PRESTİGESO"}</p>
         <h3 className="text-xs md:text-sm font-bold text-gray-900 line-clamp-2 leading-snug flex-1">{product.name}</h3>
-        <div className="flex items-end gap-2 mt-2">
+        
+        {/* YENİ: YILDIZLAR VE DEĞERLENDİRME SAYISI */}
+        <div className="flex items-center gap-1 mb-2 mt-1">
+           <span className={`text-[10px] ${ratingCount > 0 ? "text-yellow-400" : "text-gray-300"}`}>
+             {"★".repeat(Math.round(avgRating))}{"☆".repeat(5 - Math.round(avgRating))}
+           </span>
+           <span className="text-[9px] font-bold text-gray-400">({ratingCount})</span>
+        </div>
+
+        <div className="flex items-end gap-2 mt-auto">
           {Number(product.discount_price) > 0 ? (
             <>
               <p className="text-base md:text-lg font-black text-black tracking-tight">{Number(product.discount_price).toLocaleString("tr-TR")} ₺</p>
