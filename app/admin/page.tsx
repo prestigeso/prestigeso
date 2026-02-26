@@ -263,13 +263,11 @@ export default function AdminPanel() {
     alert("Slide kaydedildi ✅"); loadAllData();
   };
 
-  // --- OTONOM KAMPANYA SİSTEMİ EKLENDİ ---
   const applyDiscountCampaign = async () => {
     if (selectedCampaignProducts.length === 0) return alert("İndirim için ürün seç!");
     if (!campaignDates.start || !campaignDates.end) return alert("Lütfen kampanya başlangıç ve bitiş tarihlerini seçin!");
     if (discountPercent <= 0 || discountPercent >= 90) return alert("İndirim yüzdesi 1-89 arası olsun.");
 
-    // Tarihleri Veritabanı formatına çevir (Bitiş tarihini günün sonu 23:59:59 yap)
     const startIso = new Date(campaignDates.start).toISOString();
     const endIso = new Date(campaignDates.end + "T23:59:59").toISOString();
 
@@ -359,7 +357,6 @@ export default function AdminPanel() {
       </nav>
 
       <div className="px-6 max-w-6xl mx-auto space-y-6">
-        {/* İSTATİSTİK */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center text-center hover:border-green-200 hover:shadow-md transition-all">
             <span className="text-3xl mb-2">💸</span>
@@ -383,14 +380,12 @@ export default function AdminPanel() {
           </div>
         </div>
 
-        {/* STOK SEKME */}
         <div className="flex items-center gap-2 px-1 overflow-x-auto">
           <button onClick={() => setStockTab("all")} className={`text-[10px] font-black uppercase tracking-widest px-5 py-2.5 rounded-full transition-all ${stockTab === "all" ? "bg-black text-white shadow-md" : "bg-white border border-gray-200 text-gray-500 hover:bg-gray-50"}`}>Tümü</button>
           <button onClick={() => setStockTab("in")} className={`text-[10px] font-black uppercase tracking-widest px-5 py-2.5 rounded-full transition-all ${stockTab === "in" ? "bg-green-600 text-white shadow-md" : "bg-white border border-gray-200 text-green-700 hover:bg-green-50"}`}>Stokta Olanlar</button>
           <button onClick={() => setStockTab("out")} className={`text-[10px] font-black uppercase tracking-widest px-5 py-2.5 rounded-full transition-all ${stockTab === "out" ? "bg-red-600 text-white shadow-md" : "bg-white border border-gray-200 text-red-600 hover:bg-red-50"}`}>Stoğu Bitenler ({outOfStockCount})</button>
         </div>
 
-        {/* Ürün Envanteri */}
         <div>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 px-1 gap-3">
             <h2 className="font-bold text-sm uppercase tracking-widest text-gray-500">Ürün Envanteri</h2>
@@ -408,16 +403,15 @@ export default function AdminPanel() {
             ) : (
               <div className="divide-y divide-gray-100">
                 {filteredProducts.map((p) => {
-                  // OTONOM KAMPANYA MOTORU (ZAMAN KONTROLÜ)
                   const now = new Date().toISOString();
                   let campaignStatus = "none";
                   
                   if (p.discount_price > 0 && p.campaign_start_date && p.campaign_end_date) {
-                    if (now < p.campaign_start_date) campaignStatus = "waiting"; // Henüz başlamadı
-                    else if (now >= p.campaign_start_date && now <= p.campaign_end_date) campaignStatus = "active"; // Aktif
-                    else if (now > p.campaign_end_date) campaignStatus = "expired"; // Süresi bitti
+                    if (now < p.campaign_start_date) campaignStatus = "waiting";
+                    else if (now >= p.campaign_start_date && now <= p.campaign_end_date) campaignStatus = "active";
+                    else if (now > p.campaign_end_date) campaignStatus = "expired";
                   } else if (p.discount_price > 0) {
-                    campaignStatus = "active_manual"; // Tarihsiz, manuel indirim var
+                    campaignStatus = "active_manual";
                   }
 
                   return (
@@ -429,13 +423,10 @@ export default function AdminPanel() {
                           {p.category || "Kategori yok"} 
                           {Number(p.stock) <= 0 && <span className="ml-2 text-red-600 font-bold">(STOK BİTTİ)</span>}
                         </p>
-                        
-                        {/* ZEKİ KAMPANYA ROZETLERİ */}
                         {campaignStatus === "active" && <p className="text-[10px] font-bold text-green-600 mt-1">🟢 Aktif İndirim: {Number(p.discount_price).toFixed(0)} ₺</p>}
                         {campaignStatus === "waiting" && <p className="text-[10px] font-bold text-orange-500 mt-1">⏳ Bekleyen Kampanya: {new Date(p.campaign_start_date!).toLocaleDateString('tr-TR')}</p>}
                         {campaignStatus === "expired" && <p className="text-[10px] font-bold text-gray-400 line-through mt-1">Süresi Biten İndirim: {Number(p.discount_price).toFixed(0)} ₺</p>}
                         {campaignStatus === "active_manual" && <p className="text-[10px] font-bold text-green-600 mt-1">🟢 Aktif İndirim (Süresiz): {Number(p.discount_price).toFixed(0)} ₺</p>}
-                        {campaignStatus === "none" && <p className="text-[10px] font-bold text-gray-400 mt-1">İndirim: Yok</p>}
                       </div>
                       <button onClick={() => openEditProduct(p.id)} className="bg-black text-white px-4 py-2 rounded-lg text-xs font-bold active:scale-95 transition-transform">Düzenle</button>
                     </div>
@@ -464,7 +455,7 @@ export default function AdminPanel() {
         <button onClick={() => setIsFabOpen(!isFabOpen)} className={`w-16 h-16 rounded-full shadow-2xl flex items-center justify-center text-3xl font-light transition-all duration-300 z-50 ${isFabOpen ? "bg-red-500 text-white rotate-45" : "bg-black text-white rotate-0 hover:scale-105"}`}>+</button>
       </div>
 
-      {/* YENİ ÜRÜN EKLE MODALI */}
+      {/* YENİ ÜRÜN EKLE MODALI (KOLYELER EKLENDİ) */}
       {isAddProductOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl flex flex-col max-h-[90vh]">
@@ -480,8 +471,13 @@ export default function AdminPanel() {
               </div>
               <div>
                 <label className="text-xs font-bold text-gray-500 uppercase">Kategori</label>
-                <select required name="category" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium">
-                  <option value="Masa Süsleri">Masa Süsleri</option><option value="Yüzükler">Yüzükler</option><option value="Setler">Setler</option><option value="Bilezikler">Bilezikler</option><option value="Küpeler">Küpeler</option>
+                <select required name="category" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium text-black outline-none focus:ring-2 focus:ring-black">
+                  <option value="Kolyeler">Kolyeler</option>
+                  <option value="Yüzükler">Yüzükler</option>
+                  <option value="Bilezikler">Bilezikler</option>
+                  <option value="Küpeler">Küpeler</option>
+                  <option value="Setler">Setler</option>
+                  <option value="Masa Süsleri">Masa Süsleri</option>
                 </select>
               </div>
               <div><label className="text-xs font-bold text-gray-500 uppercase">Açıklama</label><textarea required name="description" rows={3} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium resize-none" /></div>
@@ -549,14 +545,18 @@ export default function AdminPanel() {
                   )}
                   <button type="button" disabled={editAddUploading} onClick={addMoreImagesToProduct} className="w-full mt-2 bg-blue-600 text-white py-2 rounded-xl font-bold text-sm disabled:opacity-60">{editAddUploading ? "Yükleniyor..." : "Ekle (Sonra Kaydet)"}</button>
                 </div>
-                
                 <form onSubmit={handleUpdateProduct} className="space-y-4 mt-5">
                   <div><label className="text-xs font-bold text-gray-500 uppercase">Başlık</label><input required type="text" value={editingProduct.name} onChange={(e) => setEditingProduct({ ...editingProduct, name: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium" /></div>
                   <div><label className="text-xs font-bold text-gray-500 uppercase">Fiyat (₺)</label><input required type="number" value={editingProduct.price} onChange={(e) => setEditingProduct({ ...editingProduct, price: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium" /></div>
                   <div>
                     <label className="text-xs font-bold text-gray-500 uppercase">Kategori</label>
-                    <select value={editingProduct.category || "Masa Süsleri"} onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium">
-                      <option value="Masa Süsleri">Masa Süsleri</option><option value="Yüzükler">Yüzükler</option><option value="Setler">Setler</option><option value="Bilezikler">Bilezikler</option><option value="Küpeler">Küpeler</option>
+                    <select value={editingProduct.category || "Kolyeler"} onChange={(e) => setEditingProduct({ ...editingProduct, category: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium text-black focus:ring-2 focus:ring-black outline-none transition-all">
+                      <option value="Kolyeler">Kolyeler</option>
+                      <option value="Yüzükler">Yüzükler</option>
+                      <option value="Bilezikler">Bilezikler</option>
+                      <option value="Küpeler">Küpeler</option>
+                      <option value="Setler">Setler</option>
+                      <option value="Masa Süsleri">Masa Süsleri</option>
                     </select>
                   </div>
                   <div><label className="text-xs font-bold text-gray-500 uppercase">Stok</label><input type="number" value={editingProduct.stock ?? 0} onChange={(e) => setEditingProduct({ ...editingProduct, stock: Number(e.target.value) })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium" /></div>
@@ -573,7 +573,7 @@ export default function AdminPanel() {
         </div>
       )}
 
-      {/* KAMPANYA / İNDİRİM MODALI (OTOMATİK ZAMANLAYICI EKLENDİ) */}
+      {/* KAMPANYA / İNDİRİM MODALI */}
       {isCampaignOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center">
           <div className="bg-white w-full max-w-lg rounded-t-3xl p-6 pb-10 shadow-2xl max-h-[90vh] flex flex-col">
@@ -586,8 +586,6 @@ export default function AdminPanel() {
                 <label className="text-xs font-bold text-gray-500 uppercase block mb-2">İndirim Yüzdesi (%)</label>
                 <input type="number" value={discountPercent} onChange={(e) => setDiscountPercent(Number(e.target.value))} className="w-full p-3 bg-white border border-gray-200 rounded-xl font-medium" min={1} max={89} />
               </div>
-
-              {/* TARİH SEÇİCİLERİ ZORUNLU KILINDI */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="text-xs font-bold text-gray-500 uppercase">Başlangıç Tarihi</label>
@@ -598,7 +596,6 @@ export default function AdminPanel() {
                   <input type="date" required value={campaignDates.end} onChange={(e) => setCampaignDates({ ...campaignDates, end: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 text-sm font-medium" />
                 </div>
               </div>
-
               <div>
                 <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Ürün Seçimi</label>
                 <div className="grid grid-cols-2 gap-2">
@@ -610,7 +607,6 @@ export default function AdminPanel() {
                   ))}
                 </div>
               </div>
-
               <div className="flex gap-2">
                 <button type="button" onClick={applyDiscountCampaign} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-black shadow-lg">🚀 Otomatik Kur</button>
                 <button type="button" onClick={removeDiscountCampaign} className="flex-1 bg-red-50 text-red-600 py-3 rounded-xl font-black border border-red-100">Kaldır</button>
@@ -626,7 +622,7 @@ export default function AdminPanel() {
           <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
               <h2 className="text-xl font-black">⚙️ Özel Sayfa Paneli</h2>
-              <button onClick={() => { revokeUrls(newSlidePreviews); setNewSlidePreviews([]); setNewSlideFiles([]); setIsSettingsOpen(false); }} className="w-8 h-8 bg-gray-100 rounded-full font-bold">✕</button>
+              <button onClick={() => setIsSettingsOpen(false)} className="w-8 h-8 bg-gray-100 rounded-full font-bold">✕</button>
             </div>
             <form onSubmit={handleSaveSettings} className="space-y-4">
               <div>

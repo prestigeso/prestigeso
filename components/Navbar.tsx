@@ -10,7 +10,7 @@ export default function Navbar() {
   const { searchQuery, setSearchQuery, selectedCategory, setSelectedCategory } = useSearch();
   const { items, setIsCartOpen } = useCart();
 
-  const categories = ["Tümü", "Masa Süsleri", "Yüzükler", "Setler", "Bilezikler", "Küpeler"];
+  const categories = ["Setler", "Masa Süsleri",  "Kolyeler","Yüzükler", "Bilezikler", "Küpeler"];
   const totalItemsInCart = (items || []).reduce((total, item) => total + item.quantity, 0);
 
   // TRENDYOL MANTIĞI: Oturum kontrolü yapan fonksiyon

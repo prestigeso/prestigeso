@@ -8,8 +8,10 @@ import { useSearch } from "@/context/SearchContext";
 import { supabase } from "@/lib/supabase";
 
 export default function Home() {
-  const { searchQuery, selectedCategory, setSelectedCategory } = useSearch();
+  // ARAMA VE KATEGORİ MOTORU (Context'ten gelen veriler)
+  const { searchQuery, setSearchQuery, selectedCategory, setSelectedCategory } = useSearch() as any;
   const router = useRouter();
+  
   const [dbProducts, setDbProducts] = useState<any[]>([]);
   const [heroSlides, setHeroSlides] = useState<any[]>([]);
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -18,7 +20,26 @@ export default function Home() {
   const [showAll, setShowAll] = useState(false);
   const [localCampaign, setLocalCampaign] = useState("");
 
-  const baseCategories = ["Masa Süsleri", "Yüzükler", "Setler", "Bilezikler", "Küpeler"];
+  const baseCategories = ["Setler", "Masa Süsleri",  "Kolyeler","Yüzükler", "Bilezikler", "Küpeler"];
+
+  // -----------------------------------------------------
+  // YENİ: ARAMA VEYA KATEGORİ TIKLANDIĞINDA VİTRİNİ OTOMATİK AÇ
+  // -----------------------------------------------------
+  useEffect(() => {
+    // Eğer arama kutusuna bir şey yazıldıysa VEYA kategori "Tümü" dışında bir şey seçildiyse...
+    if ((searchQuery && searchQuery.trim() !== "") || (selectedCategory && selectedCategory !== "Tümü")) {
+      setShowAll(true); // Slider'ı gizle, filtrelenmiş ürün ızgarasını (grid) göster!
+    } else if (!searchQuery && selectedCategory === "Tümü") {
+      setShowAll(false); // Aramayı siler veya Tümü'ne dönerse tekrar ana vitrine dön.
+    }
+  }, [searchQuery, selectedCategory]);
+
+  // Vitrini kapatıp başa dönme fonksiyonu
+  const handleCloseShowcase = () => {
+    setShowAll(false);
+    setSelectedCategory("Tümü");
+    if (setSearchQuery) setSearchQuery(""); // Arama kutusunu da temizle
+  };
 
   // -----------------------------------------------------
   // KUSURSUZ ZİYARETÇİ SAYAÇ VE VERİ MOTORU
@@ -27,42 +48,28 @@ export default function Home() {
     setLocalCampaign(localStorage.getItem("prestigeso_campaign") || "");
 
     const loadAllDataAndCount = async () => {
-      // 1. ADIM: ZİYARETÇİ SAYACI (Sekme Kapanana Kadar Sadece 1 Kere Çalışır)
       try {
         const isHere = sessionStorage.getItem("prestige_session_active");
-
         if (!isHere) {
-          // İlk giriş! Hemen kapıyı kilitle ki çift tetiklenmesin.
           sessionStorage.setItem("prestige_session_active", "true");
-
-          const { error } = await supabase.from("page_views").insert([
-            { created_at: new Date().toISOString() }
-          ]);
-
+          const { error } = await supabase.from("page_views").insert([{ created_at: new Date().toISOString() }]);
           if (error) {
             console.error("Ziyaretçi sayılamadı:", error.message);
-            sessionStorage.removeItem("prestige_session_active"); // Hata olursa kilidi aç
-          } else {
-            console.log("Yeni Müşteri Geldi! +1 👁️");
+            sessionStorage.removeItem("prestige_session_active"); 
           }
-        } else {
-          console.log("Müşteri zaten sitede, sayılmadı. ⏳");
         }
       } catch (err) {
         console.error("Sayaç hatası:", err);
       }
 
-      // 2. ADIM: VİTRİN VERİLERİNİ ÇEK
       try {
         const { data: slidesData } = await supabase.from("hero_slides").select("*").order("created_at", { ascending: false });
         if (slidesData) setHeroSlides(slidesData);
 
-        // Ürünleri ve onaylanmış yorumları aynı anda çek
         const { data: productsData } = await supabase.from("products").select("*").order("created_at", { ascending: false });
         const { data: reviewsData } = await supabase.from("reviews").select("product_id, rating").eq("is_approved", true);
 
         if (productsData) {
-          // YENİ: Ürünlerin içine yıldız ortalamasını ve yorum sayısını gömüyoruz
           const productsWithStats = productsData.map(p => {
             const pRevs = reviewsData?.filter(r => r.product_id === p.id) || [];
             const avg = pRevs.length > 0 ? (pRevs.reduce((acc, r) => acc + r.rating, 0) / pRevs.length) : 0;
@@ -97,21 +104,30 @@ export default function Home() {
 
   const filteredProducts = useMemo(() => {
     let result = dbProducts;
+    
+    // Kategori Filtresi
     if (selectedCategory === "En Çok Satanlar") result = bestsellersFull;
     else if (selectedCategory === "Yeni Gelenler") result = newArrivalsFull;
     else if (selectedCategory === "İndirimler") result = discountedFull;
     else if (selectedCategory !== "Tümü") {
       result = dbProducts.filter((p) => p.category === selectedCategory);
     }
-    if (searchQuery) {
-      result = result.filter((product) => (product.name || "").toLowerCase().includes(searchQuery.toLowerCase()));
+    
+    // Arama Çubuğu Filtresi
+    if (searchQuery && searchQuery.trim() !== "") {
+      const query = searchQuery.toLowerCase();
+      result = result.filter((product) => 
+        (product.name || "").toLowerCase().includes(query) || 
+        (product.category || "").toLowerCase().includes(query)
+      );
     }
+    
     return result;
   }, [dbProducts, selectedCategory, searchQuery, bestsellersFull, newArrivalsFull, discountedFull]);
 
   const handleSeeAll = (cat: string) => {
     setSelectedCategory(cat);
-    setShowAll(true);
+    // showAll state'i zaten useEffect sayesinde otomatik true olacak.
   };
 
   // -----------------------------------------------------
@@ -156,19 +172,24 @@ export default function Home() {
         {showAll ? (
           <div className="animate-in fade-in duration-500">
             <div className="flex items-center justify-between mb-8 border-b-2 border-black pb-4">
-              <h2 className="text-2xl font-black uppercase tracking-tight">{selectedCategory}</h2>
-              <button onClick={() => setShowAll(false)} className="text-xs font-bold text-gray-500 hover:text-black uppercase tracking-widest border border-gray-200 hover:border-black px-4 py-2 rounded-full transition-all">
+              <h2 className="text-2xl font-black uppercase tracking-tight">
+                {searchQuery ? `Arama: "${searchQuery}"` : selectedCategory}
+              </h2>
+              <button onClick={handleCloseShowcase} className="text-xs font-bold text-gray-500 hover:text-black uppercase tracking-widest border border-gray-200 hover:border-black px-4 py-2 rounded-full transition-all">
                 ✕ Vitrine Dön
               </button>
             </div>
+            
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6">
               {filteredProducts.map((product) => (
                 <PrestigeCard key={product.id} product={product} />
               ))}
+              
               {filteredProducts.length === 0 && (
-                <p className="col-span-full text-center py-20 text-gray-400 font-bold uppercase tracking-widest border border-dashed border-gray-200 rounded-2xl">
-                  Bu listeye ait ürün bulunamadı.
-                </p>
+                <div className="col-span-full flex flex-col items-center justify-center py-20 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                  <span className="text-4xl mb-4 opacity-50">🔍</span>
+                  <p className="text-gray-400 font-black uppercase tracking-widest text-xs">Aramanıza uygun ürün bulunamadı.</p>
+                </div>
               )}
             </div>
           </div>
@@ -257,9 +278,7 @@ function PrestigeCard({ product, badgeLabel }: { product: any, badgeLabel?: stri
   };
 
   return (
-    // DÜZENLEME: En dışa ince, yuvarlak bir çerçeve ve ufak iç boşluk (p-2) eklendi
     <Link href={`/product/${product.id}`} className="group relative block cursor-pointer w-full h-full flex flex-col border border-gray-100 p-2 rounded-2xl hover:border-black transition-all bg-white shadow-sm hover:shadow-md">
-      {/* DÜZENLEME: aspect-square (KARE FOTOĞRAF) korundu ve köşeleri kartın içine uyumlu yapıldı */}
       <div className="aspect-square w-full overflow-hidden rounded-xl bg-gray-50 relative mb-3">
         <img src={displayImage} alt={product.name} className="h-full w-full object-cover mix-blend-multiply group-hover:scale-105 transition-transform duration-700 ease-out" />
         <button onClick={handleFavoriteClick} className="absolute top-2 right-2 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full shadow-sm flex items-center justify-center hover:scale-110 active:scale-95 transition-all z-10 group/btn" title="Favorilere Ekle">
@@ -272,12 +291,10 @@ function PrestigeCard({ product, badgeLabel }: { product: any, badgeLabel?: stri
         )}
       </div>
       
-      {/* İÇERİK KISMI: Eski fontlar tamamen aynı, araya sadece yıldız girdi */}
       <div className="px-1 flex-1 flex flex-col">
         <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-0.5 truncate">{product.category || "PRESTİGESO"}</p>
         <h3 className="text-xs md:text-sm font-bold text-gray-900 line-clamp-2 leading-snug flex-1">{product.name}</h3>
         
-        {/* YENİ: YILDIZLAR VE DEĞERLENDİRME SAYISI */}
         <div className="flex items-center gap-1 mb-2 mt-1">
            <span className={`text-[10px] ${ratingCount > 0 ? "text-yellow-400" : "text-gray-300"}`}>
              {"★".repeat(Math.round(avgRating))}{"☆".repeat(5 - Math.round(avgRating))}
