@@ -187,7 +187,7 @@ export default function ProductDetailPage() {
   if (loading) return <div className="min-h-screen flex items-center justify-center font-black uppercase tracking-widest text-gray-400">Ürün Hazırlanıyor...</div>;
   if (!product) return <div className="min-h-screen flex items-center justify-center font-black uppercase tracking-widest text-black">Ürün Bulunamadı</div>;
 
-  const avgRating = reviews.length > 0 ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1) : "5.0";
+  const avgRating = reviews.length > 0 ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1) : "0.0";
 
   return (
     <div className="min-h-screen bg-white pt-24 pb-20 px-4 md:px-10">
@@ -225,8 +225,12 @@ export default function ProductDetailPage() {
         <div className="w-full md:w-1/2 flex flex-col justify-start">
           <h1 className="text-3xl md:text-5xl font-black text-black uppercase tracking-tight mb-2 leading-none">{product.name}</h1>
           <div className="flex items-center gap-2 mb-4">
-             <span className="text-yellow-400 text-lg">★★★★★</span>
-             <span className="text-xs font-bold text-gray-400 border-b border-gray-400 cursor-pointer hover:text-black" onClick={() => setActiveTab("reviews")}>{avgRating} ({reviews.length} Değerlendirme)</span>
+             <span className={`text-lg ${reviews.length > 0 ? "text-yellow-400" : "text-gray-300"}`}>
+               {"★".repeat(Math.round(Number(avgRating)))}{"☆".repeat(5 - Math.round(Number(avgRating)))}
+             </span>
+             <span className="text-xs font-bold text-gray-400 border-b border-gray-400 cursor-pointer hover:text-black" onClick={() => setActiveTab("reviews")}>
+               {avgRating} ({reviews.length} Değerlendirme)
+             </span>
           </div>
           
           <div className="flex items-baseline gap-4 mb-8">
