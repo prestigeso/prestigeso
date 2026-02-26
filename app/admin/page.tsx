@@ -48,6 +48,18 @@ type OrderRow = {
   status: string;
   created_at: string;
 };
+type ReviewRow = {
+  id: string;
+  product_id: string;
+  user_id: string;
+  user_name: string;
+  rating: number;
+  comment: string;
+  images: string[] | null;
+  is_approved: boolean;
+  created_at: string;
+  products?: { name: string; image: string; images?: string[] };
+};
 const STORAGE_BUCKET = "products";
 
 function revokeUrls(urls: string[]) {
@@ -96,7 +108,10 @@ const [replyingToQ, setReplyingToQ] = useState<number | null>(null);
 const [qReplyText, setQReplyText] = useState("");
 const [dbOrders, setDbOrders] = useState<OrderRow[]>([]);
 const [isOrdersOpen, setIsOrdersOpen] = useState(false);
-
+// YORUM YÖNETİMİ STATELERİ
+  const [dbReviews, setDbReviews] = useState<ReviewRow[]>([]);
+  const [isReviewsOpen, setIsReviewsOpen] = useState(false);
+  const pendingReviewsCount = dbReviews.filter(r => !r.is_approved).length;
 // Bekleyen sipariş sayısını bulalım (Menüdeki rozet için)
 const pendingOrdersCount = dbOrders.filter(o => o.status === 'Bekliyor').length;
   const moveNewImage = (index: number, direction: "left" | "right") => {
@@ -171,6 +186,12 @@ const pendingOrdersCount = dbOrders.filter(o => o.status === 'Bekliyor').length;
       if (oData) {
         setTotalOrders(oData.length);
         setTotalRevenue(oData.reduce((acc: number, o: any) => acc + Number(o.total_amount || 0), 0));
+        // YORUMLARI ÇEK
+      const { data: rData } = await supabase
+        .from("reviews")
+        .select("*, products(name, image, images)")
+        .order("created_at", { ascending: false });
+      if (rData) setDbReviews(rData as any[]);
       } else {
         setTotalOrders(0); setTotalRevenue(0);
       }
@@ -396,6 +417,27 @@ const handleUpdateOrderStatus = async (id: number, newStatus: string) => {
     prev.map((o) => (o.id === id ? { ...o, status: newStatus } : o))
   );
 };
+// YORUM ONAYLAMA MOTORU
+  const handleApproveReview = async (id: string) => {
+    const { error } = await supabase.from("reviews").update({ is_approved: true }).eq("id", id);
+    if (!error) {
+      alert("Yorum asilce yayına alındı! ✅");
+      setDbReviews((prev) => prev.map(r => r.id === id ? { ...r, is_approved: true } : r));
+    } else {
+      alert("Hata: " + error.message);
+    }
+  };
+
+  // YORUM SİLME MOTORU
+  const handleDeleteReview = async (id: string) => {
+    if (!window.confirm("Bu yorumu tamamen silmek istediğinize emin misiniz?")) return;
+    const { error } = await supabase.from("reviews").delete().eq("id", id);
+    if (!error) {
+      setDbReviews((prev) => prev.filter(r => r.id !== id));
+    } else {
+      alert("Hata: " + error.message);
+    }
+  };
   return (
     <div className="min-h-screen bg-gray-100 font-sans text-black pb-32">
       {/* HEADER */}
@@ -439,6 +481,17 @@ const handleUpdateOrderStatus = async (id: number, newStatus: string) => {
     </span>
   )}
 </button>
+<button 
+                onClick={() => { setActiveNavMenu(null); setIsReviewsOpen(true); }} 
+                className="w-full px-4 py-3 text-[11px] text-left text-gray-500 hover:bg-gray-50 hover:text-black font-black uppercase tracking-widest flex justify-between items-center"
+              >
+                <span>⭐ Değerlendirmeler</span>
+                {pendingReviewsCount > 0 && (
+                  <span className="bg-orange-500 text-white px-2 py-0.5 rounded-full text-[9px]">
+                    {pendingReviewsCount} ONAY
+                  </span>
+                )}
+              </button>
               <button onClick={() => { setActiveNavMenu(null); setIsMessagesOpen(true); }} className="w-full px-4 py-3 text-[11px] text-left text-gray-500 hover:bg-gray-50 hover:text-black font-black uppercase tracking-widest flex justify-between">
   Müşteri Mesajları {unreadMessagesCount > 0 && <span className="bg-red-500 text-white px-1.5 py-0.5 rounded-full">{unreadMessagesCount}</span>}
 </button>
@@ -1100,6 +1153,76 @@ const handleToggleQuestionApproval = async (id: number, currentStatus: boolean) 
     </div>
   </div>
 )}
+{/* YORUM YÖNETİMİ MODALI */}
+      {isReviewsOpen && (
+        <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-4xl rounded-3xl p-8 shadow-2xl max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
+              <h2 className="text-2xl font-black uppercase tracking-tight flex items-center gap-3">
+                <span>⭐</span> Yorum & Değerlendirme Yönetimi
+              </h2>
+              <button onClick={() => setIsReviewsOpen(false)} className="w-10 h-10 bg-gray-100 rounded-full font-bold hover:bg-gray-200 transition-colors">✕</button>
+            </div>
+
+            <div className="overflow-y-auto space-y-4 flex-1 pr-2">
+              {dbReviews.length === 0 ? (
+                <p className="text-center text-gray-400 font-bold py-20 uppercase tracking-widest text-sm">Dükkanda henüz hiç yorum yok.</p>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {dbReviews.map((rev) => {
+                    const product = rev.products;
+                    const productImage = product?.images?.[0] || product?.image || "/logo.jpeg";
+
+                    return (
+                      <div key={rev.id} className={`bg-white rounded-2xl p-5 shadow-sm border-2 transition-all flex flex-col ${rev.is_approved ? 'border-gray-100' : 'border-orange-300'}`}>
+                        
+                        <div className="flex justify-between items-start mb-3">
+                          {rev.is_approved ? (
+                            <span className="bg-green-100 text-green-700 px-2 py-1 rounded-lg text-[9px] font-black uppercase flex items-center gap-1">✅ Yayında</span>
+                          ) : (
+                            <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded-lg text-[9px] font-black uppercase flex items-center gap-1 animate-pulse">⏳ Onay Bekliyor</span>
+                          )}
+                          <span className="text-[9px] font-bold text-gray-400">{new Date(rev.created_at).toLocaleDateString("tr-TR")}</span>
+                        </div>
+
+                        <div className="flex items-center gap-3 mb-4 bg-gray-50 p-2 rounded-xl">
+                          <img src={productImage} alt="" className="w-10 h-10 rounded-lg object-cover" />
+                          <div className="flex-1 truncate">
+                            <p className="text-[10px] font-bold text-black truncate">{product?.name || "Bilinmeyen Ürün"}</p>
+                          </div>
+                        </div>
+
+                        <div className="mb-4 flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">{rev.user_name}</p>
+                            <span className="text-yellow-400 text-xs">{"★".repeat(rev.rating)}{"☆".repeat(5-rev.rating)}</span>
+                          </div>
+                          <p className="text-sm text-gray-700 font-medium italic">"{rev.comment}"</p>
+                        </div>
+
+                        {rev.images && rev.images.length > 0 && (
+                          <div className="flex gap-2 mb-4 overflow-x-auto">
+                            {rev.images.map((img: string, i: number) => (
+                              <a href={img} target="_blank" rel="noreferrer" key={i}><img src={img} className="w-12 h-12 rounded-lg object-cover border" alt="" /></a>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="flex gap-2 mt-auto pt-3 border-t border-gray-100">
+                          {!rev.is_approved && (
+                            <button onClick={() => handleApproveReview(rev.id)} className="flex-1 bg-black text-white py-2 rounded-lg font-black text-[10px] uppercase">Yayına Al</button>
+                          )}
+                          <button onClick={() => handleDeleteReview(rev.id)} className="flex-1 bg-red-50 text-red-600 py-2 rounded-lg font-black text-[10px] uppercase border border-red-100">Sil</button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
