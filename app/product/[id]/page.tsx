@@ -111,8 +111,25 @@ export default function ProductDetailPage() {
 
   const handleAction = (action: "cart" | "buy") => {
     if (!product) return;
-    addToCart({ id: product.id, name: product.name, price: activePrice, image: productImages[selectedImageIndex], category: product.category, quantity: 1 });
-    if (action === "cart") setIsCartOpen(true); else router.push("/checkout");
+    
+    // 1. Ürünü kesinlikle sepete ekle
+    addToCart({ 
+      id: product.id, 
+      name: product.name, 
+      price: activePrice, 
+      image: productImages[selectedImageIndex], 
+      category: product.category, 
+      quantity: 1 
+    });
+    
+    // 2. Tıklanan butona göre davran
+    if (action === "buy") {
+      // ŞİMDİ AL tıklandı: Sepet menüsünü aç ki müşteri hemen ödemeye gitsin!
+      setIsCartOpen(true); 
+    } else if (action === "cart") {
+      // SEPETE EKLE tıklandı: Sepeti AÇMA, adam gezinmeye devam etsin. Sadece haber ver.
+      alert("Ürün başarıyla sepete eklendi! 🛍️"); 
+    }
   };
 
   // --- SWIPE (KAYDIRMA) VE GALERİ ---
