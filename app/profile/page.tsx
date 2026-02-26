@@ -25,11 +25,45 @@ export default function ProfilePage() {
       }
       setUser(session.user);
       
+      // 1. Tarayıcıdan Donuk Verileri (ID'leri) Çek
       const savedFavs = JSON.parse(localStorage.getItem("prestige_favorites") || "[]");
       const savedViewed = JSON.parse(localStorage.getItem("prestige_viewed") || "[]");
+
+      // 2. Eğer ürün varsa, ID'lerini topla
+      const favIds = savedFavs.map((item: any) => item.id);
+      const viewedIds = savedViewed.map((item: any) => item.id);
       
-      setFavorites(savedFavs);
-      setRecentlyViewed(savedViewed);
+      // Tüm benzersiz ID'leri birleştir
+      const allIds = Array.from(new Set([...favIds, ...viewedIds]));
+
+      if (allIds.length > 0) {
+        // 3. Supabase'e gidip bu ID'lerin EN GÜNCEL halini çek!
+        const { data: freshProducts, error } = await supabase
+          .from("products")
+          .select("*")
+          .in("id", allIds);
+
+        if (!error && freshProducts) {
+          // Gelen taze verilerle favorileri güncelle
+          const liveFavs = favIds.map((id: any) => freshProducts.find((p) => p.id === id)).filter(Boolean);
+          const liveViewed = viewedIds.map((id: any) => freshProducts.find((p) => p.id === id)).filter(Boolean);
+
+          setFavorites(liveFavs);
+          setRecentlyViewed(liveViewed);
+
+          // Tarayıcının hafızasını da bu taze fiyatlarla güncelle ki bir dahaki sefere hazır olsun
+          localStorage.setItem("prestige_favorites", JSON.stringify(liveFavs));
+          localStorage.setItem("prestige_viewed", JSON.stringify(liveViewed));
+        } else {
+          // Hata olursa en azından eski hallerini göster
+          setFavorites(savedFavs);
+          setRecentlyViewed(savedViewed);
+        }
+      } else {
+        setFavorites([]);
+        setRecentlyViewed([]);
+      }
+
       setLoading(false);
     };
 
@@ -116,10 +150,22 @@ export default function ProfilePage() {
                     <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
                        {favorites.map((product) => {
                           const displayImage = product.images?.[0] || product.image || "/logo.jpeg";
+                          
+                          // İndirimli fiyat varsa onu göster, yoksa normal fiyatı göster (CANLI GÜNCELLEME)
+                          const activePrice = Number(product.discount_price) > 0 ? Number(product.discount_price) : Number(product.price);
+
                           return (
                             <Link href={`/product/${product.id}`} key={product.id} className="group relative block w-full h-full flex flex-col cursor-pointer">
                                <div className="aspect-[3/4] w-full overflow-hidden rounded-2xl bg-gray-50 relative border border-gray-200 mb-3">
                                  <img src={displayImage} alt={product.name} className="h-full w-full object-cover mix-blend-multiply group-hover:scale-105 transition-transform duration-700 ease-out" />
+                                 
+                                 {/* Eğer indirim varsa küçük bir etiket göster */}
+                                 {Number(product.discount_price) > 0 && (
+                                   <div className="absolute bottom-0 w-full bg-red-600 text-white text-[10px] font-black text-center py-1.5 uppercase tracking-widest z-10">
+                                     İndirimli
+                                   </div>
+                                 )}
+
                                  <button 
                                    onClick={(e) => { e.preventDefault(); removeFavorite(product.id); }} 
                                    className="absolute top-2 right-2 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full shadow-sm flex items-center justify-center text-black hover:scale-110 active:scale-95 transition-all z-10"
@@ -132,7 +178,11 @@ export default function ProfilePage() {
                                  <p className="text-[9px] font-black uppercase text-gray-400 tracking-widest mb-0.5 truncate">{product.category || "PRESTİGESO"}</p>
                                  <h4 className="font-bold text-xs uppercase truncate text-black mb-1">{product.name}</h4>
                                  <div className="flex items-end gap-2 mt-auto">
-                                   <p className="text-sm font-black text-black">{Number(product.price).toLocaleString("tr-TR")} ₺</p>
+                                   <p className="text-sm font-black text-black">{activePrice.toLocaleString("tr-TR")} ₺</p>
+                                   {/* Eski fiyatı üstü çizili göster */}
+                                   {Number(product.discount_price) > 0 && (
+                                      <p className="text-[10px] font-bold text-gray-400 line-through mb-0.5">{Number(product.price).toLocaleString("tr-TR")} ₺</p>
+                                   )}
                                  </div>
                                </div>
                             </Link>
@@ -224,13 +274,18 @@ export default function ProfilePage() {
                 <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x">
                    {recentlyViewed.map((item) => {
                       const displayImage = item.images?.[0] || item.image || "/logo.jpeg";
+                      // Burada da canlı fiyat gösterimi eklendi
+                      const activePrice = Number(item.discount_price) > 0 ? Number(item.discount_price) : Number(item.price);
+
                       return (
                         <Link href={`/product/${item.id}`} key={item.id} className="min-w-[90px] w-[90px] md:min-w-[100px] md:w-[100px] snap-start group relative block cursor-pointer flex-shrink-0">
                            <div className="aspect-[3/4] w-full overflow-hidden rounded-xl bg-gray-50 relative border border-gray-100 mb-2">
                              <img src={displayImage} alt={item.name} className="h-full w-full object-cover mix-blend-multiply group-hover:scale-110 transition-transform duration-500 ease-out" />
                            </div>
                            <h4 className="font-bold text-[9px] uppercase truncate text-black">{item.name}</h4>
-                           <p className="text-[10px] font-black text-gray-500 mt-0.5">{Number(item.price).toLocaleString("tr-TR")} ₺</p>
+                           <div className="flex items-end gap-1 mt-0.5">
+                             <p className="text-[10px] font-black text-black">{activePrice.toLocaleString("tr-TR")} ₺</p>
+                           </div>
                         </Link>
                       );
                    })}
