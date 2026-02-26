@@ -2,27 +2,19 @@
 
 import { useCart } from "@/context/CartContext";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation"; // 1. YENİ EKLENDİ: Yönlendirme için
 
 export default function CartSidebar() {
-  // 1. ADIM: updateQuantity fonksiyonunu Context'ten içeri aldık
   const { isCartOpen, toggleCart, items, removeFromCart, updateQuantity, cartTotal } = useCart();
   const [mounted, setMounted] = useState(false);
+  const router = useRouter(); // 2. YENİ EKLENDİ: Yönlendiriciyi tanımladık
 
   useEffect(() => setMounted(true), []);
 
-  const handleWhatsAppOrder = () => {
-    const phoneNumber = "905525280105";
-
-    let message = "Merhaba PrestigeSO! 👋\nAşağıdaki ürünleri sipariş etmek istiyorum:\n\n";
-
-    items.forEach((item) => {
-      message += `📦 *${item.name}*\n   Adet: ${item.quantity} | Fiyat: ${(item.price * item.quantity).toLocaleString("tr-TR")} ₺\n\n`;
-    });
-
-    message += `-------------------\n💰 *TOPLAM TUTAR: ${cartTotal.toLocaleString("tr-TR")} ₺*`;
-
-    const url = `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
-    window.open(url, "_blank");
+  // 3. YENİ EKLENDİ: Ödeme sayfasına yönlendirme motoru
+  const handleGoToCheckout = () => {
+    toggleCart(); // Önce sepet menüsünü asilce kapat
+    router.push("/checkout"); // Sonra güvenli ödeme sayfasına fırlat
   };
 
   if (!mounted || !isCartOpen) return null;
@@ -67,8 +59,6 @@ export default function CartSidebar() {
                       </div>
 
                       <div className="flex items-center justify-between mt-auto pt-2">
-                        
-                        {/* 2. ADIM: İŞTE O ŞIK ARTI EKSİ BUTONLARI (+ / -) */}
                         <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-gray-50 shadow-sm">
                           <button
                             onClick={() => updateQuantity(item.id, -1)}
@@ -109,11 +99,12 @@ export default function CartSidebar() {
                 <p className="text-2xl font-black text-black leading-none">{cartTotal.toLocaleString("tr-TR")} ₺</p>
               </div>
 
+              {/* 4. YENİ EKLENDİ: WhatsApp butonu yerine Ödeme Butonu */}
               <button
-                onClick={handleWhatsAppOrder}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-green-600 px-6 py-4 font-black text-white text-[11px] uppercase tracking-widest shadow-lg hover:bg-green-700 active:scale-95 transition-all"
+                onClick={handleGoToCheckout}
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-black px-6 py-4 font-black text-white text-[11px] uppercase tracking-widest shadow-lg hover:bg-gray-800 active:scale-95 transition-all"
               >
-                WhatsApp ile Sipariş Ver
+                Ödemeye Geç 🚀
               </button>
             </div>
           )}

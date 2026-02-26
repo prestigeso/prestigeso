@@ -13,9 +13,35 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
+  // ZEKİ KONTROL MOTORU: Kullanıcı kayıtlı mı değil mi bakıyoruz
   const handleContinue = async (e: React.FormEvent) => {
     e.preventDefault();
-    setStep("REGISTER"); 
+    setLoading(true);
+    setErrorMsg("");
+
+    try {
+      // 1. ADIM: 'customers' tablosunda bu mail adresi var mı diye bakıyoruz
+      const { data, error } = await supabase
+        .from('customers')
+        .select('id')
+        .eq('email', email.trim().toLowerCase()) // Küçük harf hassasiyeti ve boşluk temizliği
+        .maybeSingle(); // Eğer yoksa hata fırlatmaz, null döner
+
+      if (error) throw error;
+
+      if (data) {
+        // Müşteri bulundu! Şifre ekranına (LOGIN) gönderiyoruz.
+        setStep("LOGIN");
+      } else {
+        // Müşteri bulunamadı. Yeni kayıt (REGISTER) ekranına gönderiyoruz.
+        setStep("REGISTER");
+      }
+    } catch (err: any) {
+      console.error("Kontrol hatası:", err.message);
+      setErrorMsg("Bir hata oluştu, lütfen tekrar deneyin.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -25,14 +51,13 @@ export default function LoginPage() {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     
     if (error) {
-       setErrorMsg("Şifre hatalı veya e-posta bulunamadı.");
+       setErrorMsg("Şifre hatalı veya giriş yapılamadı.");
     } else {
       router.push("/profile");
     }
     setLoading(false);
   };
 
-  // İŞTE TEK VE GERÇEK handleRegister FONKSİYONU (Customers Tablosuna Kayıt Yapar)
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
@@ -43,7 +68,6 @@ export default function LoginPage() {
     if (error) {
       setErrorMsg(error.message);
     } else if (data.user) {
-      // Supabase'deki customers tablomuza müşteriyi ekliyoruz
       const { error: dbError } = await supabase
         .from('customers')
         .insert([
@@ -76,7 +100,7 @@ export default function LoginPage() {
           <div className="h-1 w-10 bg-black mx-auto mt-2"></div>
         </div>
 
-        {/* STEP 1: E-POSTA GİRİŞİ */}
+        {/* STEP 1: E-POSTA GİRİŞİ (Kontrol Buradan Geçiyor) */}
         {step === "INIT" && (
           <form onSubmit={handleContinue} className="space-y-6 animate-in fade-in duration-300">
             <h2 className="text-xl font-black text-center uppercase tracking-tight">Giriş Yap veya Üye Ol</h2>
@@ -87,8 +111,9 @@ export default function LoginPage() {
                 placeholder="E-posta adresinizi giriniz"
               />
             </div>
-            <button type="submit" className="w-full bg-black text-white py-4 rounded-xl font-black text-sm uppercase tracking-[0.2em] shadow-lg hover:bg-gray-800 transition-all">
-              Devam Et
+            {errorMsg && <p className="text-red-500 text-[10px] font-bold uppercase text-center">{errorMsg}</p>}
+            <button type="submit" disabled={loading} className="w-full bg-black text-white py-4 rounded-xl font-black text-sm uppercase tracking-[0.2em] shadow-lg hover:bg-gray-800 transition-all disabled:opacity-50">
+              {loading ? "Kontrol Ediliyor..." : "Devam Et"}
             </button>
           </form>
         )}
@@ -127,7 +152,7 @@ export default function LoginPage() {
                </button>
                <h2 className="text-xl font-black uppercase tracking-tight">Hesap Oluşturun</h2>
             </div>
-            <p className="text-[11px] text-gray-400 font-medium italic">Yeni bir üyelik oluşturuyorsunuz.</p>
+            <p className="text-[11px] text-gray-400 font-medium italic">Sistemde kaydınız bulunamadı, yeni üyelik oluşturuyorsunuz.</p>
             
             <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex justify-between items-center text-xs font-bold text-gray-500">
               <span className="truncate mr-2">{email}</span> 
@@ -160,13 +185,6 @@ export default function LoginPage() {
             <button type="submit" disabled={loading} className="w-full bg-black text-white py-4 rounded-xl font-black text-sm uppercase tracking-[0.2em] shadow-xl hover:bg-gray-800 transition-all">
                {loading ? "Hesap Açılıyor..." : "Üye Ol 🚀"}
             </button>
-
-            <div className="text-center mt-4">
-               <button type="button" onClick={() => setStep("LOGIN")} className="text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-black transition-colors border-b border-transparent hover:border-black">
-                  Zaten hesabım var, giriş yap
-               </button>
-            </div>
-
           </form>
         )}
       </div>

@@ -23,7 +23,31 @@ type ProductRow = {
   campaign_end_date: string | null;
   created_at?: string;
 };
-
+type MessageRow = {
+  id: number;
+  user_email: string;
+  message: string;
+  answer: string | null;
+  created_at: string;
+};
+type QuestionRow = {
+  id: number;
+  product_id: string;
+  question: string;
+  answer: string | null;
+  created_at: string;
+  is_approved?: boolean; // YENİ EKLENEN SATIR
+  products?: { name: string; image: string; images?: string[] };
+};
+type OrderRow = {
+  id: number;
+  user_email: string;
+  items: any[];
+  total_amount: number;
+  shipping_address: string;
+  status: string;
+  created_at: string;
+};
 const STORAGE_BUCKET = "products";
 
 function revokeUrls(urls: string[]) {
@@ -62,7 +86,19 @@ export default function AdminPanel() {
   const [creating, setCreating] = useState(false);
   const [newProductFiles, setNewProductFiles] = useState<File[]>([]);
   const [newProductPreviews, setNewProductPreviews] = useState<string[]>([]);
+  const [dbMessages, setDbMessages] = useState<MessageRow[]>([]);
+const [isMessagesOpen, setIsMessagesOpen] = useState(false);
+const [replyingTo, setReplyingTo] = useState<number | null>(null);
+const [replyText, setReplyText] = useState("");
+const [dbQuestions, setDbQuestions] = useState<QuestionRow[]>([]);
+const [isQuestionsOpen, setIsQuestionsOpen] = useState(false);
+const [replyingToQ, setReplyingToQ] = useState<number | null>(null);
+const [qReplyText, setQReplyText] = useState("");
+const [dbOrders, setDbOrders] = useState<OrderRow[]>([]);
+const [isOrdersOpen, setIsOrdersOpen] = useState(false);
 
+// Bekleyen sipariş sayısını bulalım (Menüdeki rozet için)
+const pendingOrdersCount = dbOrders.filter(o => o.status === 'Bekliyor').length;
   const moveNewImage = (index: number, direction: "left" | "right") => {
     const files = [...newProductFiles];
     const previews = [...newProductPreviews];
@@ -141,11 +177,23 @@ export default function AdminPanel() {
 
       const { data: vData } = await supabase.from("page_views").select("id");
       if (vData) setTotalVisits(vData.length); else setTotalVisits(0);
+      const { data: mData } = await supabase.from("messages").select("*").order("created_at", { ascending: false });
+if (mData) setDbMessages(mData as any[]);
     } catch (e: any) {
       console.error("loadAllData beklenmedik hata:", e);
     } finally {
       setLoading(false);
     }
+    const { data: qData } = await supabase
+  .from("questions")
+  .select("*, products(name, image, images)")
+  .order("created_at", { ascending: false });
+if (qData) setDbQuestions(qData as any[]);
+const { data: oData } = await supabase
+  .from("orders")
+  .select("*")
+  .order("created_at", { ascending: false });
+if (oData) setDbOrders(oData as any[]);
   };
 
   useEffect(() => {
@@ -199,7 +247,34 @@ export default function AdminPanel() {
     if (error) return alert("Silinemedi: " + error.message);
     setEditingProduct(null); loadAllData();
   };
+  const handleSendReply = async (id: number) => {
+  if (!replyText.trim()) return alert("Lütfen bir cevap yazın!");
+  
+  const now = new Date().toISOString();
+  
+  const { error } = await supabase
+    .from("messages")
+    .update({ answer: replyText, answered_at: now })
+    .eq("id", id);
 
+  if (error) return alert("Cevap gönderilemedi: " + error.message);
+  
+  alert("Cevap müşteriye asilce iletildi! ✅");
+  
+  // İŞTE SİHİRLİ DOKUNUŞ: Ekranı anında (sayfa yenilemeden) güncelliyoruz!
+  setDbMessages((prev) => 
+    prev.map((msg) => 
+      msg.id === id ? { ...msg, answer: replyText, answered_at: now } : msg
+    )
+  );
+
+  setReplyingTo(null);
+  setReplyText("");
+};
+
+// Okunmamış mesaj sayısını bulalım (Üstteki kırmızı bildirim noktası için)
+const unreadMessagesCount = dbMessages.filter(m => !m.answer).length;
+const unansweredQuestionsCount = dbQuestions.filter(q => !q.answer).length;
   const addMoreImagesToProduct = async () => {
     if (!editingProduct) return;
     if (editAddFiles.length === 0) return alert("Eklemek için en az 1 fotoğraf seç!");
@@ -305,14 +380,34 @@ export default function AdminPanel() {
     if (searchTerm) result = result.filter((p) => (p.name || "").toLowerCase().includes(searchTerm.toLowerCase()));
     return result;
   }, [dbProducts, searchTerm, stockTab]);
+  // SİPARİŞ DURUMU GÜNCELLEME
+const handleUpdateOrderStatus = async (id: number, newStatus: string) => {
+  const { error } = await supabase
+    .from("orders")
+    .update({ status: newStatus })
+    .eq("id", id);
 
+  if (error) return alert("Hata: " + error.message);
+  
+  alert(`Sipariş durumu "${newStatus}" olarak güncellendi! 📦`);
+  
+  // Ekranı anında güncelle
+  setDbOrders((prev) => 
+    prev.map((o) => (o.id === id ? { ...o, status: newStatus } : o))
+  );
+};
   return (
     <div className="min-h-screen bg-gray-100 font-sans text-black pb-32">
       {/* HEADER */}
       <div className="bg-white px-6 py-4 flex items-center justify-between relative z-50 border-b border-gray-100">
-        <button className="text-2xl hover:scale-110 transition-transform relative" title="Müşteri Mesajları">
-          ✉️<span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white shadow-sm"></span>
-        </button>
+        <button onClick={() => setIsMessagesOpen(true)} className="text-2xl hover:scale-110 transition-transform relative" title="Müşteri Mesajları">
+  ✉️
+  {unreadMessagesCount > 0 && (
+    <span className="absolute top-0 right-0 w-4 h-4 bg-red-500 rounded-full border-2 border-white shadow-sm flex items-center justify-center text-[8px] font-black text-white">
+      {unreadMessagesCount}
+    </span>
+  )}
+</button>
         <h1 className="text-xl font-black text-gray-900 tracking-widest uppercase">PRESTİGESO YÖNETİM PANELİ</h1>
         <div className="flex items-center gap-5">
           <button className="text-2xl hover:scale-110 transition-transform relative" title="Bildirimler">
@@ -328,12 +423,39 @@ export default function AdminPanel() {
           <button className="py-4 text-xs font-black text-gray-500 hover:text-black uppercase tracking-widest flex items-center gap-1 transition-colors">Müşteri ▾</button>
           {activeNavMenu === "musteri" && (
             <div className="absolute top-full left-1/2 -translate-x-1/2 bg-white border border-gray-100 shadow-xl rounded-xl py-2 w-48 flex flex-col z-50">
-              <button className="px-4 py-3 text-[11px] text-left text-gray-500 hover:bg-gray-50 hover:text-black font-black uppercase tracking-widest border-b border-gray-50">Ürün Soruları</button>
-              <button className="px-4 py-3 text-[11px] text-left text-gray-500 hover:bg-gray-50 hover:text-black font-black uppercase tracking-widest">Müşteri Mesajları</button>
+              {/* Admin Sol Menüsündeki Ürün Soruları Butonunu Şöyle Güncelle: */}
+<button 
+  onClick={() => { 
+    // Varsa menü state'ini kapatır, yoksa sadece isQuestionsOpen(true) çalışır
+    setIsQuestionsOpen(true); 
+  }} 
+  className="w-full px-4 py-3 text-[11px] text-left text-gray-500 hover:bg-gray-50 hover:text-black font-black uppercase tracking-widest flex justify-between items-center"
+>
+  <span>Ürün Soruları</span>
+  {/* İçeride cevaplanmamış soru varsa yanına asil bir turuncu bildirim atar */}
+  {unansweredQuestionsCount > 0 && (
+    <span className="bg-orange-500 text-white px-2 py-0.5 rounded-full text-[9px]">
+      {unansweredQuestionsCount}
+    </span>
+  )}
+</button>
+              <button onClick={() => { setActiveNavMenu(null); setIsMessagesOpen(true); }} className="w-full px-4 py-3 text-[11px] text-left text-gray-500 hover:bg-gray-50 hover:text-black font-black uppercase tracking-widest flex justify-between">
+  Müşteri Mesajları {unreadMessagesCount > 0 && <span className="bg-red-500 text-white px-1.5 py-0.5 rounded-full">{unreadMessagesCount}</span>}
+</button>
             </div>
           )}
         </div>
-        <button className="py-4 text-xs font-black text-gray-500 hover:text-black uppercase tracking-widest transition-colors">Siparişler</button>
+        <button 
+  onClick={() => setIsOrdersOpen(true)} 
+  className="py-4 text-xs font-black text-gray-500 hover:text-black uppercase tracking-widest flex items-center gap-2 transition-colors relative"
+>
+  Siparişler
+  {pendingOrdersCount > 0 && (
+    <span className="bg-green-500 text-white px-1.5 py-0.5 rounded-full text-[9px] animate-pulse shadow-sm">
+      {pendingOrdersCount} YENİ
+    </span>
+  )}
+</button>
         <div className="relative" onMouseEnter={() => setActiveNavMenu("performans")} onMouseLeave={() => setActiveNavMenu(null)}>
           <button className="py-4 text-xs font-black text-gray-500 hover:text-black uppercase tracking-widest flex items-center gap-1 transition-colors">Performans ▾</button>
           {activeNavMenu === "performans" && (
@@ -661,6 +783,323 @@ export default function AdminPanel() {
           </div>
         </div>
       )}
+      {/* MÜŞTERİ MESAJLARI MODALI */}
+{isMessagesOpen && (
+  <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
+    <div className="bg-white w-full max-w-2xl rounded-3xl p-6 shadow-2xl max-h-[90vh] flex flex-col">
+      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
+        <h2 className="text-xl font-black uppercase tracking-tight flex items-center gap-2">
+          <span>✉️</span> Müşteri Mesajları
+        </h2>
+        <button onClick={() => { setIsMessagesOpen(false); setReplyingTo(null); }} className="w-8 h-8 bg-gray-100 rounded-full font-bold hover:bg-gray-200">✕</button>
+      </div>
+
+      <div className="overflow-y-auto space-y-4 flex-1 pr-2">
+        {dbMessages.length === 0 ? (
+          <p className="text-center text-gray-400 font-bold py-10 uppercase tracking-widest text-xs">Henüz mesaj yok.</p>
+        ) : (
+          dbMessages.map((msg) => (
+            <div key={msg.id} className={`p-4 rounded-2xl border ${msg.answer ? "bg-gray-50 border-gray-100" : "bg-white border-blue-200 shadow-sm"}`}>
+              <div className="flex justify-between items-start mb-2">
+                <div>
+                  <p className="text-[10px] font-black uppercase text-gray-400 tracking-widest">{msg.user_email}</p>
+                  <p className="text-[9px] font-bold text-gray-400">{new Date(msg.created_at).toLocaleString("tr-TR")}</p>
+                </div>
+                {!msg.answer && <span className="bg-orange-100 text-orange-600 px-2 py-1 rounded text-[9px] font-black uppercase">Cevap Bekliyor</span>}
+              </div>
+              <p className="text-sm font-medium text-black mt-2 bg-gray-100/50 p-3 rounded-xl">{msg.message}</p>
+
+              {msg.answer ? (
+                <div className="mt-4 pl-4 border-l-2 border-black bg-white p-3 rounded-r-xl">
+                  <p className="text-[9px] font-black uppercase text-green-600 tracking-widest mb-1">Cevabınız:</p>
+                  <p className="text-sm text-gray-700 font-medium">{msg.answer}</p>
+                </div>
+              ) : (
+                <div className="mt-4">
+                  {replyingTo === msg.id ? (
+                    <div className="space-y-2 animate-in fade-in">
+                      <textarea 
+                        rows={3} 
+                        value={replyText} 
+                        onChange={(e) => setReplyText(e.target.value)} 
+                        placeholder="Müşteriye cevabınızı yazın..."
+                        className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-black resize-none"
+                      />
+                      <div className="flex gap-2">
+                        <button onClick={() => handleSendReply(msg.id)} className="flex-1 bg-black text-white py-2 rounded-xl text-xs font-black uppercase tracking-widest">Gönder 🚀</button>
+                        <button onClick={() => setReplyingTo(null)} className="px-4 bg-gray-100 text-gray-500 rounded-xl text-xs font-black uppercase">İptal</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <button onClick={() => { setReplyingTo(msg.id); setReplyText(""); }} className="bg-blue-50 text-blue-600 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-blue-100 transition-colors">
+                      Cevapla ↩
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  </div>
+)}
+
+{/* ÜRÜN SORULARI MODALI */}
+{isQuestionsOpen && (
+  <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
+    <div className="bg-white w-full max-w-3xl rounded-3xl p-6 shadow-2xl max-h-[90vh] flex flex-col">
+      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
+        <h2 className="text-xl font-black uppercase tracking-tight flex items-center gap-2">
+          <span>💬</span> Ürün Soruları
+        </h2>
+        <button onClick={() => { setIsQuestionsOpen(false); setReplyingToQ(null); }} className="w-8 h-8 bg-gray-100 rounded-full font-bold hover:bg-gray-200">✕</button>
+      </div>
+
+      <div className="overflow-y-auto space-y-4 flex-1 pr-2">
+        {dbQuestions.length === 0 ? (
+          <p className="text-center text-gray-400 font-bold py-10 uppercase tracking-widest text-xs">Henüz soru yok.</p>
+        ) : (
+          dbQuestions.map((q) => {
+            const displayImage = q.products?.images?.[0] || q.products?.image || "/logo.jpeg";
+            
+            // ÜRÜN SORULARINA CEVAP GÖNDERME MOTORU
+const handleSendQReply = async (id: number) => {
+  if (!qReplyText.trim()) return alert("Lütfen bir cevap yazın!");
+  
+  const now = new Date().toISOString();
+  
+  const { error } = await supabase
+    .from("questions")
+    .update({ answer: qReplyText, answered_at: now })
+    .eq("id", id);
+
+  if (error) return alert("Cevap gönderilemedi: " + error.message);
+  
+  alert("Ürün sorusu asilce cevaplandı! ✅");
+  
+  // Ekranı sayfayı yenilemeden anında güncelle
+  setDbQuestions((prev) => 
+    prev.map((q) => 
+      q.id === id ? { ...q, answer: qReplyText, answered_at: now } : q
+    )
+  );
+
+  setReplyingToQ(null);
+  setQReplyText("");
+};
+
+// SORUYU YAYINLA / GİZLE MOTORU
+const handleToggleQuestionApproval = async (id: number, currentStatus: boolean) => {
+  const newStatus = !currentStatus;
+  
+  const { error } = await supabase
+    .from("questions")
+    .update({ is_approved: newStatus })
+    .eq("id", id);
+
+  if (error) return alert("Durum güncellenemedi: " + error.message);
+  
+  // Ekranı anında güncelle
+  setDbQuestions((prev) => 
+    prev.map((q) => 
+      q.id === id ? { ...q, is_approved: newStatus } : q
+    )
+  );
+};
+
+            return (
+              <div key={q.id} className={`p-4 rounded-2xl border flex flex-col md:flex-row gap-4 ${q.answer ? "bg-gray-50 border-gray-100" : "bg-white border-orange-200 shadow-sm"}`}>
+                
+                {/* Ürün Görseli ve Adı */}
+                <div className="w-full md:w-24 flex-shrink-0 flex flex-col items-center gap-2">
+                  <div className="w-20 h-20 bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <img src={displayImage} alt="" className="w-full h-full object-cover mix-blend-multiply" />
+                  </div>
+                  <p className="text-[9px] font-black uppercase text-center truncate w-full text-gray-500">{q.products?.name || "Bilinmeyen"}</p>
+                </div>
+
+                {/* Soru ve Cevap Alanı */}
+                <div className="flex-1">
+                  <div className="flex justify-between items-start mb-2">
+  <p className="text-[9px] font-bold text-gray-400 mt-1">{new Date(q.created_at).toLocaleString("tr-TR")}</p>
+  
+  <div className="flex items-center gap-2">
+    {/* YENİ: YAYINLA / GİZLE BUTONU */}
+    {q.answer && (
+      <button 
+        onClick={() => handleToggleQuestionApproval(q.id, !!q.is_approved)}
+        className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
+          q.is_approved 
+            ? "bg-green-100 text-green-700 hover:bg-green-200 border border-green-200" 
+            : "bg-gray-100 text-gray-500 hover:bg-gray-200 border border-gray-200"
+        }`}
+      >
+        {q.is_approved ? "👁️ Yayında" : "👁️‍🗨️ Gizli"}
+      </button>
+    )}
+    
+    {!q.answer && <span className="bg-orange-100 text-orange-600 px-2 py-1 rounded-lg text-[9px] font-black uppercase border border-orange-200">Cevap Bekliyor</span>}
+  </div>
+</div>
+                  
+                  <p className="text-sm font-bold text-black bg-gray-100/50 p-3 rounded-xl border-l-4 border-black">
+                    <span className="text-[10px] font-black text-gray-400 uppercase block mb-1">Müşteri Sorusu:</span>
+                    {q.question}
+                  </p>
+
+                  {q.answer ? (
+                    <div className="mt-3 pl-4 border-l-4 border-green-500 bg-green-50/50 p-3 rounded-r-xl">
+                      <p className="text-[9px] font-black uppercase text-green-700 tracking-widest mb-1">Satıcı Cevabı:</p>
+                      <p className="text-sm text-gray-700 font-medium">{q.answer}</p>
+                    </div>
+                  ) : (
+                    <div className="mt-4">
+                      {replyingToQ === q.id ? (
+                        <div className="space-y-2 animate-in fade-in">
+                          <textarea 
+                            rows={3} 
+                            value={qReplyText} 
+                            onChange={(e) => setQReplyText(e.target.value)} 
+                            placeholder="Müşteriye asil cevabınızı yazın..."
+                            className="w-full p-3 bg-white border border-gray-200 rounded-xl text-sm outline-none focus:border-black resize-none"
+                          />
+                          <div className="flex gap-2">
+                            <button onClick={() => handleSendQReply(q.id)} className="flex-1 bg-black text-white py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-gray-800">Gönder 🚀</button>
+                            <button onClick={() => setReplyingToQ(null)} className="px-4 bg-gray-100 text-gray-500 rounded-xl text-xs font-black uppercase hover:bg-gray-200">İptal</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button onClick={() => { setReplyingToQ(q.id); setQReplyText(""); }} className="bg-orange-50 text-orange-600 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest hover:bg-orange-100 transition-colors">
+                          Soruya Cevap Ver ↩
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  </div>
+)}
+{/* SİPARİŞ YÖNETİMİ MODALI */}
+{isOrdersOpen && (
+  <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
+    <div className="bg-white w-full max-w-4xl rounded-3xl p-8 shadow-2xl max-h-[90vh] flex flex-col">
+      <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
+        <h2 className="text-2xl font-black uppercase tracking-tight flex items-center gap-3">
+          <span>📦</span> Sipariş Yönetimi
+        </h2>
+        <button onClick={() => setIsOrdersOpen(false)} className="w-10 h-10 bg-gray-100 rounded-full font-bold hover:bg-gray-200 transition-colors">✕</button>
+      </div>
+
+      <div className="overflow-y-auto space-y-6 flex-1 pr-2">
+        {dbOrders.length === 0 ? (
+          <p className="text-center text-gray-400 font-bold py-20 uppercase tracking-widest text-sm">Sistemde henüz sipariş yok.</p>
+        ) : (
+          dbOrders.map((order) => (
+            <div key={order.id} className="p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col md:flex-row gap-6 bg-white">
+              
+              {/* Sol Kısım: Müşteri ve Adres */}
+              <div className="flex-1 space-y-4">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Müşteri Email</p>
+                    <p className="font-bold text-sm text-black">{order.user_email}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Tarih</p>
+                    <p className="text-xs font-bold text-gray-600">{new Date(order.created_at).toLocaleString("tr-TR")}</p>
+                  </div>
+                </div>
+
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 border-b border-gray-200 pb-2">Teslimat Detayları</p>
+  
+  {(() => {
+    try {
+      const addr = JSON.parse(order.shipping_address);
+      return (
+        <div className="grid grid-cols-2 gap-y-3 gap-x-4">
+          <div>
+            <p className="text-[9px] font-bold text-gray-400 uppercase">Alıcı Kişi</p>
+            <p className="text-xs font-black text-black">{addr.firstName} {addr.lastName}</p>
+          </div>
+          <div>
+            <p className="text-[9px] font-bold text-gray-400 uppercase">Telefon</p>
+            <p className="text-xs font-black text-blue-600">{addr.phone}</p>
+          </div>
+          <div>
+            <p className="text-[9px] font-bold text-gray-400 uppercase">İl / İlçe</p>
+            <p className="text-xs font-bold text-gray-800">{addr.city} / {addr.district}</p>
+          </div>
+          <div>
+            <p className="text-[9px] font-bold text-gray-400 uppercase">Adres Başlığı</p>
+            <p className="text-xs font-bold text-gray-800 bg-gray-200 px-2 py-0.5 rounded w-max">{addr.addressTitle}</p>
+          </div>
+          <div className="col-span-2 bg-white p-3 rounded-lg border border-gray-200 mt-1">
+            <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">Açık Adres ({addr.neighborhood})</p>
+            <p className="text-xs font-medium text-gray-700 leading-relaxed">{addr.fullAddress}</p>
+          </div>
+        </div>
+      );
+    } catch (e) {
+      // Eski sistemden kalan düz metin adresler için çökmemesi adına yedek plan
+      return <p className="text-sm font-medium text-black leading-relaxed">{order.shipping_address}</p>;
+    }
+  })()}
+</div>
+
+                {/* Aksiyon Alanı */}
+                <div className="flex items-center gap-4 pt-2">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Sipariş Durumu:</p>
+                  <select 
+                    value={order.status}
+                    onChange={(e) => handleUpdateOrderStatus(order.id, e.target.value)}
+                    className={`text-xs font-black uppercase tracking-widest px-4 py-2 rounded-lg border outline-none cursor-pointer transition-colors
+                      ${order.status === 'Bekliyor' ? 'bg-orange-50 text-orange-600 border-orange-200' : 
+                        order.status === 'Hazırlanıyor' ? 'bg-blue-50 text-blue-600 border-blue-200' : 
+                        'bg-green-50 text-green-600 border-green-200'}`}
+                  >
+                    <option value="Bekliyor">⏳ Bekliyor</option>
+                    <option value="Hazırlanıyor">📦 Hazırlanıyor</option>
+                    <option value="Kargolandı">🚀 Kargolandı</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Sağ Kısım: Sepet İçeriği ve Tutar */}
+              <div className="w-full md:w-1/3 bg-gray-50 p-4 rounded-xl border border-gray-100 flex flex-col">
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 border-b border-gray-200 pb-2">Sipariş Özeti</p>
+                
+                <div className="flex-1 overflow-y-auto space-y-3 pr-1 max-h-40">
+                  {order.items.map((item: any, idx: number) => (
+                    <div key={idx} className="flex gap-3 items-center">
+                      <img src={item.images?.[0] || item.image || "/logo.jpeg"} className="w-10 h-10 rounded-lg object-cover border border-gray-200 bg-white" alt="" />
+                      <div className="flex-1">
+                        <p className="text-[9px] font-bold uppercase truncate text-black">{item.name}</p>
+                        <p className="text-[9px] font-black text-gray-500">{item.quantity} Adet</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 border-t border-gray-200 pt-3 flex justify-between items-end">
+                  <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Ödenen Tutar</span>
+                  <span className="text-lg font-black text-black">{order.total_amount.toLocaleString("tr-TR")} ₺</span>
+                </div>
+              </div>
+
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  </div>
+)}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
-import { supabase } from "@/lib/supabase"; // EKLENDİ: Supabase bağlantısı
+import { supabase } from "@/lib/supabase";
 
 export type CartItem = {
   id: number | string;
@@ -22,6 +22,9 @@ type CartContextType = {
   addToCart: (item: CartItem) => void;
   removeFromCart: (id: number | string) => void;
   updateQuantity: (id: number | string, amount: number) => void;
+  
+  // YENİ: clearCart tipini tanımladık
+  clearCart: () => void;
 
   cartTotal: number;
 
@@ -41,37 +44,43 @@ export function CartProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setMounted(true);
 
-    // JİLET GİBİ SENKRONİZASYON FONKSİYONU
     const loadAndSyncCart = async () => {
       const savedCart = localStorage.getItem("prestigeso_cart");
       if (savedCart) {
         try {
           const localCart: CartItem[] = JSON.parse(savedCart);
-          
-          // 1. Önce adamın hafızasındaki sepeti ekrana veriyoruz ki beklemesin
           setCart(localCart);
 
-          // 2. Arka planda ajan gibi Supabase'e gidip güncel fiyatları kontrol ediyoruz
           if (localCart.length > 0) {
             const ids = localCart.map(item => item.id);
+            // DİKKAT: Artık veritabanından 'stock' bilgisini de çekiyoruz
             const { data, error } = await supabase
               .from("products")
-              .select("id, price, discount_price")
+              .select("id, price, discount_price, stock") 
               .in("id", ids);
 
             if (data && !error) {
               let isChanged = false;
 
-              const syncedCart = localCart.map(item => {
+              // 1. ÖNCE FİLTRELE: Stoğu bitenleri (veya veritabanından silinenleri) sepetten acımadan uçur!
+              const availableItems = localCart.filter(item => {
                 const dbItem = data.find(p => p.id === item.id);
-                
+                // Ürün yoksa veya stoğu 0/eksi ise sepetten çöpe at
+                if (!dbItem || Number(dbItem.stock) <= 0) {
+                  isChanged = true;
+                  return false; 
+                }
+                return true; 
+              });
+
+              // 2. KALANLARI GÜNCELLE: Stokta kalanların fiyatı değişmiş mi diye kontrol et
+              const syncedCart = availableItems.map(item => {
+                const dbItem = data.find(p => p.id === item.id);
                 if (dbItem) {
-                  // Kampanya/İndirim varsa onu, yoksa normal fiyatı baz al
                   const activePrice = Number(dbItem.discount_price) > 0 
                     ? Number(dbItem.discount_price) 
                     : Number(dbItem.price);
 
-                  // Eğer fiyat değişmişse (Zam veya indirim gelmişse) sepeti güncelle
                   if (item.price !== activePrice) {
                     isChanged = true;
                     return { ...item, price: activePrice };
@@ -80,11 +89,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
                 return item;
               });
 
-              // Eğer fiyatlarda değişim yakaladıysak, sepet state'ini güncelliyoruz
+              // Eğer stoktan silinen veya fiyatı değişen varsa Context'i (Ekrani) anında güncelle
               if (isChanged) {
                 setCart(syncedCart);
-                // Opsiyonel: Müşteriye uyarı da verebilirsin
-                console.log("Sepetteki ürünlerin fiyatı güncel piyasaya göre senkronize edildi!");
               }
             }
           }
@@ -140,6 +147,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
     );
   };
 
+  // YENİ VE DÜZELTİLMİŞ: Sepeti Temizleme Motoru
+  const clearCart = () => {
+    setCart([]); // setItems değil, setCart kullanıyoruz!
+    localStorage.removeItem("prestigeso_cart"); 
+  };
+
   const cartTotal = useMemo(
     () => cart.reduce((total, item) => total + item.price * item.quantity, 0),
     [cart]
@@ -154,6 +167,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     addToCart,
     removeFromCart,
     updateQuantity,
+    clearCart, // Dışarı aktardık!
     cartTotal,
     campaignText,
     setCampaignText

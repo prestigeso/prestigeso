@@ -20,12 +20,12 @@ export default function ProductDetailPage() {
   const [touchEndX, setTouchEndX] = useState(0);
   const [isDescExpanded, setIsDescExpanded] = useState(false);
 
-  // YENİ: SEKME VE VERİ STATELERİ
+  // SEKME VE VERİ STATELERİ
   const [activeTab, setActiveTab] = useState<"desc" | "reviews" | "qa">("desc");
   const [reviews, setReviews] = useState<any[]>([]);
   const [questions, setQuestions] = useState<any[]>([]);
 
-  // YENİ: MODAL VE FORM STATELERİ
+  // MODAL VE FORM STATELERİ
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [showQuestionModal, setShowQuestionModal] = useState(false);
   const [rating, setRating] = useState(5);
@@ -34,9 +34,11 @@ export default function ProductDetailPage() {
   const [reviewPreviews, setReviewPreviews] = useState<string[]>([]);
   const [questionText, setQuestionText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  // YENİ: KULLANICI VE SATIN ALMA KONTROLÜ
+  
+  // KULLANICI VE SATIN ALMA KONTROLÜ
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [hasPurchased, setHasPurchased] = useState(false);
+
   useEffect(() => {
     const fetchProductAndData = async () => {
       if (!params.id) return;
@@ -49,14 +51,12 @@ export default function ProductDetailPage() {
       if (pData) {
         setProduct(pData);
         
-        // Göz Attıklarım & Favori Kontrolü
+        // Göz Attıklarım (Yerel Hafıza - Sadece gezinme geçmişi için)
         const currentViewed = JSON.parse(localStorage.getItem("prestige_viewed") || "[]");
         if (!currentViewed.find((item: any) => item.id === pData.id)) {
           const newViewed = [pData, ...currentViewed].slice(0, 10);
           localStorage.setItem("prestige_viewed", JSON.stringify(newViewed));
         }
-        const currentFavs = JSON.parse(localStorage.getItem("prestige_favorites") || "[]");
-        setIsFavorite(!!currentFavs.find((fav: any) => fav.id === pData.id));
 
         // 2. ONAYLANMIŞ Yorumları ve Soruları Çek
         const { data: revData } = await supabase.from("reviews").select("*").eq("product_id", pData.id).eq("is_approved", true).order("created_at", { ascending: false });
@@ -65,12 +65,22 @@ export default function ProductDetailPage() {
         const { data: qData } = await supabase.from("questions").select("*").eq("product_id", pData.id).eq("is_approved", true).order("created_at", { ascending: false });
         if (qData) setQuestions(qData);
 
-        // 3. YENİ: KULLANICI GİRİŞ YAPMIŞ MI VE BU ÜRÜNÜ SATIN ALMIŞ MI?
+        // 3. KULLANICI GİRİŞ YAPMIŞ MI, SATIN ALMIŞ MI VE FAVORİLEMİŞ Mİ?
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
           setCurrentUser(session.user);
+          
+          // Favori Kontrolü (Veritabanından)
+          const { data: favData } = await supabase
+            .from("favorites")
+            .select("id")
+            .eq("user_id", session.user.id)
+            .eq("product_id", pData.id)
+            .single();
+          if (favData) setIsFavorite(true);
+
           try {
-            // Müşterinin siparişlerini çekiyoruz (items kolonunda ürün ID'si var mı diye bakacağız)
+            // Sipariş Kontrolü
             const { data: orders } = await supabase.from("orders").select("items").eq("user_id", session.user.id);
             if (orders) {
               const bought = orders.some(order => {
@@ -89,54 +99,34 @@ export default function ProductDetailPage() {
 
     fetchProductAndData();
   }, [params.id]);
-
-
-  // --- SEPET VE FAVORİ FONKSİYONLARI ---
+  // --- FAVORİ VE SEPET MOTORLARI ---
   const handleFavoriteClick = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) return alert("Ürünleri favorilemek için lütfen giriş yapın! 🛡️");
-    const currentFavs = JSON.parse(localStorage.getItem("prestige_favorites") || "[]");
-    const isExist = currentFavs.find((fav: any) => fav.id === product.id);
-    if (!isExist) {
-      localStorage.setItem("prestige_favorites", JSON.stringify([...currentFavs, product]));
-      setIsFavorite(true); alert("Favorilere eklendi! ❤️");
+    if (!currentUser) return alert("Favorilere eklemek için asilce giriş yapmalısınız! 👑");
+
+    if (isFavorite) {
+      setIsFavorite(false);
+      await supabase
+        .from("favorites")
+        .delete()
+        .eq("user_id", currentUser.id)
+        .eq("product_id", product.id);
     } else {
-      localStorage.setItem("prestige_favorites", JSON.stringify(currentFavs.filter((fav: any) => fav.id !== product.id)));
-      setIsFavorite(false); alert("Favorilerden çıkarıldı. 💔");
+      setIsFavorite(true);
+      await supabase
+        .from("favorites")
+        .insert([{ user_id: currentUser.id, product_id: product.id }]);
     }
   };
 
   const activePrice = product ? (Number(product.discount_price) > 0 ? Number(product.discount_price) : Number(product.price)) : 0;
   const productImages = product?.images?.length > 0 ? product.images : [product?.image || "/logo.jpeg"];
 
-  const handleAction = (action: "cart" | "buy") => {
-    if (!product) return;
-    
-    // 1. Ürünü kesinlikle sepete ekle
-    addToCart({ 
-      id: product.id, 
-      name: product.name, 
-      price: activePrice, 
-      image: productImages[selectedImageIndex], 
-      category: product.category, 
-      quantity: 1 
-    });
-    
-    // 2. Tıklanan butona göre davran
-    if (action === "buy") {
-      // ŞİMDİ AL tıklandı: Sepet menüsünü aç ki müşteri hemen ödemeye gitsin!
-      setIsCartOpen(true); 
-    } else if (action === "cart") {
-      // SEPETE EKLE tıklandı: Sepeti AÇMA, adam gezinmeye devam etsin. Sadece haber ver.
-      alert("Ürün başarıyla sepete eklendi! 🛍️"); 
-    }
-  };
-
   // --- SWIPE (KAYDIRMA) VE GALERİ ---
   const handleNextPrev = (dir: "prev" | "next") => {
     if (dir === "prev") setSelectedImageIndex((p) => (p === 0 ? productImages.length - 1 : p - 1));
     else setSelectedImageIndex((p) => (p === productImages.length - 1 ? 0 : p + 1));
   };
+  
   const handleTouchEnd = () => {
     if (!touchStartX || !touchEndX) return;
     const distance = touchStartX - touchEndX;
@@ -145,11 +135,10 @@ export default function ProductDetailPage() {
     setTouchStartX(0); setTouchEndX(0);
   };
 
-  // --- YORUM VE SORU GÖNDERME (YENİ!) ---
+  // --- YORUM VE SORU GÖNDERME ---
   const checkAuth = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
-    if (!session) { alert("Bu işlem için giriş yapmalısınız!"); router.push("/login"); return null; }
-    return session.user;
+    if (!currentUser) { alert("Bu işlem için giriş yapmalısınız!"); router.push("/login"); return null; }
+    return currentUser;
   };
 
   const submitReview = async (e: React.FormEvent) => {
@@ -200,7 +189,6 @@ export default function ProductDetailPage() {
     if (files.length > 3) return alert("En fazla 3 fotoğraf yükleyebilirsiniz.");
     setReviewFiles(files); setReviewPreviews(files.map(f => URL.createObjectURL(f)));
   };
-
   if (loading) return <div className="min-h-screen flex items-center justify-center font-black uppercase tracking-widest text-gray-400">Ürün Hazırlanıyor...</div>;
   if (!product) return <div className="min-h-screen flex items-center justify-center font-black uppercase tracking-widest text-black">Ürün Bulunamadı</div>;
 
@@ -256,16 +244,52 @@ export default function ProductDetailPage() {
             ) : (<p className="text-4xl font-black text-black tracking-tighter">{Number(product.price).toLocaleString("tr-TR")} ₺</p>)}
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 mb-8">
-            <button onClick={() => handleAction("buy")} className="flex-1 min-w-[140px] border-2 border-black bg-white text-black py-4 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-gray-50 transition-all active:scale-95">ŞİMDİ AL</button>
-            <button onClick={() => handleAction("cart")} className="flex-1 min-w-[140px] bg-black text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest shadow-xl hover:bg-gray-800 transition-all active:scale-95">SEPETE EKLE</button>
-            <button onClick={handleFavoriteClick} className="w-14 h-14 flex-shrink-0 bg-white border border-gray-200 rounded-xl shadow-sm flex items-center justify-center hover:border-black transition-all group">
-              <svg viewBox="0 0 24 24" fill={isFavorite ? "black" : "none"} stroke={isFavorite ? "black" : "currentColor"} strokeWidth="2" className="w-6 h-6 text-gray-400 group-hover:text-black transition-colors"><path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" /></svg>
+          <div className="flex items-center gap-3 mt-8 w-full max-w-[500px]">
+            {Number(product.stock) <= 0 ? (
+              <button 
+                disabled 
+                className="flex-1 h-[54px] bg-gray-50 text-gray-400 rounded-[18px] font-black text-[13px] uppercase border border-gray-200 cursor-not-allowed flex items-center justify-center tracking-tight"
+              >
+                TÜKENDİ
+              </button>
+            ) : (
+              <>
+                <button 
+                  onClick={() => {
+                    addToCart({ id: product.id, name: product.name, price: activePrice, image: productImages[0], category: product.category, quantity: 1 });
+                    router.push('/checkout');
+                  }}
+                  className="flex-1 h-[54px] bg-white text-black border-[1.5px] border-black rounded-[18px] font-black text-[13px] tracking-tight hover:bg-gray-50 transition-all flex items-center justify-center whitespace-nowrap active:scale-95"
+                >
+                  ŞİMDİ AL
+                </button>
+                
+                <button 
+                  onClick={() => {
+                    addToCart({ id: product.id, name: product.name, price: activePrice, image: productImages[0], category: product.category, quantity: 1 });
+                    setIsCartOpen(true);
+                  }}
+                  className="flex-1 h-[54px] bg-black text-white rounded-[18px] font-black text-[13px] tracking-tight hover:bg-gray-800 transition-all shadow-md flex items-center justify-center whitespace-nowrap active:scale-95"
+                >
+                  SEPETE EKLE
+                </button>
+              </>
+            )}
+
+            {/* CANLI FAVORİ BUTONU */}
+            <button 
+              onClick={handleFavoriteClick}
+              className={`w-[54px] h-[54px] flex-shrink-0 border rounded-[18px] flex items-center justify-center transition-all shadow-sm active:scale-95
+                ${isFavorite ? "bg-red-50 border-red-200 text-red-500" : "bg-white border-gray-100 text-black hover:scale-105"}`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill={isFavorite ? "currentColor" : "none"} stroke="currentColor" strokeWidth={isFavorite ? 0 : 1.5} className="w-6 h-6">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z" />
+              </svg>
             </button>
           </div>
 
-          {/* YENİ: BİLGİ SEKMELERİ (TABS) */}
-          <div className="mt-4">
+          {/* BİLGİ SEKMELERİ (TABS) */}
+          <div className="mt-12">
             <div className="flex gap-6 border-b border-gray-200 mb-6 overflow-x-auto hide-scrollbar">
               <button onClick={() => setActiveTab("desc")} className={`pb-3 text-xs font-black uppercase tracking-widest transition-colors whitespace-nowrap ${activeTab === "desc" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-black"}`}>Ürün Açıklaması</button>
               <button onClick={() => setActiveTab("reviews")} className={`pb-3 text-xs font-black uppercase tracking-widest transition-colors whitespace-nowrap ${activeTab === "reviews" ? "border-b-2 border-black text-black" : "text-gray-400 hover:text-black"}`}>Değerlendirmeler ({reviews.length})</button>
@@ -304,22 +328,14 @@ export default function ProductDetailPage() {
                       <p className="text-3xl font-black">{avgRating}</p>
                       <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{reviews.length} Değerlendirme</p>
                     </div>
-                    
-                    {/* KURAL UYGULAMASI: GİRİŞ YAP VE SATIN AL */}
                     {currentUser ? (
                       hasPurchased ? (
-                        <button onClick={() => setShowReviewModal(true)} className="bg-black text-white px-6 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-gray-800 transition-all shadow-md">
-                          Yorum Yap
-                        </button>
+                        <button onClick={() => setShowReviewModal(true)} className="bg-black text-white px-6 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-gray-800 transition-all shadow-md">Yorum Yap</button>
                       ) : (
-                        <p className="text-[9px] font-black text-red-500 uppercase tracking-widest text-right max-w-[120px] leading-tight">
-                          
-                        </p>
+                        <p className="text-[9px] font-black text-red-500 uppercase tracking-widest text-right max-w-[120px] leading-tight"></p>
                       )
                     ) : (
-                      <button onClick={() => router.push("/login")} className="bg-white border border-gray-200 text-black px-6 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-gray-50 transition-all">
-                        Giriş Yap
-                      </button>
+                      <button onClick={() => router.push("/login")} className="bg-white border border-gray-200 text-black px-6 py-3 rounded-xl text-[11px] font-black uppercase tracking-widest hover:bg-gray-50 transition-all">Giriş Yap</button>
                     )}
                   </div>
                   
