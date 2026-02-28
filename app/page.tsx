@@ -37,6 +37,21 @@ export default function Home() {
     setLocalCampaign(localStorage.getItem("prestigeso_campaign") || "");
 
     const loadAllDataAndCount = async () => {
+      // ZİYARETÇİ SAYAÇ MOTORU (Geri Geldi!) 🚀
+      // ---------------------------------------------------------
+      try {
+        const isHere = sessionStorage.getItem("prestige_session_active");
+        if (!isHere) {
+          sessionStorage.setItem("prestige_session_active", "true");
+          const { error } = await supabase.from("page_views").insert([{ created_at: new Date().toISOString() }]);
+          if (error) {
+            console.error("Ziyaretçi sayılamadı:", error.message);
+            sessionStorage.removeItem("prestige_session_active"); 
+          }
+        }
+      } catch (err) {
+        console.error("Sayaç hatası:", err);
+      }
       try {
         // 1. Vitrin Görsellerini Çek
         const { data: slidesData } = await supabase.from("hero_slides").select("*").order("created_at", { ascending: false });

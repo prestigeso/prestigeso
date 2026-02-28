@@ -182,39 +182,55 @@ const pendingOrdersCount = dbOrders.filter(o => o.status === 'Bekliyor').length;
       const { data: sData } = await supabase.from("hero_slides").select("*").order("created_at", { ascending: false });
       if (sData) setDbSlides((sData as any) || []);
 
-      const { data: oData } = await supabase.from("orders").select("total_amount");
-      if (oData) {
-        setTotalOrders(oData.length);
-        setTotalRevenue(oData.reduce((acc: number, o: any) => acc + Number(o.total_amount || 0), 0));
-        // YORUMLARI ÇEK
-      const { data: rData } = await supabase
-        .from("reviews")
-        .select("*, products(name, image, images)")
-        .order("created_at", { ascending: false });
-      if (rData) setDbReviews(rData as any[]);
+      // ---------------------------------------------------------
+      // YENİ MUHASEBE MOTORU: SADECE BULUNDUĞUMUZ AYIN VERİLERİ
+      // ---------------------------------------------------------
+      const now = new Date();
+      // İçinde bulunduğumuz ayın 1. gününü bul (Örn: 1 Mart 00:00)
+      const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+      // CİRO VE SİPARİŞ SAYISI (Sadece bu aydan sonrasını getir)
+      const { data: oDataDb } = await supabase
+        .from("orders")
+        .select("total_amount")
+        .gte("created_at", firstDayOfMonth); // Sihirli kelime bu: gte (büyük eşittir)
+
+      if (oDataDb) {
+        setTotalOrders(oDataDb.length);
+        setTotalRevenue(oDataDb.reduce((acc: number, o: any) => acc + Number(o.total_amount || 0), 0));
       } else {
         setTotalOrders(0); setTotalRevenue(0);
       }
 
-      const { data: vData } = await supabase.from("page_views").select("id");
+      // ZİYARETÇİ SAYISI (Sadece bu aydan sonrasını getir)
+      const { data: vData } = await supabase
+        .from("page_views")
+        .select("id")
+        .gte("created_at", firstDayOfMonth); // Sihirli kelime
+
       if (vData) setTotalVisits(vData.length); else setTotalVisits(0);
+      // ---------------------------------------------------------
+
+      // Mesajlar, Yorumlar ve Sorular (Tümü)
       const { data: mData } = await supabase.from("messages").select("*").order("created_at", { ascending: false });
-if (mData) setDbMessages(mData as any[]);
+      if (mData) setDbMessages(mData as any[]);
+
+      const { data: rData } = await supabase.from("reviews").select("*, products(name, image, images)").order("created_at", { ascending: false });
+      if (rData) setDbReviews(rData as any[]);
+
     } catch (e: any) {
       console.error("loadAllData beklenmedik hata:", e);
     } finally {
       setLoading(false);
     }
-    const { data: qData } = await supabase
-  .from("questions")
-  .select("*, products(name, image, images)")
-  .order("created_at", { ascending: false });
-if (qData) setDbQuestions(qData as any[]);
-const { data: oData } = await supabase
-  .from("orders")
-  .select("*")
-  .order("created_at", { ascending: false });
-if (oData) setDbOrders(oData as any[]);
+    
+    // Alt kısımdaki Soru ve Sipariş detay çekimleri aynen kalıyor...
+    const { data: qData } = await supabase.from("questions").select("*, products(name, image, images)").order("created_at", { ascending: false });
+    if (qData) setDbQuestions(qData as any[]);
+    
+    // (Siparişler modalı için tüm zamanların siparişleri gelmeye devam etmeli, o yüzden buna dokunmuyoruz)
+    const { data: oData } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
+    if (oData) setDbOrders(oData as any[]);
   };
 
   useEffect(() => {
