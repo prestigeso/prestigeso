@@ -112,6 +112,11 @@ const [isOrdersOpen, setIsOrdersOpen] = useState(false);
   const [dbReviews, setDbReviews] = useState<ReviewRow[]>([]);
   const [isReviewsOpen, setIsReviewsOpen] = useState(false);
   const pendingReviewsCount = dbReviews.filter(r => !r.is_approved).length;
+  // PERFORMANS YÖNETİMİ STATELERİ
+  const [dbAllFavorites, setDbAllFavorites] = useState<any[]>([]);
+  const [dbProductViews, setDbProductViews] = useState<any[]>([]);
+  const [isPerformanceOpen, setIsPerformanceOpen] = useState(false);
+  const [perfTab, setPerfTab] = useState<"favorites" | "views" | "reviews">("favorites");
 // Bekleyen sipariş sayısını bulalım (Menüdeki rozet için)
 const pendingOrdersCount = dbOrders.filter(o => o.status === 'Bekliyor').length;
   const moveNewImage = (index: number, direction: "left" | "right") => {
@@ -217,7 +222,13 @@ const pendingOrdersCount = dbOrders.filter(o => o.status === 'Bekliyor').length;
 
       const { data: rData } = await supabase.from("reviews").select("*, products(name, image, images)").order("created_at", { ascending: false });
       if (rData) setDbReviews(rData as any[]);
+      // TÜM FAVORİLERİ ÇEK (Performans Analizi İçin)
+      const { data: favDataAll } = await supabase.from("favorites").select("product_id");
 
+      if (favDataAll) setDbAllFavorites(favDataAll as any[]);
+      // TÜM ÜRÜN GÖRÜNTÜLENME LOGLARINI ÇEK
+      const { data: pViewsData } = await supabase.from("product_views").select("product_id");
+      if (pViewsData) setDbProductViews(pViewsData as any[]);
     } catch (e: any) {
       console.error("loadAllData beklenmedik hata:", e);
     } finally {
@@ -529,9 +540,9 @@ const handleUpdateOrderStatus = async (id: number, newStatus: string) => {
           <button className="py-4 text-xs font-black text-gray-500 hover:text-black uppercase tracking-widest flex items-center gap-1 transition-colors">Performans ▾</button>
           {activeNavMenu === "performans" && (
             <div className="absolute top-full left-1/2 -translate-x-1/2 bg-white border border-gray-100 shadow-xl rounded-xl py-2 w-56 flex flex-col z-50">
-              <button className="px-4 py-3 text-[11px] text-left text-gray-500 hover:bg-gray-50 hover:text-black font-black uppercase tracking-widest border-b border-gray-50">Favori İstatistikleri</button>
-              <button className="px-4 py-3 text-[11px] text-left text-gray-500 hover:bg-gray-50 hover:text-black font-black uppercase tracking-widest border-b border-gray-50">Görüntülenme İstatistikleri</button>
-              <button className="px-4 py-3 text-[11px] text-left text-gray-500 hover:bg-gray-50 hover:text-black font-black uppercase tracking-widest">Değerlendirme İstatistikleri</button>
+              <button onClick={() => { setActiveNavMenu(null); setPerfTab("favorites"); setIsPerformanceOpen(true); }} className="px-4 py-3 text-[11px] text-left text-gray-500 hover:bg-gray-50 hover:text-black font-black uppercase tracking-widest border-b border-gray-50">❤️ Favori İstatistikleri</button>
+              <button onClick={() => { setActiveNavMenu(null); setPerfTab("reviews"); setIsPerformanceOpen(true); }} className="px-4 py-3 text-[11px] text-left text-gray-500 hover:bg-gray-50 hover:text-black font-black uppercase tracking-widest border-b border-gray-50">⭐ Değerlendirme İstatistikleri</button>
+              <button onClick={() => { setActiveNavMenu(null); setPerfTab("views"); setIsPerformanceOpen(true); }} className="px-4 py-3 text-[11px] text-left text-gray-500 hover:bg-gray-50 hover:text-black font-black uppercase tracking-widest">👁️ Ürün Görüntülenmesi</button>
             </div>
           )}
         </div>
@@ -1235,6 +1246,117 @@ const handleToggleQuestionApproval = async (id: number, currentStatus: boolean) 
                   })}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* PERFORMANS MODALI */}
+      {isPerformanceOpen && (
+        <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-4xl rounded-3xl p-8 shadow-2xl max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
+              <h2 className="text-2xl font-black uppercase tracking-tight flex items-center gap-3">
+                <span>📈</span> Performans Analizi
+              </h2>
+              <button onClick={() => setIsPerformanceOpen(false)} className="w-10 h-10 bg-gray-100 rounded-full font-bold hover:bg-gray-200 transition-colors">✕</button>
+            </div>
+
+            {/* SEKMELER */}
+            <div className="flex gap-2 mb-6 bg-gray-50 p-2 rounded-2xl w-max">
+              <button onClick={() => setPerfTab("favorites")} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${perfTab === "favorites" ? "bg-black text-white shadow-md" : "text-gray-500 hover:bg-gray-200"}`}>❤️ En Çok Favorilenenler</button>
+              <button onClick={() => setPerfTab("reviews")} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${perfTab === "reviews" ? "bg-black text-white shadow-md" : "text-gray-500 hover:bg-gray-200"}`}>⭐ En Yüksek Puanlılar</button>
+              <button onClick={() => setPerfTab("views")} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${perfTab === "views" ? "bg-black text-white shadow-md" : "text-gray-500 hover:bg-gray-200"}`}>👁️ En Çok İncelenenler</button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 pr-2">
+              
+              {/* 1. FAVORİ İSTATİSTİKLERİ */}
+              {perfTab === "favorites" && (() => {
+                const favCounts = dbAllFavorites.reduce((acc, curr) => { acc[curr.product_id] = (acc[curr.product_id] || 0) + 1; return acc; }, {});
+                const topFavs = dbProducts.map(p => ({ ...p, count: favCounts[p.id] || 0 })).filter(p => p.count > 0).sort((a, b) => b.count - a.count);
+                
+                return topFavs.length === 0 ? <p className="text-center text-gray-400 py-10 font-bold uppercase text-xs">Henüz favoriye eklenen ürün yok.</p> : (
+                  <div className="space-y-3">
+                    {topFavs.map((p, i) => (
+                      <div key={p.id} className="flex items-center gap-4 bg-white border border-gray-100 p-4 rounded-2xl shadow-sm">
+                        <div className="w-8 text-center font-black text-xl text-gray-300">#{i + 1}</div>
+                        <img src={Array.isArray(p.images) ? p.images[0] : "/logo.jpeg"} className="w-12 h-12 rounded-xl object-cover" alt="" />
+                        <div className="flex-1">
+                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{p.category}</p>
+                          <p className="font-bold text-sm text-black">{p.name}</p>
+                        </div>
+                        <div className="bg-red-50 text-red-600 px-4 py-2 rounded-xl flex items-center gap-2">
+                          <span className="text-lg">❤️</span>
+                          <span className="font-black text-lg">{p.count}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* 2. DEĞERLENDİRME İSTATİSTİKLERİ */}
+              {perfTab === "reviews" && (() => {
+                const topRated = dbProducts.map(p => {
+                  const pRevs = dbReviews.filter(r => r.product_id === String(p.id) && r.is_approved);
+                  const count = pRevs.length;
+                  const avg = count > 0 ? pRevs.reduce((a, r) => a + r.rating, 0) / count : 0;
+                  return { ...p, ratingCount: count, ratingAvg: avg };
+                }).filter(p => p.ratingCount > 0).sort((a, b) => b.ratingAvg - a.ratingAvg || b.ratingCount - a.ratingCount);
+
+                return topRated.length === 0 ? <p className="text-center text-gray-400 py-10 font-bold uppercase text-xs">Henüz değerlendirilen ürün yok.</p> : (
+                  <div className="space-y-3">
+                    {topRated.map((p, i) => (
+                      <div key={p.id} className="flex items-center gap-4 bg-white border border-gray-100 p-4 rounded-2xl shadow-sm">
+                        <div className="w-8 text-center font-black text-xl text-gray-300">#{i + 1}</div>
+                        <img src={Array.isArray(p.images) ? p.images[0] : "/logo.jpeg"} className="w-12 h-12 rounded-xl object-cover" alt="" />
+                        <div className="flex-1">
+                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{p.category}</p>
+                          <p className="font-bold text-sm text-black">{p.name}</p>
+                        </div>
+                        <div className="flex flex-col items-end">
+                          <span className="text-yellow-400 text-lg tracking-widest">{"★".repeat(Math.round(p.ratingAvg))}</span>
+                          <p className="text-[10px] font-bold text-gray-500">{p.ratingAvg.toFixed(1)} Puan ({p.ratingCount} Yorum)</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
+              {/* 3. ÜRÜN GÖRÜNTÜLENME İSTATİSTİKLERİ */}
+              {perfTab === "views" && (() => {
+                // Ürünlerin kaç kere tıklandığını hesapla
+                const viewCounts = dbProductViews.reduce((acc, curr) => { 
+                  acc[curr.product_id] = (acc[curr.product_id] || 0) + 1; 
+                  return acc; 
+                }, {});
+                
+                const topViewed = dbProducts
+                  .map(p => ({ ...p, count: viewCounts[p.id] || 0 }))
+                  .filter(p => p.count > 0)
+                  .sort((a, b) => b.count - a.count);
+
+                return topViewed.length === 0 ? <p className="text-center text-gray-400 py-10 font-bold uppercase text-xs">Henüz incelenen ürün yok.</p> : (
+                  <div className="space-y-3">
+                    {topViewed.map((p, i) => (
+                      <div key={p.id} className="flex items-center gap-4 bg-white border border-gray-100 p-4 rounded-2xl shadow-sm">
+                        <div className="w-8 text-center font-black text-xl text-gray-300">#{i + 1}</div>
+                        <img src={Array.isArray(p.images) ? p.images[0] : "/logo.jpeg"} className="w-12 h-12 rounded-xl object-cover" alt="" />
+                        <div className="flex-1">
+                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{p.category}</p>
+                          <p className="font-bold text-sm text-black">{p.name}</p>
+                        </div>
+                        <div className="bg-blue-50 text-blue-600 px-4 py-2 rounded-xl flex items-center gap-2">
+                          <span className="text-lg">👁️</span>
+                          <span className="font-black text-lg">{p.count}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+
             </div>
           </div>
         </div>

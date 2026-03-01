@@ -51,6 +51,28 @@ export default function ProductDetailPage() {
       if (pData) {
         setProduct(pData);
         
+        // -------------------------------------------------------------
+        // YENİ NESİL ZAMAN DAMGALI LOG MOTORU 🚀
+        // -------------------------------------------------------------
+        try {
+          const viewedKey = `viewed_product_log_${pData.id}`;
+          const isAlreadyViewedThisSession = sessionStorage.getItem(viewedKey);
+
+          if (!isAlreadyViewedThisSession) {
+            // Gerçek zamanlı olarak "Hangi ürün, saat kaçta tıklandı?" bilgisini kaydet
+            await supabase.from("product_views").insert([{ 
+              product_id: pData.id,
+              // created_at otomatik olarak Supabase tarafından şimdiki zaman olarak eklenecek
+            }]);
+            
+            // Aynı adam F5 atıp logları şişirmesin diye kalkan çekiyoruz
+            sessionStorage.setItem(viewedKey, "true");
+          }
+        } catch (viewErr) {
+          console.error("Görüntülenme logu atılamadı:", viewErr);
+        }
+        // -------------------------------------------------------------
+
         // Göz Attıklarım (Yerel Hafıza - Sadece gezinme geçmişi için)
         const currentViewed = JSON.parse(localStorage.getItem("prestige_viewed") || "[]");
         if (!currentViewed.find((item: any) => item.id === pData.id)) {
