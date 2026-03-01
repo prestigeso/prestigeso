@@ -117,6 +117,12 @@ const [isOrdersOpen, setIsOrdersOpen] = useState(false);
   const [dbProductViews, setDbProductViews] = useState<any[]>([]);
   const [isPerformanceOpen, setIsPerformanceOpen] = useState(false);
   const [perfTab, setPerfTab] = useState<"favorites" | "views" | "reviews">("favorites");
+  // ANALİZ STATELERİ
+  const [isAnalysisOpen, setIsAnalysisOpen] = useState(false);
+  const [analysisTab, setAnalysisTab] = useState<"revenue" | "orders" | "visits">("revenue");
+  const [allTimeRevenue, setAllTimeRevenue] = useState(0);
+  const [allTimeOrders, setAllTimeOrders] = useState(0);
+  const [allTimeVisits, setAllTimeVisits] = useState(0);
 // Bekleyen sipariş sayısını bulalım (Menüdeki rozet için)
 const pendingOrdersCount = dbOrders.filter(o => o.status === 'Bekliyor').length;
   const moveNewImage = (index: number, direction: "left" | "right") => {
@@ -187,19 +193,13 @@ const pendingOrdersCount = dbOrders.filter(o => o.status === 'Bekliyor').length;
       const { data: sData } = await supabase.from("hero_slides").select("*").order("created_at", { ascending: false });
       if (sData) setDbSlides((sData as any) || []);
 
-      // ---------------------------------------------------------
-      // YENİ MUHASEBE MOTORU: SADECE BULUNDUĞUMUZ AYIN VERİLERİ
-      // ---------------------------------------------------------
+      // =========================================================
+      // 1. MOTOR: AYLIK MUHASEBE (Ana Kartlar İçin - Her Ay Sıfırlanır)
+      // =========================================================
       const now = new Date();
-      // İçinde bulunduğumuz ayın 1. gününü bul (Örn: 1 Mart 00:00)
       const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
 
-      // CİRO VE SİPARİŞ SAYISI (Sadece bu aydan sonrasını getir)
-      const { data: oDataDb } = await supabase
-        .from("orders")
-        .select("total_amount")
-        .gte("created_at", firstDayOfMonth); // Sihirli kelime bu: gte (büyük eşittir)
-
+      const { data: oDataDb } = await supabase.from("orders").select("total_amount").gte("created_at", firstDayOfMonth);
       if (oDataDb) {
         setTotalOrders(oDataDb.length);
         setTotalRevenue(oDataDb.reduce((acc: number, o: any) => acc + Number(o.total_amount || 0), 0));
@@ -207,43 +207,45 @@ const pendingOrdersCount = dbOrders.filter(o => o.status === 'Bekliyor').length;
         setTotalOrders(0); setTotalRevenue(0);
       }
 
-      // ZİYARETÇİ SAYISI (Sadece bu aydan sonrasını getir)
-      const { data: vData } = await supabase
-        .from("page_views")
-        .select("id")
-        .gte("created_at", firstDayOfMonth); // Sihirli kelime
-
+      const { data: vData } = await supabase.from("page_views").select("id").gte("created_at", firstDayOfMonth);
       if (vData) setTotalVisits(vData.length); else setTotalVisits(0);
-      // ---------------------------------------------------------
+      // =========================================================
 
-      // Mesajlar, Yorumlar ve Sorular (Tümü)
       const { data: mData } = await supabase.from("messages").select("*").order("created_at", { ascending: false });
       if (mData) setDbMessages(mData as any[]);
 
       const { data: rData } = await supabase.from("reviews").select("*, products(name, image, images)").order("created_at", { ascending: false });
       if (rData) setDbReviews(rData as any[]);
-      // TÜM FAVORİLERİ ÇEK (Performans Analizi İçin)
-      const { data: favDataAll } = await supabase.from("favorites").select("product_id");
 
+      const { data: favDataAll } = await supabase.from("favorites").select("product_id");
       if (favDataAll) setDbAllFavorites(favDataAll as any[]);
-      // TÜM ÜRÜN GÖRÜNTÜLENME LOGLARINI ÇEK
+
       const { data: pViewsData } = await supabase.from("product_views").select("product_id");
       if (pViewsData) setDbProductViews(pViewsData as any[]);
+
     } catch (e: any) {
       console.error("loadAllData beklenmedik hata:", e);
     } finally {
       setLoading(false);
     }
     
-    // Alt kısımdaki Soru ve Sipariş detay çekimleri aynen kalıyor...
     const { data: qData } = await supabase.from("questions").select("*, products(name, image, images)").order("created_at", { ascending: false });
     if (qData) setDbQuestions(qData as any[]);
     
-    // (Siparişler modalı için tüm zamanların siparişleri gelmeye devam etmeli, o yüzden buna dokunmuyoruz)
+    // =========================================================
+    // 2. MOTOR: TÜM ZAMANLAR MUHASEBESİ (Analiz Menüsü İçin - Asla Sıfırlanmaz)
+    // =========================================================
     const { data: oData } = await supabase.from("orders").select("*").order("created_at", { ascending: false });
-    if (oData) setDbOrders(oData as any[]);
-  };
+    if (oData) {
+      setDbOrders(oData as any[]); // Sipariş ekranı için lazım
+      setAllTimeOrders(oData.length); // Analiz ekranı için lazım
+      setAllTimeRevenue(oData.reduce((acc: number, o: any) => acc + Number(o.total_amount || 0), 0)); // Analiz ekranı için lazım
+    }
 
+    const { data: vDataAll } = await supabase.from("page_views").select("id");
+    if (vDataAll) setAllTimeVisits(vDataAll.length); else setAllTimeVisits(0);
+    // =========================================================
+  };
   useEffect(() => {
     loadAllData();
     setPageSettings({ marquee: localStorage.getItem("prestigeso_campaign") || "" });
@@ -550,9 +552,9 @@ const handleUpdateOrderStatus = async (id: number, newStatus: string) => {
           <button className="py-4 text-xs font-black text-gray-500 hover:text-black uppercase tracking-widest flex items-center gap-1 transition-colors">Analiz ▾</button>
           {activeNavMenu === "analiz" && (
             <div className="absolute top-full left-1/2 -translate-x-1/2 bg-white border border-gray-100 shadow-xl rounded-xl py-2 w-56 flex flex-col z-50">
-              <button className="px-4 py-3 text-[11px] text-left text-gray-500 hover:bg-gray-50 hover:text-black font-black uppercase tracking-widest border-b border-gray-50">Tüm Zamanlar Cirosu</button>
-              <button className="px-4 py-3 text-[11px] text-left text-gray-500 hover:bg-gray-50 hover:text-black font-black uppercase tracking-widest border-b border-gray-50">Tüm Zamanlar Siparişi</button>
-              <button className="px-4 py-3 text-[11px] text-left text-gray-500 hover:bg-gray-50 hover:text-black font-black uppercase tracking-widest">Tüm Zamanlar Ziyareti</button>
+              <button onClick={() => { setActiveNavMenu(null); setAnalysisTab("revenue"); setIsAnalysisOpen(true); }} className="px-4 py-3 text-[11px] text-left text-gray-500 hover:bg-gray-50 hover:text-black font-black uppercase tracking-widest border-b border-gray-50">💰 Tüm Zamanlar Cirosu</button>
+              <button onClick={() => { setActiveNavMenu(null); setAnalysisTab("orders"); setIsAnalysisOpen(true); }} className="px-4 py-3 text-[11px] text-left text-gray-500 hover:bg-gray-50 hover:text-black font-black uppercase tracking-widest border-b border-gray-50">📦 Tüm Zamanlar Siparişi</button>
+              <button onClick={() => { setActiveNavMenu(null); setAnalysisTab("visits"); setIsAnalysisOpen(true); }} className="px-4 py-3 text-[11px] text-left text-gray-500 hover:bg-gray-50 hover:text-black font-black uppercase tracking-widest">👁️ Tüm Zamanlar Ziyareti</button>
             </div>
           )}
         </div>
@@ -1357,6 +1359,65 @@ const handleToggleQuestionApproval = async (id: number, currentStatus: boolean) 
                 );
               })()}
 
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ANALİZ MODALI (Tüm Zamanların Özeti) */}
+      {isAnalysisOpen && (
+        <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-2xl rounded-3xl p-8 shadow-2xl flex flex-col relative overflow-hidden">
+            
+            <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4 relative z-10">
+              <h2 className="text-2xl font-black uppercase tracking-tight flex items-center gap-3 text-black">
+                <span>📊</span> PRESTİGESO Finans Raporu
+              </h2>
+              <button onClick={() => setIsAnalysisOpen(false)} className="w-10 h-10 bg-gray-100 rounded-full font-bold hover:bg-gray-200 transition-colors">✕</button>
+            </div>
+
+            {/* SEKMELER */}
+            <div className="flex gap-2 mb-6 bg-gray-50 p-2 rounded-2xl w-max mx-auto relative z-10">
+              <button onClick={() => setAnalysisTab("revenue")} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${analysisTab === "revenue" ? "bg-black text-white shadow-md" : "text-gray-500 hover:bg-gray-200"}`}>💰 Toplam Ciro</button>
+              <button onClick={() => setAnalysisTab("orders")} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${analysisTab === "orders" ? "bg-black text-white shadow-md" : "text-gray-500 hover:bg-gray-200"}`}>📦 Toplam Sipariş</button>
+              <button onClick={() => setAnalysisTab("visits")} className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${analysisTab === "visits" ? "bg-black text-white shadow-md" : "text-gray-500 hover:bg-gray-200"}`}>👁️ Toplam Ziyaret</button>
+            </div>
+
+            <div className="flex-1 flex flex-col items-center justify-center py-10 relative z-10">
+              {/* 1. CİRO EKRANI */}
+              {analysisTab === "revenue" && (
+                <div className="text-center animate-in zoom-in duration-300">
+                  <span className="text-7xl mb-6 block drop-shadow-sm">💰</span>
+                  <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-2">Tüm Zamanlar Cirosu</h3>
+                  <p className="text-5xl md:text-7xl font-black text-green-600 tracking-tighter">{allTimeRevenue.toLocaleString("tr-TR")} ₺</p>
+                  <p className="mt-6 text-xs font-bold text-green-700 bg-green-50 px-6 py-3 rounded-full uppercase tracking-widest border border-green-100">
+                    Sistemin açıldığı ilk günden bugüne toplam gelir.
+                  </p>
+                </div>
+              )}
+              
+              {/* 2. SİPARİŞ EKRANI */}
+              {analysisTab === "orders" && (
+                <div className="text-center animate-in zoom-in duration-300">
+                  <span className="text-7xl mb-6 block drop-shadow-sm">📦</span>
+                  <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-2">Tüm Zamanlar Siparişi</h3>
+                  <p className="text-5xl md:text-7xl font-black text-black tracking-tighter">{allTimeOrders}</p>
+                  <p className="mt-6 text-xs font-bold text-gray-600 bg-gray-100 px-6 py-3 rounded-full uppercase tracking-widest border border-gray-200">
+                    Sistemin açıldığı ilk günden bugüne toplam alınan sipariş.
+                  </p>
+                </div>
+              )}
+              
+              {/* 3. ZİYARET EKRANI */}
+              {analysisTab === "visits" && (
+                <div className="text-center animate-in zoom-in duration-300">
+                  <span className="text-7xl mb-6 block drop-shadow-sm">👁️</span>
+                  <h3 className="text-sm font-black text-gray-400 uppercase tracking-widest mb-2">Tüm Zamanlar Ziyaretçisi</h3>
+                  <p className="text-5xl md:text-7xl font-black text-blue-600 tracking-tighter">{allTimeVisits}</p>
+                  <p className="mt-6 text-xs font-bold text-blue-700 bg-blue-50 px-6 py-3 rounded-full uppercase tracking-widest border border-blue-100">
+                    Sistemin açıldığı ilk günden bugüne toplam tekil oturum.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>
