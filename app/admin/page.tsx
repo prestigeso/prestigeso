@@ -17,6 +17,7 @@ type ProductRow = {
   price: number;
   category: string | null;
   stock: number;
+  barcode?: string;
   is_bestseller: boolean;
   discount_price: number;
   campaign_start_date: string | null;
@@ -379,6 +380,7 @@ const unansweredQuestionsCount = dbQuestions.filter(q => !q.answer).length;
     const price = Number((form.elements.namedItem("price") as HTMLInputElement).value);
     const category = (form.elements.namedItem("category") as HTMLSelectElement).value;
     const stock = Number((form.elements.namedItem("stock") as HTMLInputElement).value);
+    const barcode = (form.elements.namedItem("barcode") as HTMLInputElement).value; // YENİ: Barkodu formdan al
     const description = (form.elements.namedItem("description") as HTMLTextAreaElement).value;
     const is_bestseller = (form.elements.namedItem("is_bestseller") as HTMLInputElement).checked;
 
@@ -387,9 +389,12 @@ const unansweredQuestionsCount = dbQuestions.filter(q => !q.answer).length;
     try {
       const urls: string[] = [];
       for (const f of newProductFiles) { const u = await uploadToStorageAndGetPublicUrl(f, "product"); urls.push(u); }
+      
+      // YENİ: Barkodu insert komutuna ekle
       const { error } = await supabase.from("products").insert([{
-          name, price, category, stock, is_bestseller, description, images: urls, image: urls[0] || "", discount_price: 0,
+          name, price, category, stock, barcode, is_bestseller, description, images: urls, image: urls[0] || "", discount_price: 0,
       }]);
+      
       if (error) throw error;
       revokeUrls(newProductPreviews); setNewProductPreviews([]); setNewProductFiles([]); setIsAddProductOpen(false);
       alert("Ürün eklendi ✅"); loadAllData();
@@ -767,9 +772,13 @@ const handleUpdateOrderStatus = async (id: number, newStatus: string) => {
                   return (
                     <div key={p.id} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
                       <div>
-                        <h3 className="font-bold text-sm text-gray-900">{p.name}</h3>
+                        <h3 className="font-bold text-sm text-gray-900 flex items-center gap-2">
+                          {p.name}
+                          {p.barcode && <span className="bg-gray-100 text-gray-500 px-2 py-0.5 rounded text-[9px] font-mono border border-gray-200">#{p.barcode}</span>}
+                        </h3>
                         <p className="text-xs text-blue-600 font-black">{p.price} ₺</p>
                         <p className="text-[10px] text-gray-400">
+                        
                           {p.category || "Kategori yok"} 
                           {Number(p.stock) <= 0 && <span className="ml-2 text-red-600 font-bold">(STOK BİTTİ)</span>}
                         </p>
@@ -815,6 +824,10 @@ const handleUpdateOrderStatus = async (id: number, newStatus: string) => {
             </div>
             <form onSubmit={handleAddProduct} className="flex-1 overflow-y-auto space-y-4 pb-4 pr-2">
               <div><label className="text-xs font-bold text-gray-500 uppercase">Ürün Adı</label><input required name="name" type="text" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium" /></div>
+              
+              {/* YENİ: BARKOD GİRİŞİ */}
+              <div><label className="text-xs font-bold text-gray-500 uppercase">Barkod / Stok Kodu</label><input name="barcode" type="text" placeholder="Örn: PRSTG-1001" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium font-mono text-blue-600" /></div>
+              
               <div className="grid grid-cols-2 gap-4">
                 <div><label className="text-xs font-bold text-gray-500 uppercase">Fiyat (₺)</label><input required name="price" type="number" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium" /></div>
                 <div><label className="text-xs font-bold text-gray-500 uppercase">Stok</label><input required name="stock" type="number" defaultValue="1" className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium" /></div>
