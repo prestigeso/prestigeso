@@ -60,6 +60,16 @@ type ReviewRow = {
   created_at: string;
   products?: { name: string; image: string; images?: string[] };
 };
+// YENİ: KAMPANYA TİPİ
+type CampaignRow = {
+  id: number;
+  name: string;
+  discount_percent: number;
+  start_date: string;
+  end_date: string;
+  product_ids: number[];
+  created_at: string;
+};
 const STORAGE_BUCKET = "products";
 
 function revokeUrls(urls: string[]) {
@@ -117,6 +127,9 @@ const [isOrdersOpen, setIsOrdersOpen] = useState(false);
   const [dbProductViews, setDbProductViews] = useState<any[]>([]);
   const [isPerformanceOpen, setIsPerformanceOpen] = useState(false);
   const [perfTab, setPerfTab] = useState<"favorites" | "views" | "reviews">("favorites");
+  // YENİ KAMPANYA STATELERİ
+  const [dbCampaigns, setDbCampaigns] = useState<CampaignRow[]>([]);
+  const [campaignName, setCampaignName] = useState("");
   // ANALİZ STATELERİ
   const [isAnalysisOpen, setIsAnalysisOpen] = useState(false);
   const [analysisTab, setAnalysisTab] = useState<"revenue" | "orders" | "visits">("revenue");
@@ -191,6 +204,9 @@ const pendingOrdersCount = dbOrders.filter(o => o.status === 'Bekliyor').length;
       else setDbProducts((pData as any) || []);
 
       const { data: sData } = await supabase.from("hero_slides").select("*").order("created_at", { ascending: false });
+      // YENİ: Kampanyaları Çek
+      const { data: campData } = await supabase.from("campaigns").select("*").order("created_at", { ascending: false });
+      if (campData) setDbCampaigns(campData as any[]);
       if (sData) setDbSlides((sData as any) || []);
 
       // =========================================================
@@ -388,38 +404,41 @@ const unansweredQuestionsCount = dbQuestions.filter(q => !q.answer).length;
     alert("Slide kaydedildi ✅"); loadAllData();
   };
 
-  const applyDiscountCampaign = async () => {
-    if (selectedCampaignProducts.length === 0) return alert("İndirim için ürün seç!");
+  
+// YENİ: KAMPANYA YARATMA MOTORU (Artık product tablosunu bozmaz, campaigns tablosuna yazar)
+  const handleCreateCampaign = async () => {
+    if (!campaignName.trim()) return alert("Lütfen kampanya için havalı bir isim girin!");
+    if (selectedCampaignProducts.length === 0) return alert("Kampanyaya dahil edilecek ürünleri seçin!");
     if (!campaignDates.start || !campaignDates.end) return alert("Lütfen kampanya başlangıç ve bitiş tarihlerini seçin!");
-    if (discountPercent <= 0 || discountPercent >= 90) return alert("İndirim yüzdesi 1-89 arası olsun.");
+    if (discountPercent <= 0 || discountPercent >= 90) return alert("İndirim yüzdesi 1-89 arası olmalıdır.");
 
     const startIso = new Date(campaignDates.start).toISOString();
     const endIso = new Date(campaignDates.end + "T23:59:59").toISOString();
 
     try {
-      const { data, error } = await supabase.from("products").select("id,price").in("id", selectedCampaignProducts);
+      const { error } = await supabase.from("campaigns").insert([{
+        name: campaignName,
+        discount_percent: discountPercent,
+        start_date: startIso,
+        end_date: endIso,
+        product_ids: selectedCampaignProducts
+      }]);
+      
       if (error) throw error;
-
-      for (const p of (data as any[]) || []) {
-        const newDiscount = Number(p.price) * (1 - discountPercent / 100);
-        await supabase.from("products").update({ 
-          discount_price: newDiscount,
-          campaign_start_date: startIso,
-          campaign_end_date: endIso
-        }).eq("id", p.id);
-      }
-      alert("Otomatik Zamanlı Kampanya Başarıyla Kuruldu! 🚀");
-      setSelectedCampaignProducts([]); setCampaignDates({ start: "", end: "" }); setIsCampaignOpen(false); loadAllData();
-    } catch (e: any) { alert("İndirim uygulanamadı: " + e.message); }
+      
+      alert("Yeni Kampanya Başarıyla Kuruldu! 🚀 Müşteriler zamanı gelince indirimi görecek.");
+      setSelectedCampaignProducts([]); setCampaignDates({ start: "", end: "" }); setCampaignName(""); setDiscountPercent(20); loadAllData();
+    } catch (e: any) { alert("Kampanya oluşturulamadı: " + e.message); }
   };
 
-  const removeDiscountCampaign = async () => {
-    if (selectedCampaignProducts.length === 0) return alert("İndirimi kaldırmak için ürün seç!");
-    const { error } = await supabase.from("products").update({ discount_price: 0, campaign_start_date: null, campaign_end_date: null }).in("id", selectedCampaignProducts);
-    if (error) return alert("İndirim kaldırılamadı: " + error.message);
-    alert("Kampanya İptal Edildi ✅");
-    setSelectedCampaignProducts([]); setIsCampaignOpen(false); loadAllData();
+  // YENİ: KAMPANYA SİLME MOTORU
+  const handleDeleteCampaign = async (id: number) => {
+    if (!window.confirm("Bu kampanyayı tamamen silmek istediğine emin misin?")) return;
+    await supabase.from("campaigns").delete().eq("id", id);
+    alert("Kampanya silindi! İlgili ürünler anında eski fiyatına dönecektir. ✅");
+    loadAllData();
   };
+  
 
   const outOfStockCount = dbProducts.filter((p) => Number(p.stock) <= 0).length;
 
@@ -561,6 +580,8 @@ const handleUpdateOrderStatus = async (id: number, newStatus: string) => {
       </nav>
 
       <div className="px-6 max-w-6xl mx-auto space-y-6">
+        
+        {/* ÜST KARTLAR */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center text-center hover:border-green-200 hover:shadow-md transition-all">
             <span className="text-3xl mb-2">💸</span>
@@ -584,12 +605,14 @@ const handleUpdateOrderStatus = async (id: number, newStatus: string) => {
           </div>
         </div>
 
+        {/* FİLTRE BUTONLARI */}
         <div className="flex items-center gap-2 px-1 overflow-x-auto">
           <button onClick={() => setStockTab("all")} className={`text-[10px] font-black uppercase tracking-widest px-5 py-2.5 rounded-full transition-all ${stockTab === "all" ? "bg-black text-white shadow-md" : "bg-white border border-gray-200 text-gray-500 hover:bg-gray-50"}`}>Tümü</button>
           <button onClick={() => setStockTab("in")} className={`text-[10px] font-black uppercase tracking-widest px-5 py-2.5 rounded-full transition-all ${stockTab === "in" ? "bg-green-600 text-white shadow-md" : "bg-white border border-gray-200 text-green-700 hover:bg-green-50"}`}>Stokta Olanlar</button>
           <button onClick={() => setStockTab("out")} className={`text-[10px] font-black uppercase tracking-widest px-5 py-2.5 rounded-full transition-all ${stockTab === "out" ? "bg-red-600 text-white shadow-md" : "bg-white border border-gray-200 text-red-600 hover:bg-red-50"}`}>Stoğu Bitenler ({outOfStockCount})</button>
         </div>
 
+        {/* ÜRÜN ENVANTERİ LİSTESİ */}
         <div>
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 px-1 gap-3">
             <h2 className="font-bold text-sm uppercase tracking-widest text-gray-500">Ürün Envanteri</h2>
@@ -607,15 +630,22 @@ const handleUpdateOrderStatus = async (id: number, newStatus: string) => {
             ) : (
               <div className="divide-y divide-gray-100">
                 {filteredProducts.map((p) => {
-                  const now = new Date().toISOString();
-                  let campaignStatus = "none";
+                  const nowIso = new Date().toISOString();
                   
-                  if (p.discount_price > 0 && p.campaign_start_date && p.campaign_end_date) {
-                    if (now < p.campaign_start_date) campaignStatus = "waiting";
-                    else if (now >= p.campaign_start_date && now <= p.campaign_end_date) campaignStatus = "active";
-                    else if (now > p.campaign_end_date) campaignStatus = "expired";
-                  } else if (p.discount_price > 0) {
-                    campaignStatus = "active_manual";
+                  // YENİ NESİL ÇELİK YELEK: Supabase veriyi nasıl yollarsa yollasın hatasız okur!
+                  const activeCamp = dbCampaigns.find(c => {
+                    const ids = Array.isArray(c.product_ids) ? c.product_ids : (typeof c.product_ids === 'string' ? JSON.parse(c.product_ids || "[]") : []);
+                    return ids.includes(p.id) && nowIso >= c.start_date && nowIso <= c.end_date;
+                  });
+                  const upcomingCamp = dbCampaigns.find(c => {
+                    const ids = Array.isArray(c.product_ids) ? c.product_ids : (typeof c.product_ids === 'string' ? JSON.parse(c.product_ids || "[]") : []);
+                    return ids.includes(p.id) && nowIso < c.start_date;
+                  });
+                  let newPriceStr = "";
+                  if (activeCamp) {
+                    // İndirimli fiyatı canlı canlı hesapla
+                    const discounted = Number(p.price) * (1 - activeCamp.discount_percent / 100);
+                    newPriceStr = discounted.toFixed(0);
                   }
 
                   return (
@@ -627,10 +657,10 @@ const handleUpdateOrderStatus = async (id: number, newStatus: string) => {
                           {p.category || "Kategori yok"} 
                           {Number(p.stock) <= 0 && <span className="ml-2 text-red-600 font-bold">(STOK BİTTİ)</span>}
                         </p>
-                        {campaignStatus === "active" && <p className="text-[10px] font-bold text-green-600 mt-1">🟢 Aktif İndirim: {Number(p.discount_price).toFixed(0)} ₺</p>}
-                        {campaignStatus === "waiting" && <p className="text-[10px] font-bold text-orange-500 mt-1">⏳ Bekleyen Kampanya: {new Date(p.campaign_start_date!).toLocaleDateString('tr-TR')}</p>}
-                        {campaignStatus === "expired" && <p className="text-[10px] font-bold text-gray-400 line-through mt-1">Süresi Biten İndirim: {Number(p.discount_price).toFixed(0)} ₺</p>}
-                        {campaignStatus === "active_manual" && <p className="text-[10px] font-bold text-green-600 mt-1">🟢 Aktif İndirim (Süresiz): {Number(p.discount_price).toFixed(0)} ₺</p>}
+                        
+                        {/* KAMPANYA ETİKETLERİ */}
+                        {activeCamp && <p className="text-[10px] font-bold text-green-600 mt-1">🟢 {activeCamp.name}: {newPriceStr} ₺</p>}
+                        {upcomingCamp && <p className="text-[10px] font-bold text-orange-500 mt-1">⏳ Bekleyen: {upcomingCamp.name} ({new Date(upcomingCamp.start_date).toLocaleDateString('tr-TR')})</p>}
                       </div>
                       <button onClick={() => openEditProduct(p.id)} className="bg-black text-white px-4 py-2 rounded-lg text-xs font-bold active:scale-95 transition-transform">Düzenle</button>
                     </div>
@@ -643,8 +673,8 @@ const handleUpdateOrderStatus = async (id: number, newStatus: string) => {
             <button onClick={loadAllData} className="text-xs font-bold text-gray-500 hover:text-black border border-gray-200 px-4 py-2 rounded-full">↻ Listeyi Yenile</button>
           </div>
         </div>
-      </div>
 
+      </div>
       {/* SOL ALT - ÖZEL PANEL */}
       <div className="fixed bottom-6 left-6 z-40">
         <button onClick={() => setIsSettingsOpen(true)} className="bg-white text-black border border-gray-200 shadow-xl px-5 py-3.5 rounded-full font-bold flex items-center gap-2 hover:bg-gray-50 active:scale-95 transition-all text-sm"><span>⚙️</span> Özel Panel</button>
@@ -777,49 +807,93 @@ const handleUpdateOrderStatus = async (id: number, newStatus: string) => {
         </div>
       )}
 
-      {/* KAMPANYA / İNDİRİM MODALI */}
+      {/* YENİ NESİL KAMPANYA YÖNETİMİ MODALI */}
       {isCampaignOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center">
-          <div className="bg-white w-full max-w-lg rounded-t-3xl p-6 pb-10 shadow-2xl max-h-[90vh] flex flex-col">
-            <div className="flex justify-between items-center border-b border-gray-100 pb-4 mb-4">
-              <h2 className="text-xl font-black">🏷️ Zaman Ayarlı Kampanya</h2>
-              <button onClick={() => setIsCampaignOpen(false)} className="w-8 h-8 bg-gray-100 rounded-full font-bold">✕</button>
+        <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-4xl rounded-3xl p-8 shadow-2xl max-h-[90vh] flex flex-col">
+            <div className="flex justify-between items-center border-b border-gray-100 pb-4 mb-6">
+              <h2 className="text-2xl font-black flex items-center gap-3"><span>🏷️</span> Kampanya Yönetimi Merkezi</h2>
+              <button onClick={() => setIsCampaignOpen(false)} className="w-10 h-10 bg-gray-100 rounded-full font-bold hover:bg-gray-200">✕</button>
             </div>
-            <div className="overflow-y-auto space-y-5 flex-1 pr-2">
-              <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-                <label className="text-xs font-bold text-gray-500 uppercase block mb-2">İndirim Yüzdesi (%)</label>
-                <input type="number" value={discountPercent} onChange={(e) => setDiscountPercent(Number(e.target.value))} className="w-full p-3 bg-white border border-gray-200 rounded-xl font-medium" min={1} max={89} />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
+            
+            <div className="flex flex-col md:flex-row gap-8 overflow-y-auto flex-1">
+              
+              {/* SOL: YENİ KAMPANYA KUR */}
+              <div className="w-full md:w-1/2 space-y-5 border-r border-gray-100 pr-6">
+                <h3 className="font-black text-sm uppercase tracking-widest text-gray-400 mb-4">Yeni Kampanya Oluştur</h3>
+                
                 <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase">Başlangıç Tarihi</label>
-                  <input type="date" required value={campaignDates.start} onChange={(e) => setCampaignDates({ ...campaignDates, start: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 text-sm font-medium" />
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Kampanya Adı (Örn: Bahar İndirimi)</label>
+                  <input type="text" value={campaignName} onChange={(e) => setCampaignName(e.target.value)} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium" />
                 </div>
+
+                <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+                  <label className="text-[10px] font-black text-blue-600 uppercase tracking-widest block mb-2">İndirim Yüzdesi (%)</label>
+                  <input type="number" value={discountPercent} onChange={(e) => setDiscountPercent(Number(e.target.value))} className="w-full p-3 bg-white border border-blue-200 rounded-xl font-black text-blue-600" min={1} max={89} />
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Başlangıç</label><input type="date" required value={campaignDates.start} onChange={(e) => setCampaignDates({ ...campaignDates, start: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium" /></div>
+                  <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Bitiş</label><input type="date" required value={campaignDates.end} onChange={(e) => setCampaignDates({ ...campaignDates, end: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium" /></div>
+                </div>
+                
                 <div>
-                  <label className="text-xs font-bold text-gray-500 uppercase">Bitiş Tarihi</label>
-                  <input type="date" required value={campaignDates.end} onChange={(e) => setCampaignDates({ ...campaignDates, end: e.target.value })} className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 text-sm font-medium" />
+                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Ürün Seçimi ({selectedCampaignProducts.length} Seçildi)</label>
+                  <div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto p-1">
+                    {dbProducts.map((p) => (
+                      <button key={p.id} type="button" onClick={() => toggleCampaignProduct(p.id)} className={`p-3 rounded-xl border text-left transition-all ${selectedCampaignProducts.includes(p.id) ? "border-black bg-black text-white" : "border-gray-200 bg-white hover:border-gray-400"}`}>
+                        <p className="font-bold text-xs truncate">{p.name}</p>
+                        <p className={`text-[10px] ${selectedCampaignProducts.includes(p.id) ? "text-gray-300" : "text-gray-500"}`}>{p.price} ₺</p>
+                      </button>
+                    ))}
+                  </div>
                 </div>
+                <button type="button" onClick={handleCreateCampaign} className="w-full bg-black text-white py-4 rounded-xl font-black uppercase tracking-widest shadow-lg hover:scale-[1.02] transition-transform">🚀 Kampanyayı Başlat</button>
               </div>
-              <div>
-                <label className="text-xs font-bold text-gray-500 uppercase mb-2 block">Ürün Seçimi</label>
-                <div className="grid grid-cols-2 gap-2">
-                  {dbProducts.map((p) => (
-                    <button key={p.id} type="button" onClick={() => toggleCampaignProduct(p.id)} className={`p-3 rounded-xl border text-left transition ${selectedCampaignProducts.includes(p.id) ? "border-blue-600 bg-blue-50" : "border-gray-200 bg-white"}`}>
-                      <p className="font-bold text-sm truncate">{p.name}</p>
-                      <p className="text-[11px] text-gray-500">{p.price} ₺</p>
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button type="button" onClick={applyDiscountCampaign} className="flex-1 bg-green-600 text-white py-3 rounded-xl font-black shadow-lg">🚀 Otomatik Kur</button>
-                <button type="button" onClick={removeDiscountCampaign} className="flex-1 bg-red-50 text-red-600 py-3 rounded-xl font-black border border-red-100">Kaldır</button>
+
+              {/* SAĞ: GEÇMİŞ VE AKTİF KAMPANYALAR */}
+              <div className="w-full md:w-1/2">
+                <h3 className="font-black text-sm uppercase tracking-widest text-gray-400 mb-4">Sistemdeki Kampanyalar</h3>
+                {dbCampaigns.length === 0 ? (
+                   <div className="bg-gray-50 rounded-2xl p-10 text-center border border-dashed border-gray-200"><p className="text-gray-400 font-bold text-xs uppercase tracking-widest">Henüz oluşturulmuş kampanya yok.</p></div>
+                ) : (
+                  <div className="space-y-4">
+                    {dbCampaigns.map(camp => {
+                      const nowIso = new Date().toISOString();
+                      const isActive = nowIso >= camp.start_date && nowIso <= camp.end_date;
+                      const isExpired = nowIso > camp.end_date;
+                      
+                      // Hata vermesin diye listeyi güvenli hale getiriyoruz
+                      const pIds = Array.isArray(camp.product_ids) ? camp.product_ids : (typeof camp.product_ids === 'string' ? JSON.parse(camp.product_ids || "[]") : []);
+                      
+                      return (
+                        <div key={camp.id} className={`p-4 rounded-2xl border-2 transition-all ${isActive ? 'border-green-400 bg-green-50/30' : isExpired ? 'border-gray-200 bg-gray-50 opacity-70' : 'border-orange-300 bg-orange-50/30'}`}>
+                          <div className="flex justify-between items-start mb-2">
+                            <h4 className="font-black text-lg text-black">{camp.name}</h4>
+                            {isActive && <span className="bg-green-500 text-white px-2 py-1 rounded-lg text-[9px] font-black uppercase animate-pulse">Aktif</span>}
+                            {isExpired && <span className="bg-gray-200 text-gray-600 px-2 py-1 rounded-lg text-[9px] font-black uppercase">Süresi Bitti</span>}
+                            {!isActive && !isExpired && <span className="bg-orange-500 text-white px-2 py-1 rounded-lg text-[9px] font-black uppercase">Bekliyor</span>}
+                          </div>
+                          
+                          <p className="text-sm font-bold text-blue-600 mb-2">% {camp.discount_percent} İndirim</p>
+                          <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3">
+                            {new Date(camp.start_date).toLocaleDateString('tr-TR')} - {new Date(camp.end_date).toLocaleDateString('tr-TR')}
+                          </p>
+                          
+                          <div className="flex justify-between items-center border-t border-gray-200/50 pt-3">
+                            <p className="text-[10px] font-bold text-gray-500">{pIds.length} Ürün Dahil</p>
+                            <button onClick={() => handleDeleteCampaign(camp.id)} className="text-[10px] font-black text-red-500 hover:text-red-700 uppercase tracking-widest bg-red-50 px-3 py-1.5 rounded-lg border border-red-100">Sil / İptal Et</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </div>
       )}
-
       {/* ÖZEL PANEL */}
       {isSettingsOpen && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
