@@ -86,6 +86,21 @@ async function uploadToStorageAndGetPublicUrl(file: File, prefix: string) {
   const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(fileName);
   return data.publicUrl;
 }
+// ZAMAN DAMGASI MOTORU (1 saat önce, 5 dk önce vb. hesaplar)
+function getTimeAgo(dateString?: string) {
+  if (!dateString) return "Az önce";
+  const now = new Date();
+  const past = new Date(dateString);
+  const diffMs = now.getTime() - past.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffMins < 1) return "Az önce";
+  if (diffMins < 60) return `${diffMins} dk önce`;
+  if (diffHours < 24) return `${diffHours} saat önce`;
+  return `${diffDays} gün önce`;
+}
 
 export default function AdminPanel() {
   const activeMonth = new Date().toLocaleString("tr-TR", { month: "long" }).toUpperCase();
@@ -102,6 +117,7 @@ export default function AdminPanel() {
   const [isFabOpen, setIsFabOpen] = useState(false);
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [isCampaignOpen, setIsCampaignOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activeNavMenu, setActiveNavMenu] = useState<string | null>(null);
 
@@ -486,6 +502,40 @@ const handleUpdateOrderStatus = async (id: number, newStatus: string) => {
       alert("Hata: " + error.message);
     }
   };
+  // YENİ NESİL BİLDİRİM AKIŞI MOTORU (Her şeyi tek tek kronolojik dizer)
+  const unifiedNotifications = useMemo(() => {
+    const feed: any[] = [];
+    
+    // 1. Siparişler
+    dbOrders.filter(o => o.status === 'Bekliyor').forEach(o => {
+      feed.push({ id: `order_${o.id}`, type: 'order', title: 'Yeni Sipariş Geldi', subtitle: o.user_email, date: o.created_at, image: o.items?.[0]?.images?.[0] || o.items?.[0]?.image || "/logo.jpeg", onClick: () => { setIsNotificationsOpen(false); setIsOrdersOpen(true); } });
+    });
+
+    // 2. Sorular
+    dbQuestions.filter(q => !q.answer).forEach(q => {
+      feed.push({ id: `q_${q.id}`, type: 'question', title: 'Yeni Ürün Sorusu', subtitle: q.question, date: q.created_at, image: q.products?.images?.[0] || q.products?.image || "/logo.jpeg", onClick: () => { setIsNotificationsOpen(false); setIsQuestionsOpen(true); } });
+    });
+
+    // 3. Değerlendirmeler
+    dbReviews.filter(r => !r.is_approved).forEach(r => {
+      feed.push({ id: `rev_${r.id}`, type: 'review', title: 'Yeni Değerlendirme', subtitle: `${"★".repeat(r.rating)} - ${r.user_name}`, date: r.created_at, image: r.products?.images?.[0] || r.products?.image || "/logo.jpeg", onClick: () => { setIsNotificationsOpen(false); setIsReviewsOpen(true); } });
+    });
+
+    // 4. Müşteri Mesajları
+    dbMessages.filter(m => !m.answer).forEach(m => {
+      feed.push({ id: `msg_${m.id}`, type: 'message', title: 'Müşteri Mesajı', subtitle: m.user_email, date: m.created_at, image: null, onClick: () => { setIsNotificationsOpen(false); setIsMessagesOpen(true); } });
+    });
+
+    // 5. Tükenen Stoklar
+    dbProducts.filter(p => Number(p.stock) <= 0).forEach(p => {
+      feed.push({ id: `stock_${p.id}`, type: 'stock', title: 'Stok Tükendi', subtitle: p.name, date: p.created_at || new Date().toISOString(), image: p.images?.[0] || p.image || "/logo.jpeg", onClick: () => { setIsNotificationsOpen(false); setStockTab("out"); } });
+    });
+
+    // Tarihe göre en yeniden en eskiye doğru sırala
+    return feed.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [dbOrders, dbQuestions, dbReviews, dbMessages, dbProducts]);
+
+  const totalNotifications = unifiedNotifications.length;
   return (
     <div className="min-h-screen bg-gray-100 font-sans text-black pb-32">
       {/* HEADER */}
@@ -500,9 +550,75 @@ const handleUpdateOrderStatus = async (id: number, newStatus: string) => {
 </button>
         <h1 className="text-xl font-black text-gray-900 tracking-widest uppercase">PRESTİGESO YÖNETİM PANELİ</h1>
         <div className="flex items-center gap-5">
-          <button className="text-2xl hover:scale-110 transition-transform relative" title="Bildirimler">
-            🔔<span className="absolute top-0 right-0 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white shadow-sm"></span>
-          </button>
+          {/* YENİ NESİL BİLDİRİM MERKEZİ */}
+          <div className="relative">
+            <button onClick={() => setIsNotificationsOpen(!isNotificationsOpen)} className="text-2xl hover:scale-110 transition-transform relative" title="Bildirimler">
+              🔔
+              {totalNotifications > 0 && (
+                <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full border-2 border-white shadow-sm flex items-center justify-center text-[9px] font-black text-white">
+                  {totalNotifications > 99 ? '99+' : totalNotifications}
+                </span>
+              )}
+            </button>
+
+            {/* BİLDİRİM AKIŞI (FEED) MENÜSÜ */}
+            {isNotificationsOpen && (
+              <div className="absolute top-full right-0 mt-4 w-[350px] md:w-[400px] bg-white border border-gray-100 shadow-2xl rounded-2xl flex flex-col z-[1000] origin-top-right animate-in fade-in scale-95 overflow-hidden">
+                <div className="px-5 py-4 border-b border-gray-100 flex justify-between items-center bg-gray-50/80">
+                  <span className="text-xs font-black uppercase tracking-widest text-gray-800 flex items-center gap-2">
+                    <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                    Canlı Akış
+                  </span>
+                  <button onClick={() => setIsNotificationsOpen(false)} className="text-gray-400 hover:text-black font-bold text-lg leading-none">✕</button>
+                </div>
+                
+                {/* Uzun Kaydırmalı Bildirim Listesi */}
+                <div className="flex flex-col max-h-[60vh] overflow-y-auto divide-y divide-gray-50">
+                  {totalNotifications === 0 ? (
+                    <div className="px-6 py-12 text-center">
+                      <span className="text-4xl block mb-3 opacity-50">🎉</span>
+                      <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest">Bekleyen bildirim yok.</p>
+                    </div>
+                  ) : (
+                    unifiedNotifications.map((notif) => (
+                      <button key={notif.id} onClick={notif.onClick} className="w-full p-4 hover:bg-gray-50 flex items-center gap-3 text-left transition-colors group">
+                        
+                        {/* Sol Taraf: Renkli Çizgi (Aksiyona göre renklenir) */}
+                        <div className={`w-1 h-10 rounded-full flex-shrink-0 ${
+                          notif.type === 'order' ? 'bg-green-500' :
+                          notif.type === 'message' ? 'bg-blue-500' :
+                          notif.type === 'question' ? 'bg-purple-500' :
+                          notif.type === 'review' ? 'bg-yellow-400' : 'bg-red-500'
+                        }`}></div>
+
+                        {/* Orta Taraf: Başlık ve Alt Metin */}
+                        <div className="flex-1 min-w-0 pr-2">
+                          <p className="text-xs font-black text-gray-900 truncate">{notif.title}</p>
+                          <p className="text-[10px] text-gray-500 truncate mt-0.5">{notif.subtitle}</p>
+                        </div>
+
+                        {/* Sağ Taraf: Zaman Damgası */}
+                        <div className="text-[9px] font-bold text-gray-400 whitespace-nowrap text-right flex flex-col items-end justify-center">
+                          {getTimeAgo(notif.date)}
+                        </div>
+
+                        {/* En Sağ Taraf: Ürün Resmi veya Mektup İkonu */}
+                        <div className="w-10 h-10 flex-shrink-0 rounded-lg bg-gray-100 border border-gray-200 overflow-hidden flex items-center justify-center ml-2">
+                          {notif.type === 'message' ? (
+                            <span className="text-xl group-hover:scale-110 transition-transform">💌</span>
+                          ) : (
+                            <img src={notif.image} className="w-full h-full object-cover mix-blend-multiply group-hover:scale-110 transition-transform" alt="" />
+                          )}
+                        </div>
+
+                      </button>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+          
           <div className="w-9 h-9 bg-black text-white rounded-full flex items-center justify-center font-bold text-sm shadow-md cursor-pointer hover:scale-105 transition-transform">A</div>
         </div>
       </div>
