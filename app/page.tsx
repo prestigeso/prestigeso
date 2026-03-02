@@ -120,7 +120,7 @@ export default function Home() {
   if (loading) return <div className="min-h-screen flex items-center justify-center font-black text-gray-400 uppercase tracking-widest bg-white">Vitrin Hazırlanıyor...</div>;
 
   return (
-    <div className="min-h-screen bg-white font-sans text-black pb-24">
+    <div className="min-h-screen bg-white font-sans text-black pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-24">
       {/* 1. ÜST KAYAN YAZI */}
       {localCampaign && (
         <div className="bg-black text-white text-[10px] md:text-xs font-bold uppercase tracking-[0.2em] py-2.5 overflow-hidden w-full sticky top-0 z-40">
@@ -206,7 +206,7 @@ export default function Home() {
       )}
 
       {/* MOBİL ÖZEL: INSTAGRAM / TRENDYOL TARZI BOTTOM NAV (ALT MENÜ) */}
-      <div className="md:hidden fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 flex justify-around items-center py-2 z-[100] pb-safe shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
+      <div className="md:hidden fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-md border-t border-gray-200 flex justify-around items-center pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] z-[100] shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
         <button onClick={() => { setShowAll(false); window.scrollTo(0,0); }} className={`flex flex-col items-center p-2 transition-transform active:scale-95 w-16 ${!showAll && !searchQuery ? 'text-black' : 'text-gray-400'}`}>
           <span className="text-xl mb-0.5">🏠</span>
           <span className="text-[9px] font-black uppercase tracking-widest">Ana Sayfa</span>
