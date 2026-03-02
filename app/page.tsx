@@ -12,12 +12,15 @@ export default function Home() {
   const router = useRouter();
   
   const [dbProducts, setDbProducts] = useState<any[]>([]);
-  const [dbCampaigns, setDbCampaigns] = useState<any[]>([]); // YENİ: KAMPANYA HAFIZASI
+  const [dbCampaigns, setDbCampaigns] = useState<any[]>([]);
   const [heroSlides, setHeroSlides] = useState<any[]>([]);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
   const [localCampaign, setLocalCampaign] = useState("");
+  
+  // YENİ: Mobilde "Arama" butonuna basınca açılacak dev ekranın hafızası
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
 
   const baseCategories = ["Setler", "Masa Süsleri", "Kolyeler", "Yüzükler", "Bilezikler", "Küpeler"];
 
@@ -37,7 +40,6 @@ export default function Home() {
     setLocalCampaign(localStorage.getItem("prestigeso_campaign") || "");
 
     const loadAllDataAndCount = async () => {
-      // ZİYARETÇİ SAYAÇ MOTORU
       try {
         const isHere = sessionStorage.getItem("prestige_session_active");
         if (!isHere) {
@@ -47,15 +49,12 @@ export default function Home() {
       } catch (err) {}
 
       try {
-        // 1. Vitrin Görsellerini Çek
         const { data: slidesData } = await supabase.from("hero_slides").select("*").order("created_at", { ascending: false });
         if (slidesData) setHeroSlides(slidesData);
 
-        // 2. Aktif Kampanyaları Çek
         const { data: campData } = await supabase.from("campaigns").select("*");
         if (campData) setDbCampaigns(campData);
 
-        // 3. Ürünleri ve Yorum İstatistiklerini Çek
         const { data: productsData, error: pError } = await supabase.from("products").select("*").gt("stock", 0).order("created_at", { ascending: false });
         const { data: reviewsData } = await supabase.from("reviews").select("product_id, rating").eq("is_approved", true);
 
@@ -79,7 +78,6 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [heroSlides.length]);
 
-  // YENİ NESİL KAMPANYA FİLTRELEME MOTORU (Çelik Yelekli)
   const nowIso = new Date().toISOString();
   
   const discountedFull = useMemo(() => {
@@ -117,43 +115,27 @@ export default function Home() {
   if (loading) return <div className="min-h-screen flex items-center justify-center font-black text-gray-400 uppercase tracking-widest bg-white">Vitrin Hazırlanıyor...</div>;
 
   return (
-    <div className="min-h-screen bg-white font-sans text-black pb-20 md:pb-24">
+    <div className="min-h-screen bg-white font-sans text-black pb-24">
       {/* 1. ÜST KAYAN YAZI */}
       {localCampaign && (
-        <div className="bg-black text-white text-[10px] md:text-xs font-bold uppercase tracking-[0.2em] py-2.5 overflow-hidden w-full sticky top-0 z-50">
+        <div className="bg-black text-white text-[10px] md:text-xs font-bold uppercase tracking-[0.2em] py-2.5 overflow-hidden w-full sticky top-0 z-40">
           <marquee scrollamount="6" className="w-full">{Array(15).fill(localCampaign).join(" ✦ ")}</marquee>
         </div>
       )}
 
-      {/* MOBİL ÖZEL: YATAY KATEGORİ BALONLARI (CHIPS) */}
-      <div className="md:hidden flex overflow-x-auto gap-2 px-4 py-3 hide-scrollbar bg-white/90 backdrop-blur-sm sticky top-9 z-40 border-b border-gray-100 shadow-sm">
-        <button onClick={() => handleSeeAll("Tümü")} className={`flex-shrink-0 px-4 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest transition-all ${selectedCategory === "Tümü" && showAll ? "bg-black text-white border-black" : "bg-white text-gray-500 border-gray-200"}`}>Tümü</button>
-        <button onClick={() => handleSeeAll("İndirimler")} className={`flex-shrink-0 px-4 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest transition-all ${selectedCategory === "İndirimler" ? "bg-red-500 text-white border-red-500" : "bg-white text-red-500 border-red-200"}`}>% İndirim</button>
-        {baseCategories.map(cat => (
-          <button key={cat} onClick={() => handleSeeAll(cat)} className={`flex-shrink-0 px-4 py-1.5 rounded-full border text-[10px] font-black uppercase tracking-widest transition-all ${selectedCategory === cat ? "bg-black text-white border-black" : "bg-white text-gray-500 border-gray-200"}`}>
-            {cat}
-          </button>
-        ))}
-      </div>
-
-      {/* 2. HERO SLIDER (Mobil için biraz daha kısa, Masaüstü için devasa) */}
+      {/* 2. HERO SLIDER (Mobilde tam 16:9, ekrana sığar, taşmaz) */}
       {!showAll && (
-        <div className="relative w-full h-[50vh] md:h-[75vh] flex items-center justify-center overflow-hidden bg-gray-900 group cursor-pointer" onClick={() => handleSeeAll("Tümü")}>
+        <div className="relative w-full aspect-video md:h-[75vh] flex items-center justify-center overflow-hidden bg-gray-900 group cursor-pointer" onClick={() => handleSeeAll("Tümü")}>
           {heroSlides.map((slide, index) => (
             <div key={slide.id} className={`absolute inset-0 transition-opacity duration-1000 ${index === currentSlide ? "opacity-100 z-10" : "opacity-0 z-0"}`}>
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent z-10 transition-colors duration-500"></div>
               <img src={slide.image_url} alt="" className="w-full h-full object-cover transition-transform duration-[10s] group-hover:scale-105" />
-              <div className="absolute inset-0 z-20 flex flex-col items-center justify-end md:justify-center pb-16 md:pb-0 text-center px-4">
-                <h1 className="text-4xl md:text-7xl font-black text-white mb-2 md:mb-4 uppercase tracking-tight drop-shadow-2xl">{slide.title || "Yeni Sezon"}</h1>
-                <p className="text-gray-200 text-xs md:text-lg uppercase tracking-widest drop-shadow-md">{slide.subtitle}</p>
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-end md:justify-center pb-6 md:pb-0 text-center px-4">
+                <h1 className="text-2xl md:text-7xl font-black text-white mb-1 md:mb-4 uppercase tracking-tight drop-shadow-2xl">{slide.title || "Yeni Sezon"}</h1>
+                <p className="text-gray-200 text-[10px] md:text-lg uppercase tracking-widest drop-shadow-md">{slide.subtitle}</p>
               </div>
             </div>
           ))}
-          <div className="absolute bottom-6 md:bottom-12 left-0 w-full z-30 flex items-center justify-center pointer-events-none">
-            <span className="text-white text-[9px] md:text-sm font-black uppercase tracking-[0.4em] flex items-center gap-2 drop-shadow-lg border-b border-white/50 pb-1">
-              TÜM ÜRÜNLERİ KEŞFET <span className="text-lg md:text-xl font-light mb-0.5">›</span>
-            </span>
-          </div>
         </div>
       )}
 
@@ -179,14 +161,6 @@ export default function Home() {
             <ProductCarousel title="En Çok Satanlar" products={bestsellersFull.slice(0, 5)} campaigns={dbCampaigns} badgeLabel="🔥 Çok Satan" onSeeAll={() => handleSeeAll("En Çok Satanlar")} />
             <ProductCarousel title="Yeni Gelenler" products={newArrivalsFull.slice(0, 5)} campaigns={dbCampaigns} badgeLabel="Yeni" onSeeAll={() => handleSeeAll("Yeni Gelenler")} />
             <ProductCarousel title="İndirimdekiler" products={discountedFull.slice(0, 5)} campaigns={dbCampaigns} badgeLabel="İndirim" onSeeAll={() => handleSeeAll("İndirimler")} />
-            
-            {/* MOBİL ÖZEL: Araya giren şık bir banner */}
-            <div className="md:hidden bg-gray-900 rounded-2xl p-6 text-center shadow-lg my-8 flex flex-col items-center justify-center">
-               <span className="text-3xl mb-2">💎</span>
-               <h3 className="text-white font-black uppercase tracking-widest text-sm mb-1">Prestige Özel Koleksiyon</h3>
-               <p className="text-gray-400 text-[10px] mb-4">En zarif tasarımlar sizin için seçildi.</p>
-               <button onClick={() => handleSeeAll("Tümü")} className="bg-white text-black px-6 py-2 rounded-full text-[10px] font-black uppercase tracking-widest">Keşfet</button>
-            </div>
 
             {baseCategories.map((cat) => {
               const catProducts = dbProducts.filter((p) => p.category === cat).slice(0, 5);
@@ -196,27 +170,59 @@ export default function Home() {
         )}
       </div>
 
+      {/* MOBİL ÖZEL: UYGULAMA TARZI ARAMA EKRANI (TAM EKRAN) */}
+      {isMobileSearchOpen && (
+        <div className="md:hidden fixed inset-0 bg-white z-[999] flex flex-col animate-in slide-in-from-bottom-full duration-300">
+          <div className="flex items-center gap-3 p-4 border-b border-gray-100 bg-white">
+            <button onClick={() => setIsMobileSearchOpen(false)} className="text-2xl p-2 text-gray-500 hover:text-black">←</button>
+            <input 
+              autoFocus
+              type="text" 
+              placeholder="Ürün, kategori veya koleksiyon ara..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="flex-1 bg-gray-100 text-sm font-medium py-3 px-4 rounded-xl outline-none focus:ring-2 focus:ring-black"
+            />
+            {searchQuery && (
+              <button onClick={() => { setIsMobileSearchOpen(false); setShowAll(true); }} className="bg-black text-white text-xs font-bold px-4 py-3 rounded-xl uppercase tracking-widest">
+                Ara
+              </button>
+            )}
+          </div>
+          <div className="flex-1 bg-gray-50 p-6">
+            <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">Popüler Aramalar</h3>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => { setSearchQuery("Kolye"); setIsMobileSearchOpen(false); setShowAll(true); }} className="bg-white border border-gray-200 px-4 py-2 rounded-full text-xs font-bold text-gray-600">Kolye</button>
+              <button onClick={() => { setSearchQuery("Yüzük"); setIsMobileSearchOpen(false); setShowAll(true); }} className="bg-white border border-gray-200 px-4 py-2 rounded-full text-xs font-bold text-gray-600">Yüzük</button>
+              <button onClick={() => { setSelectedCategory("İndirimler"); setIsMobileSearchOpen(false); setShowAll(true); }} className="bg-red-50 border border-red-100 px-4 py-2 rounded-full text-xs font-black text-red-600">% İndirimler</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MOBİL ÖZEL: INSTAGRAM / TRENDYOL TARZI BOTTOM NAV (ALT MENÜ) */}
-      <div className="md:hidden fixed bottom-0 left-0 w-full bg-white/90 backdrop-blur-xl border-t border-gray-200 flex justify-around items-center py-2 px-2 z-[100] pb-safe shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
-        <button onClick={() => { setShowAll(false); window.scrollTo(0,0); }} className="flex flex-col items-center p-2 text-black transition-transform active:scale-95">
+      <div className="md:hidden fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 flex justify-around items-center py-2 z-[100] pb-safe shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
+        <button onClick={() => { setShowAll(false); window.scrollTo(0,0); }} className={`flex flex-col items-center p-2 transition-transform active:scale-95 w-16 ${!showAll && !searchQuery ? 'text-black' : 'text-gray-400'}`}>
           <span className="text-xl mb-0.5">🏠</span>
-          <span className="text-[8px] font-black uppercase tracking-widest">Vitrin</span>
+          <span className="text-[9px] font-black uppercase tracking-widest">Ana Sayfa</span>
         </button>
-        <button onClick={() => document.getElementById("mobile-search")?.focus()} className="flex flex-col items-center p-2 text-gray-400 hover:text-black transition-transform active:scale-95">
+        
+        <button onClick={() => { setSelectedCategory("Tümü"); setShowAll(true); window.scrollTo(0,0); }} className={`flex flex-col items-center p-2 transition-transform active:scale-95 w-16 ${showAll && !searchQuery ? 'text-black' : 'text-gray-400'}`}>
+          <span className="text-xl mb-0.5">🛍️</span>
+          <span className="text-[9px] font-black uppercase tracking-widest">Vitrin</span>
+        </button>
+
+        <button onClick={() => setIsMobileSearchOpen(true)} className="flex flex-col items-center p-2 text-gray-400 transition-transform active:scale-95 w-16">
           <span className="text-xl mb-0.5">🔍</span>
-          <span className="text-[8px] font-black uppercase tracking-widest">Ara</span>
+          <span className="text-[9px] font-black uppercase tracking-widest">Arama</span>
         </button>
-        <Link href="/favorites" className="flex flex-col items-center p-2 text-gray-400 hover:text-red-500 transition-transform active:scale-95">
-          <span className="text-xl mb-0.5">❤️</span>
-          <span className="text-[8px] font-black uppercase tracking-widest">Favori</span>
-        </Link>
-        <button onClick={() => router.push('/cart')} className="flex flex-col items-center p-2 text-gray-400 hover:text-black transition-transform active:scale-95 relative">
-          <span className="text-xl mb-0.5">🛒</span>
-          <span className="text-[8px] font-black uppercase tracking-widest">Sepet</span>
-        </button>
-        <Link href="/profile" className="flex flex-col items-center p-2 text-gray-400 hover:text-black transition-transform active:scale-95">
-          <span className="text-xl mb-0.5">👤</span>
-          <span className="text-[8px] font-black uppercase tracking-widest">Hesap</span>
+
+        <Link href="/cart" className="flex flex-col items-center p-2 text-gray-400 hover:text-black transition-transform active:scale-95 w-16">
+          <span className="text-xl mb-0.5 relative">
+            🛒
+            {/* Burada CartContext'ten sepet sayısını çekip rozet koyabiliriz ileride */}
+          </span>
+          <span className="text-[9px] font-black uppercase tracking-widest">Sepet</span>
         </Link>
       </div>
 
@@ -234,7 +240,6 @@ function ProductCarousel({ title, products, campaigns, badgeLabel, onSeeAll }: a
         <h2 className="text-base md:text-xl font-black uppercase border-l-4 border-black pl-2 md:pl-3">{title}</h2>
         {onSeeAll && <button onClick={onSeeAll} className="text-[9px] md:text-xs font-black text-gray-400 hover:text-black transition-colors uppercase flex items-center gap-1">TÜMÜ <span className="text-sm">›</span></button>}
       </div>
-      {/* Mobilde kaydırmalı, masaüstünde grid */}
       <div className="flex overflow-x-auto md:grid md:grid-cols-5 gap-3 md:gap-4 px-1 hide-scrollbar pb-4 snap-x snap-mandatory">
         {products.map((p: any) => <div key={p.id} className="min-w-[140px] md:min-w-0 w-[45vw] md:w-auto snap-start"><PrestigeCard product={p} campaigns={campaigns} badgeLabel={badgeLabel} /></div>)}
       </div>
@@ -249,7 +254,6 @@ function PrestigeCard({ product, campaigns, badgeLabel }: { product: any, campai
   const ratingCount = product.reviewCount || 0;
   const avgRating = product.ratingAvg || 0;
 
-  // YENİ NESİL FİYAT HESAPLAMA MOTORU
   const nowIso = new Date().toISOString();
   const activeCamp = campaigns?.find(c => {
     const ids = Array.isArray(c.product_ids) ? c.product_ids : (typeof c.product_ids === 'string' ? JSON.parse(c.product_ids || "[]") : []);
@@ -296,7 +300,6 @@ function PrestigeCard({ product, campaigns, badgeLabel }: { product: any, campai
           </svg>
         </button>
         
-        {/* KAMPANYA ETİKETLERİ */}
         {activeCamp ? (
           <div className="absolute bottom-0 w-full bg-red-600 text-white text-[9px] md:text-[10px] font-black text-center py-1.5 uppercase tracking-widest z-10 shadow-[0_-2px_10px_rgba(220,38,38,0.4)]">
             % {activeCamp.discount_percent} İNDİRİM

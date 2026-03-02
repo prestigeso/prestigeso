@@ -289,7 +289,6 @@ export default function ProductDetailPage() {
                 <button 
                   onClick={() => {
                     addToCart({ id: product.id, name: product.name, price: activePrice, image: productImages[0], category: product.category, quantity: 1 });
-                    setIsCartOpen(true);
                   }}
                   className="flex-1 h-[54px] bg-black text-white rounded-[18px] font-black text-[13px] tracking-tight hover:bg-gray-800 transition-all shadow-md flex items-center justify-center whitespace-nowrap active:scale-95"
                 >
