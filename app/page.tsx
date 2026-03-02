@@ -1,6 +1,7 @@
 "use client";
 export const dynamic = "force-dynamic";
 
+import { useCart } from "@/context/CartContext";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -8,7 +9,11 @@ import { useSearch } from "@/context/SearchContext";
 import { supabase } from "@/lib/supabase";
 
 export default function Home() {
+  
   const { searchQuery, setSearchQuery, selectedCategory, setSelectedCategory } = useSearch() as any;
+  const { items, setIsCartOpen } = useCart();
+  const totalItemsInCart = (items || []).reduce((total: any, item: any) => total + item.quantity, 0);
+
   const router = useRouter();
   
   const [dbProducts, setDbProducts] = useState<any[]>([]);
@@ -217,13 +222,17 @@ export default function Home() {
           <span className="text-[9px] font-black uppercase tracking-widest">Arama</span>
         </button>
 
-        <Link href="/cart" className="flex flex-col items-center p-2 text-gray-400 hover:text-black transition-transform active:scale-95 w-16">
+        <button onClick={() => setIsCartOpen(true)} className="flex flex-col items-center p-2 text-gray-400 hover:text-black transition-transform active:scale-95 w-16">
           <span className="text-xl mb-0.5 relative">
             🛒
-            {/* Burada CartContext'ten sepet sayısını çekip rozet koyabiliriz ileride */}
+            {totalItemsInCart > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[9px] font-bold w-4 h-4 flex items-center justify-center rounded-full shadow-sm">
+                {totalItemsInCart}
+              </span>
+            )}
           </span>
           <span className="text-[9px] font-black uppercase tracking-widest">Sepet</span>
-        </Link>
+        </button>
       </div>
 
     </div>
