@@ -4,8 +4,7 @@ import "./globals.css";
 
 import { CartProvider } from "@/context/CartContext";
 import { SearchProvider } from "@/context/SearchContext";
-// 🟢 Akıllı Sarıcımızı çağırdık
-import ConditionalLayout from "@/components/ConditionalUI"; 
+import ConditionalLayout from "@/components/ConditionalUI";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -24,10 +23,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <SearchProvider>
           <CartProvider>
-            {/* 🟢 Bütün sistemi akıllı sarıcımızın içine aldık */}
-            <ConditionalLayout>
-              {children}
-            </ConditionalLayout>
+            <ConditionalLayout>{children}</ConditionalLayout>
           </CartProvider>
         </SearchProvider>
       </body>

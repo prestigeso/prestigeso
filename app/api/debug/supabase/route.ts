@@ -11,8 +11,7 @@ export async function GET() {
     );
   }
 
-  // ❗ Supabase REST kökü /rest/v1/ değil; tablo endpoint'i çağırıyoruz
-  // RLS izinlerin varsa bu çağrı 200 döner.
+  // Tablo endpoint'i çağırıyoruz (RLS izinlerin varsa 200 döner)
   const url = `${base}/rest/v1/products?select=id,name,price,created_at&limit=1`;
 
   try {
@@ -30,7 +29,7 @@ export async function GET() {
       requestUrl: url,
       status: res.status,
       statusText: res.statusText,
-      body: text, // Supabase çoğu zaman JSON döner
+      body: text,
     });
   } catch (e: any) {
     return NextResponse.json(

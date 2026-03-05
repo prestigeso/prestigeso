@@ -1,0 +1,10 @@
+export { default as AddProductModal } from "./AddProductModal";
+export { default as EditProductModal } from "./EditProductModal";
+export { default as CampaignModal } from "./CampaignModal";
+export { default as SettingsModal } from "./SettingsModal";
+export { default as MessagesModal } from "./MessagesModal";
+export { default as QuestionsModal } from "./QuestionsModal";
+export { default as OrdersModal } from "./OrdersModal";
+export { default as ReviewsModal } from "./ReviewsModal";
+export { default as PerformanceModal } from "./PerformanceModal";
+export { default as AnalysisModal } from "./AnalysisModal";

@@ -1,4 +1,4 @@
-import { create } from 'zustand';
+import { create } from "zustand";
 
 interface CartItem {
   id: number;
@@ -18,7 +18,7 @@ interface CartStore {
 
 export const useCartStore = create<CartStore>((set, get) => ({
   cart: [],
-  
+
   addToCart: (product) => {
     const currentCart = get().cart;
     const isExist = currentCart.find((item) => item.id === product.id);
@@ -26,7 +26,9 @@ export const useCartStore = create<CartStore>((set, get) => ({
     if (isExist) {
       set({
         cart: currentCart.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          item.id === product.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
         ),
       });
     } else {
@@ -41,6 +43,9 @@ export const useCartStore = create<CartStore>((set, get) => ({
   clearCart: () => set({ cart: [] }),
 
   totalPrice: () => {
-    return get().cart.reduce((total, item) => total + item.price * item.quantity, 0);
+    return get().cart.reduce(
+      (total, item) => total + item.price * item.quantity,
+      0
+    );
   },
 }));

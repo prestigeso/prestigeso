@@ -9,6 +9,6 @@ export async function GET() {
     hasUrl: !!url,
     hasAnonKey: !!key,
     urlPreview: url ? url.slice(0, 25) + "..." : null,
-    keyPreview: key ? key.slice(0, 8) + "***" : null
+    keyPreview: key ? key.slice(0, 8) + "***" : null,
   });
 }

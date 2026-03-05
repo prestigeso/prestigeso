@@ -1,6 +1,13 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState, ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  ReactNode,
+} from "react";
 import { supabase } from "@/lib/supabase";
 
 export type CartItem = {
@@ -22,8 +29,7 @@ type CartContextType = {
   addToCart: (item: CartItem) => void;
   removeFromCart: (id: number | string) => void;
   updateQuantity: (id: number | string, amount: number) => void;
-  
-  // YENİ: clearCart tipini tanımladık
+
   clearCart: () => void;
 
   cartTotal: number;
@@ -52,33 +58,53 @@ export function CartProvider({ children }: { children: ReactNode }) {
           setCart(localCart);
 
           if (localCart.length > 0) {
-            const ids = localCart.map(item => item.id);
-            // DİKKAT: Artık veritabanından 'stock' bilgisini de çekiyoruz
-            const { data, error } = await supabase
+            const ids = localCart.map((item) => item.id);
+
+            // 1. Ürünleri Çek
+            const { data: pData, error } = await supabase
               .from("products")
-              .select("id, price, discount_price, stock") 
+              .select("id, price, stock")
               .in("id", ids);
 
-            if (data && !error) {
+            // 2. Aktif Kampanyaları Çek
+            const { data: campaigns } = await supabase
+              .from("campaigns")
+              .select("*");
+
+            const nowIso = new Date().toISOString();
+
+            if (pData && !error) {
               let isChanged = false;
 
-              // 1. ÖNCE FİLTRELE: Stoğu bitenleri (veya veritabanından silinenleri) sepetten acımadan uçur!
-              const availableItems = localCart.filter(item => {
-                const dbItem = data.find(p => p.id === item.id);
-                // Ürün yoksa veya stoğu 0/eksi ise sepetten çöpe at
+              // 1) Stoğu bitenleri çıkar
+              const availableItems = localCart.filter((item) => {
+                const dbItem = pData.find((p) => p.id === item.id);
                 if (!dbItem || Number(dbItem.stock) <= 0) {
                   isChanged = true;
-                  return false; 
+                  return false;
                 }
-                return true; 
+                return true;
               });
 
-              // 2. KALANLARI GÜNCELLE: Stokta kalanların fiyatı değişmiş mi diye kontrol et
-              const syncedCart = availableItems.map(item => {
-                const dbItem = data.find(p => p.id === item.id);
+              // 2) Kalanları güncelle (kampanya fiyatı varsa uygula)
+              const syncedCart = availableItems.map((item) => {
+                const dbItem = pData.find((p) => p.id === item.id);
                 if (dbItem) {
-                  const activePrice = Number(dbItem.discount_price) > 0 
-                    ? Number(dbItem.discount_price) 
+                  const activeCamp = campaigns?.find((c: any) => {
+                    const cIds = Array.isArray(c.product_ids)
+                      ? c.product_ids
+                      : typeof c.product_ids === "string"
+                      ? JSON.parse(c.product_ids || "[]")
+                      : [];
+                    return (
+                      cIds.includes(dbItem.id) &&
+                      nowIso >= c.start_date &&
+                      nowIso <= c.end_date
+                    );
+                  });
+
+                  const activePrice = activeCamp
+                    ? Number(dbItem.price) * (1 - activeCamp.discount_percent / 100)
                     : Number(dbItem.price);
 
                   if (item.price !== activePrice) {
@@ -89,10 +115,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
                 return item;
               });
 
-              // Eğer stoktan silinen veya fiyatı değişen varsa Context'i (Ekrani) anında güncelle
-              if (isChanged) {
-                setCart(syncedCart);
-              }
+              if (isChanged) setCart(syncedCart);
             }
           }
         } catch (e) {
@@ -124,7 +147,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
       const existing = prev.find((item) => item.id === product.id);
       if (existing) {
         return prev.map((item) =>
-          item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          item.id === product.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
         );
       }
       return [...prev, { ...product, quantity: 1 }];
@@ -147,10 +172,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
     );
   };
 
-  // YENİ VE DÜZELTİLMİŞ: Sepeti Temizleme Motoru
   const clearCart = () => {
-    setCart([]); // setItems değil, setCart kullanıyoruz!
-    localStorage.removeItem("prestigeso_cart"); 
+    setCart([]);
+    localStorage.removeItem("prestigeso_cart");
   };
 
   const cartTotal = useMemo(
@@ -167,10 +191,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
     addToCart,
     removeFromCart,
     updateQuantity,
-    clearCart, // Dışarı aktardık!
+    clearCart,
     cartTotal,
     campaignText,
-    setCampaignText
+    setCampaignText,
   };
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;

@@ -16,7 +16,9 @@ export function SearchProvider({ children }: { children: ReactNode }) {
   const [selectedCategory, setSelectedCategory] = useState("Tümü");
 
   return (
-    <SearchContext.Provider value={{ searchQuery, setSearchQuery, selectedCategory, setSelectedCategory }}>
+    <SearchContext.Provider
+      value={{ searchQuery, setSearchQuery, selectedCategory, setSelectedCategory }}
+    >
       {children}
     </SearchContext.Provider>
   );
