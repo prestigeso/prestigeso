@@ -72,7 +72,7 @@ export default function AddProductModal({
             />
           </div>
 
-          {/* ✅ SKU (Zorunlu - Barkoddan bağımsız) */}
+          {/* ✅ SKU (Zorunlu - Barkoddan bağımsız - Serbest Format) */}
           <div>
             <label className="text-xs font-bold text-gray-500 uppercase">
               SKU (Zorunlu)
@@ -81,17 +81,12 @@ export default function AddProductModal({
               required
               name="sku"
               type="text"
-              placeholder="PRS-KLY-0001"
-              pattern="^[A-Z]{3}-[A-Z]{3}-\d{4}$"
-              title="SKU formatı: PRS-KLY-0001 (3 harf - 3 harf - 4 rakam)"
+              placeholder="Örn: YUZUK-01, PRSTG-KOLYE veya 102938"
               onChange={(e) => {
                 e.currentTarget.value = e.currentTarget.value.toUpperCase();
               }}
-              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium font-mono tracking-wider"
+              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium font-mono tracking-wider outline-none focus:ring-2 focus:ring-black transition-all"
             />
-            <p className="text-[10px] text-gray-400 mt-1 font-bold">
-              Örn: PRS-KLY-0001
-            </p>
           </div>
 
           {/* Barkod opsiyonel - SKU’dan bağımsız */}

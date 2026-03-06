@@ -149,15 +149,9 @@ export default function EditProductModal({
                     ["SKU"]: e.target.value.toUpperCase(),
                   })
                 }
-                placeholder="PRS-KLY-0001"
-                pattern="^[A-Z]{3}-[A-Z]{3}-\d{4}$"
-                title="SKU formatı: PRS-KLY-0001 (3 harf - 3 harf - 4 rakam)"
+                placeholder="Örn: YUZUK-01, PRSTG-KOLYE veya 102938"
                 className="w-full p-3 bg-white border border-gray-200 rounded-xl font-medium font-mono tracking-wider outline-none focus:ring-2 focus:ring-black"
               />
-
-              <p className="text-[10px] text-gray-400 mt-2 font-bold">
-                Format: <span className="font-mono">PRS-KLY-0001</span>
-              </p>
             </div>
 
             {/* GALERİ SIRALAMA */}

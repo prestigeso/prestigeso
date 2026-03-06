@@ -23,7 +23,7 @@ import {
   AnalysisModal,
 } from "./modals";
 
-const SKU_REGEX = /^[A-Z]{3}-[A-Z]{3}-\d{4}$/;
+
 
 function normalizeSku(input: any) {
   return (input ?? "").toString().trim().toUpperCase();
@@ -367,10 +367,7 @@ export default function AdminPanel() {
     if (!editingProduct) return;
 
     const sku = normalizeSku(editingProduct?.["SKU"]);
-    if (!sku) return alert("SKU zorunludur! (Örn: PRS-KLY-0001)");
-    if (!SKU_REGEX.test(sku))
-      return alert("SKU formatı hatalı! (Örn: PRS-KLY-0001)");
-
+    if (!sku) return alert("SKU zorunludur!");
     setSaving(true);
 
     const images: string[] = Array.isArray(editingProduct.images)
@@ -423,9 +420,7 @@ export default function AdminPanel() {
       (form.elements.namedItem("sku") as HTMLInputElement).value
     );
 
-    if (!sku) return alert("SKU zorunludur! (Örn: PRS-KLY-0001)");
-    if (!SKU_REGEX.test(sku))
-      return alert("SKU formatı hatalı! (Örn: PRS-KLY-0001)");
+    if (!sku) return alert("SKU zorunludur!");
 
     const price = Number(
       (form.elements.namedItem("price") as HTMLInputElement).value
