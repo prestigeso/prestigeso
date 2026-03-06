@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
-
+import AddressesTab from "@/components/profile/AddressesTab";
 export default function ProfilePage() {
   const router = useRouter();
   const [user, setUser] = useState<any>(null);
@@ -26,7 +26,7 @@ export default function ProfilePage() {
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
   const [messageText, setMessageText] = useState("");
   const [isSending, setIsSending] = useState(false);
-
+  const [addresses, setAddresses] = useState<any[]>([]);
   useEffect(() => {
     const checkUserAndLoadData = async () => {
       const {
@@ -117,6 +117,15 @@ export default function ProfilePage() {
         .eq("user_id", session.user.id)
         .order("created_at", { ascending: false });
       if (ordData) setMyOrders(ordData);
+
+      // YENİ: ADRESLERİ ÇEK
+      const { data: addrData } = await supabase
+        .from("addresses")
+        .select("*")
+        .eq("user_id", session.user.id)
+        .order("is_default", { ascending: false })
+        .order("created_at", { ascending: false });
+      if (addrData) setAddresses(addrData);
 
       setLoading(false);
     };
@@ -720,17 +729,28 @@ export default function ProfilePage() {
                         key={order.id}
                         className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm flex flex-col gap-4 relative overflow-hidden transition-all hover:border-black"
                       >
-                        <div className="flex justify-between items-center border-b border-gray-50 pb-4">
-                          <div>
-                            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                              Sipariş Tarihi
-                            </p>
-                            <p className="text-sm font-bold text-black">
-                              {new Date(order.created_at).toLocaleDateString("tr-TR")}
-                            </p>
+                        {/* YENİ NESİL ÜST BİLGİ ALANI */}
+                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-gray-50 pb-4 gap-4">
+                          <div className="flex flex-col gap-1">
+                            <div className="flex items-center gap-2">
+                              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                Sipariş No:
+                              </p>
+                              <span className="bg-gray-100 text-black px-2 py-0.5 rounded text-[10px] font-black tracking-widest font-mono">
+                                {order.order_no || `PRS-ESKI-${order.id}`}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                                Tarih:
+                              </p>
+                              <p className="text-xs font-bold text-black">
+                                {new Date(order.created_at).toLocaleDateString("tr-TR")}
+                              </p>
+                            </div>
                           </div>
 
-                          <div>
+                          <div className="flex flex-col items-end gap-2">
                             <span
                               className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2
                                 ${
@@ -744,11 +764,51 @@ export default function ProfilePage() {
                               {order.status === "Bekliyor" && <span className="animate-pulse">⏳</span>}
                               {order.status === "Hazırlanıyor" && <span>📦</span>}
                               {order.status === "Kargolandı" && <span>🚀</span>}
+                              {order.status === "Teslim Edildi" && <span>✅</span>}
                               {order.status}
                             </span>
                           </div>
                         </div>
 
+                        {/* KARGO TAKİP ALANI (Eğer girilmişse) */}
+                        {(order.shipping_carrier || order.tracking_number) && (
+                          <div className="bg-blue-50/50 border border-blue-100 p-4 rounded-2xl flex flex-col md:flex-row items-center justify-between gap-4">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-lg">
+                                🚚
+                              </div>
+                              <div>
+                                <p className="text-[10px] font-black text-blue-800 uppercase tracking-widest mb-0.5">
+                                  Kargo Firması
+                                </p>
+                                <p className="text-sm font-bold text-black">{order.shipping_carrier || "Belirtilmedi"}</p>
+                              </div>
+                            </div>
+                            
+                            <div className="flex items-center gap-3">
+                              <div>
+                                <p className="text-[10px] font-black text-blue-800 uppercase tracking-widest mb-0.5 text-right">
+                                  Takip Numarası
+                                </p>
+                                <p className="text-sm font-bold font-mono text-black text-right">{order.tracking_number || "Bekleniyor..."}</p>
+                              </div>
+                              {order.tracking_number && (
+                                <button 
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(order.tracking_number);
+                                    alert("Kargo takip numarası kopyalandı! 📋");
+                                  }}
+                                  className="w-10 h-10 bg-white border border-blue-200 text-blue-600 hover:bg-blue-600 hover:text-white rounded-xl transition-all shadow-sm flex items-center justify-center font-bold active:scale-95"
+                                  title="Kopyala"
+                                >
+                                  ⎘
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* SİPARİŞ İÇERİĞİ VE ADRES */}
                         <div className="flex flex-col md:flex-row gap-6">
                           <div className="flex-1 space-y-3">
                             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">
@@ -819,23 +879,7 @@ export default function ProfilePage() {
 
             {/* ADRESLERİM */}
             {activeTab === "addresses" && (
-              <div className="animate-in fade-in duration-300">
-                <div className="flex justify-between items-center mb-6 border-b-2 border-gray-100 pb-4">
-                  <h3 className="text-xl font-black uppercase tracking-tight text-black">
-                    Kayıtlı Adreslerim
-                  </h3>
-                  <button className="text-[10px] font-black uppercase tracking-widest text-black border-b border-black hover:text-gray-500 hover:border-gray-500 transition-colors">
-                    + Yeni Adres Ekle
-                  </button>
-                </div>
-
-                <div className="flex flex-col items-center justify-center py-20 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
-                  <span className="text-4xl mb-4 opacity-50">📍</span>
-                  <p className="text-gray-400 font-black uppercase tracking-widest text-xs">
-                    Henüz kayıtlı bir adresiniz yok.
-                  </p>
-                </div>
-              </div>
+              <AddressesTab user={user} addresses={addresses} setAddresses={setAddresses} />
             )}
 
             {/* KUPONLARIM */}

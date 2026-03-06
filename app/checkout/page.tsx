@@ -103,17 +103,22 @@ export default function CheckoutPage() {
       await new Promise((resolve) => setTimeout(resolve, 2000));
 
       const formattedAddress = JSON.stringify(addressData);
+      // YENİ NESİL: ASİL SİPARİŞ NUMARASI ÜRETİCİSİ (Örn: PRS-2026-582910)
+      const currentYear = new Date().getFullYear();
+      const randomSixDigits = Math.floor(100000 + Math.random() * 900000);
+      const generatedOrderNo = `PRS-${currentYear}-${randomSixDigits}`;
 
       // 2. SİPARİŞİ VERİTABANINA YAZ
       const { error } = await supabase.from("orders").insert([
         {
-          user_id: user ? user.id : null, // Misafirse id NULL olur
-          user_email: addressData.email.toLowerCase(), // Misafirse formdan aldığı mail
+          order_no: generatedOrderNo, // YENİ: Sipariş Numaramız!
+          user_id: user ? user.id : null,
+          user_email: addressData.email.toLowerCase(),
           items: cartItems,
           total_amount: cartTotal,
           shipping_address: formattedAddress,
-          status: "Bekliyor",
-        },
+          status: "Bekliyor" 
+        }
       ]);
 
       if (error) throw error;
@@ -135,7 +140,7 @@ export default function CheckoutPage() {
         }
       }
 
-      alert("Siparişiniz başarıyla alındı! 🎉");
+      alert(`Siparişiniz başarıyla alındı! 🎉\nSipariş Numaranız: ${generatedOrderNo}\n\nBu numarayla siparişinizi takip edebilirsiniz.`);
       clearCart();
       router.push(user ? "/profile" : "/");
     } catch (error: any) {
