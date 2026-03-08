@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
 import DistanceSellingContract from "@/components/contracts/DistanceSellingContract";
+import MembershipAgreement from "@/components/contracts/MembershipAgreement";
+import PrivacyPolicy from "@/components/contracts/PrivacyPolicy";
+import ClarificationText from "@/components/contracts/ClarificationText";
 
 export default function LoginPage() {
   const router = useRouter();

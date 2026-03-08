@@ -193,7 +193,7 @@ export default function Home() {
       {/* 1. ÜST KAYAN YAZI */}
       {localCampaign && (
         <div className="bg-black text-white text-[10px] md:text-xs font-bold uppercase tracking-[0.2em] py-2.5 overflow-hidden w-full sticky top-0 z-40">
-          <marquee scrollAmount={6} className="w-full">
+          <marquee scrollamount={6} className="w-full">
             {Array(15).fill(localCampaign).join(" ✦ ")}
           </marquee>
         </div>
