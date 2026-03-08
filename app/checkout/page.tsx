@@ -44,7 +44,7 @@ export default function CheckoutPage() {
   const [loading, setLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // SEPET AKORDEON DURUMU (Sadece sepet açılıp kapanabilir)
+  // SEPET AKORDEON DURUMU 
   const [isCartOpen, setIsCartOpen] = useState(false);
 
   // Address book
@@ -52,10 +52,10 @@ export default function CheckoutPage() {
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
   const [isSavingAddress, setIsSavingAddress] = useState(false);
-  const [isContractModalOpen, setIsContractModalOpen] = useState(false);
-  // Agreements & Payment
+
+  // Sözleşme Modalı
   const [agreeTerms, setAgreeTerms] = useState(false);
-  const [paymentMethod, setPaymentMethod] = useState<"card" | "transfer">("card");
+  const [isContractModalOpen, setIsContractModalOpen] = useState(false);
 
   const [addressData, setAddressData] = useState<AddressForm>({
     email: "", firstName: "", lastName: "", phone: "",
@@ -79,7 +79,7 @@ export default function CheckoutPage() {
     if (!cartItems || cartItems.length === 0) router.replace("/");
   }, [cartItems, router]);
 
-  // Init checkout (session + addresses + API)
+  // Init checkout 
   useEffect(() => {
     const initCheckout = async () => {
       setLoading(true);
@@ -270,7 +270,6 @@ export default function CheckoutPage() {
           total_amount: cartTotal,
           shipping_address: shippingAddressObject,
           status: "Bekliyor",
-          payment_method: paymentMethod,
       }]);
 
       if (orderErr) throw orderErr;
@@ -279,7 +278,8 @@ export default function CheckoutPage() {
         await supabase.rpc("decrement_stock", { row_id: item.id, amount: item.quantity || 1 });
       }
 
-      alert(`Sipariş Alındı! No: ${orderNo}`);
+      // TODO: BURAYA İLERİDE IYZICO / PAYTR ÖDEME YÖNLENDİRMESİ GELECEK!
+      alert(`Sipariş Alındı! Ödeme entegrasyonu yapıldığında direkt pos'a gidecek. No: ${orderNo}`);
       clearCart();
       router.push(user ? "/profile" : "/");
     } catch (e: any) {
@@ -341,7 +341,7 @@ export default function CheckoutPage() {
             )}
           </section>
 
-          {/* BÖLÜM 2: TESLİMAT ADRESİ (Hep Açık & Sabit) */}
+          {/* BÖLÜM 2: TESLİMAT ADRESİ (Hep Açık) */}
           <section className="bg-white p-7 rounded-3xl border border-gray-100 shadow-sm">
             <div className="flex items-center gap-4 mb-6 pb-4 border-b border-gray-50">
               <span className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center font-black text-sm">2</span>
@@ -376,7 +376,6 @@ export default function CheckoutPage() {
                 );
               })}
 
-              {/* KÜÇÜLTÜLMÜŞ YENİ ADRES EKLE BUTONU */}
               <button 
                 onClick={() => setIsAddressModalOpen(true)}
                 className="flex items-center justify-center gap-3 p-5 rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50/50 text-gray-500 hover:border-black hover:text-black transition-all min-h-[120px]"
@@ -387,46 +386,47 @@ export default function CheckoutPage() {
             </div>
           </section>
 
-          {/* BÖLÜM 3: ÖDEME SEÇENEKLERİ (Hep Açık & Sabit) */}
+          {/* BÖLÜM 3: ÖDEME BİLGİLERİ (Geri Getirdiğimiz Havalı Kart UI) */}
           <section className="bg-white p-7 rounded-3xl border border-gray-100 shadow-sm">
             <div className="flex items-center gap-4 mb-6 pb-4 border-b border-gray-50">
               <span className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center font-black text-sm">3</span>
               <h2 className="text-lg font-black uppercase tracking-tighter text-black">
-                Ödeme Seçenekleri
+                Ödeme Bilgileri
               </h2>
             </div>
 
-            <div className="space-y-4">
-              <label className={`flex gap-4 p-5 rounded-2xl border-2 cursor-pointer transition-all ${paymentMethod === "card" ? "border-black bg-gray-50" : "border-gray-100 hover:border-gray-200"}`}>
-                <input type="radio" checked={paymentMethod === "card"} onChange={() => setPaymentMethod("card")} className="accent-black w-4 h-4 mt-1" />
-                <div className="flex-1"><p className="font-bold text-sm uppercase">Kart ile Öde</p><p className="text-[11px] text-gray-500 font-medium mt-1">Kredi/Banka kartı ile güvenli ödeme.</p></div>
-              </label>
-
-              <label className={`flex gap-4 p-5 rounded-2xl border-2 cursor-pointer transition-all ${paymentMethod === "transfer" ? "border-black bg-gray-50" : "border-gray-100 hover:border-gray-200"}`}>
-                <input type="radio" checked={paymentMethod === "transfer"} onChange={() => setPaymentMethod("transfer")} className="accent-black w-4 h-4 mt-1" />
-                <div className="flex-1"><p className="font-bold text-sm uppercase">Havale / EFT</p><p className="text-[11px] text-gray-500 font-medium mt-1">IBAN ile ödeme (manuel onay gerektirir).</p></div>
-              </label>
-            </div>
-
-            {paymentMethod === "card" && (
-              <div className="mt-8 max-w-sm">
-                <div className="bg-gray-900 rounded-2xl p-6 text-white relative overflow-hidden shadow-2xl">
-                  <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/5 rounded-full blur-3xl" />
-                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-gray-400 mb-8">Prestige Secure Payment</p>
-                  <div className="space-y-6 opacity-60 pointer-events-none">
-                    <div><label className="text-[8px] font-black uppercase text-gray-500 block mb-1">Kart Numarası</label><input disabled placeholder="**** **** **** ****" className="bg-transparent border-b border-white/20 w-full pb-1 text-sm outline-none font-mono" /></div>
-                    <div className="flex gap-8">
-                      <div className="flex-1"><label className="text-[8px] font-black uppercase text-gray-500 block mb-1">Son Kullanma</label><input disabled placeholder="AA/YY" className="bg-transparent border-b border-white/20 w-full pb-1 text-sm outline-none font-mono" /></div>
-                      <div className="w-20"><label className="text-[8px] font-black uppercase text-gray-500 block mb-1">CVV</label><input disabled placeholder="***" className="bg-transparent border-b border-white/20 w-full pb-1 text-sm outline-none font-mono" /></div>
+            <div className="max-w-sm">
+              <div className="bg-gray-900 rounded-2xl p-6 text-white relative overflow-hidden shadow-2xl">
+                <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/5 rounded-full blur-3xl" />
+                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-gray-400 mb-8">Prestige Secure Payment</p>
+                
+                {/* Şimdilik sadece görsel bir mock-up, Iyzico/PayTR bağlandığında buraya gerçek form gelecek */}
+                <div className="space-y-6 opacity-60 pointer-events-none">
+                  <div>
+                    <label className="text-[8px] font-black uppercase text-gray-500 block mb-1">Kart Numarası</label>
+                    <input disabled placeholder="**** **** **** ****" className="bg-transparent border-b border-white/20 w-full pb-1 text-sm outline-none font-mono" />
+                  </div>
+                  <div className="flex gap-8">
+                    <div className="flex-1">
+                      <label className="text-[8px] font-black uppercase text-gray-500 block mb-1">Son Kullanma</label>
+                      <input disabled placeholder="AA/YY" className="bg-transparent border-b border-white/20 w-full pb-1 text-sm outline-none font-mono" />
+                    </div>
+                    <div className="w-20">
+                      <label className="text-[8px] font-black uppercase text-gray-500 block mb-1">CVV</label>
+                      <input disabled placeholder="***" className="bg-transparent border-b border-white/20 w-full pb-1 text-sm outline-none font-mono" />
                     </div>
                   </div>
                 </div>
               </div>
-            )}
+              <p className="text-[9px] text-center mt-4 font-bold text-gray-400 uppercase tracking-widest">
+                * Kredi/Banka Kartı ile güvenli ödeme yapacaksınız.
+              </p>
+            </div>
           </section>
+
         </div>
 
-        {/* SAĞ: STICKY SİPARİŞ ÖZETİ (Hiçbir yere gitmez, hep yanda) */}
+        {/* SAĞ: STICKY SİPARİŞ ÖZETİ */}
         <div className="w-full lg:w-[400px]">
           <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm sticky top-24">
             <h3 className="text-lg font-black uppercase tracking-tighter mb-6 pb-2 border-b border-gray-50">Sipariş Özeti</h3>
@@ -435,10 +435,15 @@ export default function CheckoutPage() {
               <div className="flex justify-between text-xs font-bold text-green-600"><span>Kargo</span><span>ÜCRETSİZ</span></div>
               <div className="flex justify-between items-end pt-4 border-t border-gray-50"> <span className="text-sm font-black uppercase tracking-widest text-gray-400">Toplam</span> <span className="text-3xl font-black">{cartTotal.toLocaleString("tr-TR")} ₺</span> </div>
             </div>
-            {/* Agreements */}
-            <div className="mt-6 bg-gray-50 border border-gray-100 rounded-2xl p-4 mb-6">
-              <label className="flex items-start gap-3 cursor-pointer bg-gray-50 p-4 rounded-xl mb-6 border border-gray-100">
-              <input type="checkbox" checked={agreeTerms} onChange={(e) => setAgreeTerms(e.target.checked)} className="mt-1 accent-black w-4 h-4 flex-shrink-0" />
+            
+            {/* GÜVENLİ ÖDEME BİLGİSİ */}
+            <div className="mb-6 flex items-center justify-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-widest">
+              <span className="text-sm">🔒</span> 256-Bit SSL ile Güvenli Ödeme
+            </div>
+
+            {/* SÖZLEŞMELER */}
+            <label className="flex items-start gap-3 cursor-pointer bg-gray-50 p-4 rounded-xl mb-6 border border-gray-100">
+              <input type="checkbox" checked={agreeTerms} onChange={(e) => setAgreeTerms(e.target.checked)} className="mt-0.5 accent-black w-4 h-4 flex-shrink-0" />
               <span className="text-[10px] text-gray-500 font-medium leading-tight">
                 <b>Ön Bilgilendirme Koşulları</b>'nı ve{" "}
                 <button type="button" onClick={(e) => { e.preventDefault(); setIsContractModalOpen(true); }} className="text-black font-bold border-b border-black">
@@ -447,17 +452,37 @@ export default function CheckoutPage() {
                 'ni okudum, onaylıyorum.
               </span>
             </label>
-            </div>
-            {/* TEK VE NİHAİ BUTON BURADA! */}
-            <button onClick={handleCompleteOrder} disabled={isProcessing} className="w-full bg-black text-white font-black py-5 rounded-2xl shadow-xl active:scale-95 disabled:opacity-50 uppercase tracking-widest text-sm" >
-              {isProcessing ? "İşleniyor..." : "Siparişi Onayla"}
+
+            {/* TEK VE NİHAİ BUTON */}
+            <button onClick={handleCompleteOrder} disabled={isProcessing} className="w-full bg-black text-white font-black py-5 rounded-2xl shadow-xl active:scale-95 disabled:opacity-50 uppercase tracking-widest text-sm flex items-center justify-center gap-2" >
+              {isProcessing ? "İşleniyor..." : "Ödeme Yap 💳"}
             </button>
           </div>
         </div>
 
       </div>
 
-      {/* YENİ NESİL ADRES EKLEME POPUP (MODAL) - Aynen Korundu */}
+      {/* SÖZLEŞME POPUP (MODAL) */}
+      {isContractModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-2xl rounded-3xl p-6 md:p-8 shadow-2xl animate-in zoom-in duration-200 max-h-[90vh] flex flex-col relative z-10">
+            <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4 shrink-0">
+              <h2 className="text-lg font-black uppercase tracking-tight">Mesafeli Satış Sözleşmesi</h2>
+              <button onClick={() => setIsContractModalOpen(false)} className="w-8 h-8 bg-gray-100 rounded-full font-bold hover:bg-gray-200">✕</button>
+            </div>
+            <div className="overflow-y-auto pr-2 custom-scrollbar">
+              <DistanceSellingContract />
+            </div>
+            <div className="mt-6 pt-4 border-t border-gray-100 flex justify-end shrink-0">
+              <button onClick={() => { setAgreeTerms(true); setIsContractModalOpen(false); }} className="bg-black text-white px-8 py-3 rounded-xl font-bold text-xs uppercase tracking-widest shadow-md">
+                Okudum, Onaylıyorum
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ADRES EKLEME POPUP (MODAL) */}
       {isAddressModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white w-full max-w-lg rounded-3xl p-6 md:p-8 shadow-2xl animate-in zoom-in duration-200 max-h-[90vh] flex flex-col relative z-10">
@@ -569,25 +594,6 @@ export default function CheckoutPage() {
                 {isSavingAddress ? "Kaydediliyor..." : "Adresi Kaydet 📍"}
               </button>
             </form>
-          </div>
-        </div>
-      )}
-      {/* SÖZLEŞME POPUP (MODAL) */}
-      {isContractModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-2xl rounded-3xl p-6 md:p-8 shadow-2xl animate-in zoom-in duration-200 max-h-[90vh] flex flex-col relative z-10">
-            <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4 shrink-0">
-              <h2 className="text-lg font-black uppercase tracking-tight">Mesafeli Satış Sözleşmesi</h2>
-              <button onClick={() => setIsContractModalOpen(false)} className="w-8 h-8 bg-gray-100 rounded-full font-bold hover:bg-gray-200">✕</button>
-            </div>
-            <div className="overflow-y-auto pr-2 custom-scrollbar">
-              <DistanceSellingContract />
-            </div>
-            <div className="mt-6 pt-4 border-t border-gray-100 flex justify-end shrink-0">
-              <button onClick={() => { setAgreeTerms(true); setIsContractModalOpen(false); }} className="bg-black text-white px-8 py-3 rounded-xl font-bold text-xs uppercase tracking-widest shadow-md">
-                Okudum, Onaylıyorum
-              </button>
-            </div>
           </div>
         </div>
       )}
