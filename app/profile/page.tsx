@@ -20,6 +20,7 @@ export default function ProfilePage() {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
+  const [isMounted, setIsMounted] = useState(false);
   // Varsayılan sekme
   const [activeTab, setActiveTab] = useState("favorites");
 
@@ -150,7 +151,7 @@ export default function ProfilePage() {
   };
 
   // YÜKLENİYOR EKRANI
-  if (loading) {
+  if (!isMounted || loading) {
     return (
       <div className="min-h-screen flex items-center justify-center font-black uppercase tracking-widest text-gray-400">
         Yükleniyor...
