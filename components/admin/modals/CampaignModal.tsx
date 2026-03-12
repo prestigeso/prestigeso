@@ -8,7 +8,6 @@ type Props = {
   open: boolean;
   onClose: () => void;
 
-  // form state (parent'ta tutuluyor)
   campaignName: string;
   setCampaignName: (v: string) => void;
 
@@ -21,11 +20,9 @@ type Props = {
   selectedCampaignProducts: number[];
   setSelectedCampaignProducts: (ids: number[]) => void;
 
-  // data
   dbProducts: ProductRow[];
   dbCampaigns: CampaignRow[];
 
-  // actions
   onCreateCampaign: () => void;
   onDeleteCampaign: (id: number) => void;
 };
@@ -33,22 +30,17 @@ type Props = {
 export default function CampaignModal({
   open,
   onClose,
-
-  campaignName,
+  // ZIRH 1: Parent'tan veri boş gelirse diye varsayılan değerler atıyoruz!
+  campaignName = "",
   setCampaignName,
-
-  discountPercent,
+  discountPercent = 10,
   setDiscountPercent,
-
-  campaignDates,
+  campaignDates = { start: "", end: "" },
   setCampaignDates,
-
-  selectedCampaignProducts,
+  selectedCampaignProducts = [],
   setSelectedCampaignProducts,
-
-  dbProducts,
-  dbCampaigns,
-
+  dbProducts = [],
+  dbCampaigns = [],
   onCreateCampaign,
   onDeleteCampaign,
 }: Props) {
@@ -65,6 +57,9 @@ export default function CampaignModal({
   };
 
   const filteredProducts = useMemo(() => {
+    // ZIRH 2: dbProducts undefined gelirse çökmeyi engelle
+    if (!dbProducts || !Array.isArray(dbProducts)) return [];
+    
     const q = productSearch.trim().toLowerCase();
     if (!q) return dbProducts;
 
@@ -97,7 +92,7 @@ export default function CampaignModal({
         </div>
 
         {/* Body */}
-        <div className="flex flex-col md:flex-row gap-8 overflow-y-auto flex-1">
+        <div className="flex flex-col md:flex-row gap-8 overflow-y-auto flex-1 pr-2 custom-scrollbar">
           {/* LEFT: Create */}
           <div className="w-full md:w-1/2 space-y-5 border-r border-gray-100 pr-0 md:pr-6">
             <h3 className="font-black text-sm uppercase tracking-widest text-gray-400 mb-4">
@@ -206,7 +201,7 @@ export default function CampaignModal({
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto p-1">
+              <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto p-1 custom-scrollbar">
                 {filteredProducts.length === 0 ? (
                   <div className="col-span-2 bg-gray-50 border border-dashed border-gray-200 rounded-xl p-6 text-center">
                     <p className="text-[11px] font-black text-gray-400 uppercase tracking-widest">
@@ -214,58 +209,53 @@ export default function CampaignModal({
                     </p>
                   </div>
                 ) : (
-                  filteredProducts.map((p) => (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => toggleCampaignProduct(p.id)}
-                      className={`p-3 rounded-xl border text-left transition-all ${
-                        selectedCampaignProducts.includes(p.id)
-                          ? "border-black bg-black text-white"
-                          : "border-gray-200 bg-white hover:border-gray-400"
-                      }`}
-                      title={`SKU: ${p["SKU"]}`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <p className="font-bold text-xs truncate flex-1">{p.name}</p>
-
-                        {/* ✅ SKU etiketi */}
-                        <span
-                          className={`px-2 py-0.5 rounded text-[9px] font-mono border ${
-                            selectedCampaignProducts.includes(p.id)
-                              ? "bg-white/10 text-white border-white/20"
-                              : "bg-black text-white border-black"
-                          }`}
-                        >
-                          {p["SKU"]}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center justify-between mt-1 gap-2">
-                        <p
-                          className={`text-[10px] ${
-                            selectedCampaignProducts.includes(p.id)
-                              ? "text-gray-300"
-                              : "text-gray-500"
-                          }`}
-                        >
-                          {Number(p.price).toLocaleString("tr-TR")} ₺
-                        </p>
-
-                        {p.barcode && (
+                  filteredProducts.map((p) => {
+                    const isSelected = selectedCampaignProducts.includes(p.id);
+                    return (
+                      // ZIRH 3: Button içine Div koymayı kaldırdık, Div'i button gibi davrandırdık (HTML kuralları)
+                      <div
+                        key={p.id}
+                        onClick={() => toggleCampaignProduct(p.id)}
+                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
+                          isSelected
+                            ? "border-black bg-black text-white"
+                            : "border-gray-200 bg-white hover:border-gray-400"
+                        }`}
+                        title={`SKU: ${p["SKU"]}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <p className="font-bold text-xs truncate flex-1">{p.name}</p>
                           <span
-                            className={`text-[9px] font-mono px-2 py-0.5 rounded border ${
-                              selectedCampaignProducts.includes(p.id)
-                                ? "border-white/20 text-gray-200"
-                                : "border-gray-200 text-gray-500 bg-gray-50"
+                            className={`px-2 py-0.5 rounded text-[9px] font-mono border ${
+                              isSelected
+                                ? "bg-white/10 text-white border-white/20"
+                                : "bg-black text-white border-black"
                             }`}
                           >
-                            #{String(p.barcode)}
+                            {p["SKU"]}
                           </span>
-                        )}
+                        </div>
+
+                        <div className="flex items-center justify-between mt-1 gap-2">
+                          <p className={`text-[10px] ${isSelected ? "text-gray-300" : "text-gray-500"}`}>
+                            {Number(p.price).toLocaleString("tr-TR")} ₺
+                          </p>
+
+                          {p.barcode && (
+                            <span
+                              className={`text-[9px] font-mono px-2 py-0.5 rounded border ${
+                                isSelected
+                                  ? "border-white/20 text-gray-200"
+                                  : "border-gray-200 text-gray-500 bg-gray-50"
+                              }`}
+                            >
+                              #{String(p.barcode)}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </button>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
@@ -285,7 +275,8 @@ export default function CampaignModal({
               Sistemdeki Kampanyalar
             </h3>
 
-            {dbCampaigns.length === 0 ? (
+            {/* ZIRH 4: dbCampaigns undefined gelme ihtimaline karşı .length patlamasın */}
+            {!dbCampaigns || dbCampaigns.length === 0 ? (
               <div className="bg-gray-50 rounded-2xl p-10 text-center border border-dashed border-gray-200">
                 <p className="text-gray-400 font-bold text-xs uppercase tracking-widest">
                   Henüz oluşturulmuş kampanya yok.
@@ -297,7 +288,6 @@ export default function CampaignModal({
                   const nowIso = new Date().toISOString();
                   const isActive = nowIso >= camp.start_date && nowIso <= camp.end_date;
                   const isExpired = nowIso > camp.end_date;
-
                   const pIds = safeParseIds(camp.product_ids);
 
                   return (
@@ -335,9 +325,10 @@ export default function CampaignModal({
                         % {camp.discount_percent} İndirim
                       </p>
 
-                      <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3">
-                        {new Date(camp.start_date).toLocaleDateString("tr-TR")} -{" "}
-                        {new Date(camp.end_date).toLocaleDateString("tr-TR")}
+                      {/* ZIRH 5: Tarihleri suppressHydrationWarning ile korumaya aldık */}
+                      <p suppressHydrationWarning className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3">
+                        {camp.start_date ? new Date(camp.start_date).toLocaleDateString("tr-TR") : ""} -{" "}
+                        {camp.end_date ? new Date(camp.end_date).toLocaleDateString("tr-TR") : ""}
                       </p>
 
                       <div className="flex justify-between items-center border-t border-gray-200/50 pt-3">
