@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import type { ProductRow, CampaignRow } from "../types";
 import { safeParseIds } from "../utils";
 
@@ -30,7 +30,6 @@ type Props = {
 export default function CampaignModal({
   open,
   onClose,
-  // ZIRH 1: Parent'tan veri boş gelirse diye varsayılan değerler atıyoruz!
   campaignName = "",
   setCampaignName,
   discountPercent = 10,
@@ -45,8 +44,12 @@ export default function CampaignModal({
   onDeleteCampaign,
 }: Props) {
   const [productSearch, setProductSearch] = useState("");
-
-  if (!open) return null;
+  
+  // ZIRH 1: HYDRATION KALKANI (Sadece Tarayıcıda Çalışmasını Sağlar)
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   const toggleCampaignProduct = (id: number) => {
     setSelectedCampaignProducts(
@@ -57,7 +60,6 @@ export default function CampaignModal({
   };
 
   const filteredProducts = useMemo(() => {
-    // ZIRH 2: dbProducts undefined gelirse çökmeyi engelle
     if (!dbProducts || !Array.isArray(dbProducts)) return [];
     
     const q = productSearch.trim().toLowerCase();
@@ -72,6 +74,9 @@ export default function CampaignModal({
   }, [dbProducts, productSearch]);
 
   const clearSelection = () => setSelectedCampaignProducts([]);
+
+  // EĞER SAYFA YÜKLENMEDİYSE VEYA MODAL KAPALIYSA HİÇBİR ŞEY ÇİZME! (Çökmeyi Engeller)
+  if (!isMounted || !open) return null;
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
@@ -107,7 +112,7 @@ export default function CampaignModal({
                 type="text"
                 value={campaignName}
                 onChange={(e) => setCampaignName(e.target.value)}
-                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium"
+                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium outline-none focus:border-black"
                 placeholder="Örn: Sezon İndirimi"
               />
             </div>
@@ -120,7 +125,7 @@ export default function CampaignModal({
                 type="number"
                 value={discountPercent}
                 onChange={(e) => setDiscountPercent(Number(e.target.value))}
-                className="w-full p-3 bg-white border border-blue-200 rounded-xl font-black text-blue-600"
+                className="w-full p-3 bg-white border border-blue-200 rounded-xl font-black text-blue-600 outline-none"
                 min={1}
                 max={89}
               />
@@ -212,7 +217,6 @@ export default function CampaignModal({
                   filteredProducts.map((p) => {
                     const isSelected = selectedCampaignProducts.includes(p.id);
                     return (
-                      // ZIRH 3: Button içine Div koymayı kaldırdık, Div'i button gibi davrandırdık (HTML kuralları)
                       <div
                         key={p.id}
                         onClick={() => toggleCampaignProduct(p.id)}
@@ -275,7 +279,6 @@ export default function CampaignModal({
               Sistemdeki Kampanyalar
             </h3>
 
-            {/* ZIRH 4: dbCampaigns undefined gelme ihtimaline karşı .length patlamasın */}
             {!dbCampaigns || dbCampaigns.length === 0 ? (
               <div className="bg-gray-50 rounded-2xl p-10 text-center border border-dashed border-gray-200">
                 <p className="text-gray-400 font-bold text-xs uppercase tracking-widest">
@@ -325,7 +328,6 @@ export default function CampaignModal({
                         % {camp.discount_percent} İndirim
                       </p>
 
-                      {/* ZIRH 5: Tarihleri suppressHydrationWarning ile korumaya aldık */}
                       <p suppressHydrationWarning className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3">
                         {camp.start_date ? new Date(camp.start_date).toLocaleDateString("tr-TR") : ""} -{" "}
                         {camp.end_date ? new Date(camp.end_date).toLocaleDateString("tr-TR") : ""}
