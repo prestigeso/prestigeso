@@ -1,12 +1,11 @@
 import { NextResponse } from "next/server";
-
-const COOKIE_NAME = "prestigeso_admin";
+import { ADMIN_COOKIE_NAME } from "@/lib/adminAuth";
 
 export async function POST() {
   const res = NextResponse.json({ ok: true });
 
   res.cookies.set({
-    name: COOKIE_NAME,
+    name: ADMIN_COOKIE_NAME,
     value: "0",
     httpOnly: true,
     sameSite: "lax",

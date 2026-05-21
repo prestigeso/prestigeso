@@ -1,14 +1,25 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import puppeteer from "puppeteer";
 import * as cheerio from "cheerio";
+import { ADMIN_COOKIE_NAME, verifyAdminSessionCookie } from "@/lib/adminAuth";
 
 // Vercel'e bu işlemin biraz sürebileceğini söylüyoruz
 export const maxDuration = 60;
 
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
   let browser: puppeteer.Browser | undefined;
 
   try {
+    const adminSecret = (process.env.ADMIN_COOKIE_SECRET ?? "").trim();
+    const cookieValue = request.cookies.get(ADMIN_COOKIE_NAME)?.value ?? "";
+    const authed = adminSecret
+      ? await verifyAdminSessionCookie(adminSecret, cookieValue)
+      : false;
+
+    if (!authed) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json().catch(() => ({} as any));
     const url = body.url || "https://prestigeso.com";
 

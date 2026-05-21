@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
-
-const COOKIE_NAME = "prestigeso_admin";
+import {
+  ADMIN_COOKIE_MAX_AGE_SECONDS,
+  ADMIN_COOKIE_NAME,
+  createAdminSessionCookie,
+} from "@/lib/adminAuth";
 
 export async function POST(req: Request) {
   try {
@@ -23,16 +26,26 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Wrong password" }, { status: 401 });
     }
 
+    const adminSecret = (process.env.ADMIN_COOKIE_SECRET ?? "").trim();
+    if (!adminSecret) {
+      return NextResponse.json(
+        { error: "Server misconfigured: ADMIN_COOKIE_SECRET boş veya okunamadı" },
+        { status: 500 }
+      );
+    }
+
+    const cookieValue = await createAdminSessionCookie(adminSecret);
+
     const res = NextResponse.json({ ok: true });
 
     res.cookies.set({
-      name: COOKIE_NAME,
-      value: "1",
+      name: ADMIN_COOKIE_NAME,
+      value: cookieValue,
       httpOnly: true,
       sameSite: "lax",
       secure: process.env.NODE_ENV === "production",
       path: "/",
-      maxAge: 60 * 60 * 24 * 7, // 7 gün
+      maxAge: ADMIN_COOKIE_MAX_AGE_SECONDS,
     });
 
     return res;

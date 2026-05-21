@@ -28,6 +28,10 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
   const [localCampaign, setLocalCampaign] = useState("");
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
+  const [favoriteIds, setFavoriteIds] = useState<Set<number>>(
+    () => new Set()
+  );
 
   // Mobilde "Arama" butonuna basınca açılacak dev ekran
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
@@ -60,6 +64,24 @@ export default function Home() {
     setLocalCampaign(localStorage.getItem("prestigeso_campaign") || "");
 
     const loadAllDataAndCount = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (session) {
+        setAuthUserId(session.user.id);
+        const { data: favData } = await supabase
+          .from("favorites")
+          .select("product_id")
+          .eq("user_id", session.user.id);
+        setFavoriteIds(
+          () => new Set((favData || []).map((fav: any) => fav.product_id))
+        );
+      } else {
+        setAuthUserId(null);
+        setFavoriteIds(() => new Set());
+      }
+
       // 1) Sayfa görüntülenme sayacı (oturum bazlı)
       try {
         const isHere = sessionStorage.getItem("prestige_session_active");
@@ -180,6 +202,43 @@ export default function Home() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const handleToggleFavorite = async (
+    productId: number,
+    isCurrentlyFavorite: boolean
+  ) => {
+    if (!authUserId) {
+      alert("Favorilemek için giriş yapın! 🛡️");
+      return;
+    }
+
+    if (isCurrentlyFavorite) {
+      const { error } = await supabase
+        .from("favorites")
+        .delete()
+        .eq("user_id", authUserId)
+        .eq("product_id", productId);
+      if (!error) {
+        setFavoriteIds((prev) => {
+          const next = new Set(prev);
+          next.delete(productId);
+          return next;
+        });
+      }
+      return;
+    }
+
+    const { error } = await supabase
+      .from("favorites")
+      .insert([{ user_id: authUserId, product_id: productId }]);
+    if (!error) {
+      setFavoriteIds((prev) => {
+        const next = new Set(prev);
+        next.add(productId);
+        return next;
+      });
+    }
+  };
+
   if (loading)
     return (
       <div className="min-h-screen flex items-center justify-center font-black text-gray-400 uppercase tracking-widest bg-white">
@@ -256,7 +315,13 @@ export default function Home() {
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-6">
                 {filteredProducts.map((p) => (
-                  <PrestigeCard key={p.id} product={p} campaigns={dbCampaigns} />
+                  <PrestigeCard
+                    key={p.id}
+                    product={p}
+                    campaigns={dbCampaigns}
+                    isFavorite={favoriteIds.has(p.id)}
+                    onToggleFavorite={handleToggleFavorite}
+                  />
                 ))}
               </div>
             )}
@@ -477,7 +542,13 @@ function ProductCarousel({
             key={p.id}
             className="min-w-[140px] md:min-w-0 w-[45vw] md:w-auto snap-start"
           >
-            <PrestigeCard product={p} campaigns={campaigns} badgeLabel={badgeLabel} />
+            <PrestigeCard
+              product={p}
+              campaigns={campaigns}
+              badgeLabel={badgeLabel}
+              isFavorite={favoriteIds.has(p.id)}
+              onToggleFavorite={handleToggleFavorite}
+            />
           </div>
         ))}
       </div>
@@ -489,13 +560,15 @@ function PrestigeCard({
   product,
   campaigns,
   badgeLabel,
+  isFavorite,
+  onToggleFavorite,
 }: {
   product: any;
   campaigns: any[];
   badgeLabel?: string;
+  isFavorite: boolean;
+  onToggleFavorite: (productId: number, isCurrentlyFavorite: boolean) => void;
 }) {
-  const [isFavorite, setIsFavorite] = useState(false);
-
   const displayImage = product.images?.[0] || product.image || "/logo.jpeg";
   const ratingCount = product.reviewCount || 0;
   const avgRating = product.ratingAvg || 0;
@@ -515,46 +588,10 @@ function PrestigeCard({
     activePrice = Number(product.price) * (1 - activeCamp.discount_percent / 100);
   }
 
-  useEffect(() => {
-    const checkIsFav = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (session) {
-        const { data } = await supabase
-          .from("favorites")
-          .select("id")
-          .eq("user_id", session.user.id)
-          .eq("product_id", product.id)
-          .single();
-        setIsFavorite(!!data);
-      }
-    };
-    checkIsFav();
-  }, [product.id]);
-
   const handleFavoriteClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) return alert("Favorilemek için giriş yapın! 🛡️");
-
-    if (isFavorite) {
-      setIsFavorite(false);
-      await supabase
-        .from("favorites")
-        .delete()
-        .eq("user_id", session.user.id)
-        .eq("product_id", product.id);
-    } else {
-      setIsFavorite(true);
-      await supabase
-        .from("favorites")
-        .insert([{ user_id: session.user.id, product_id: product.id }]);
-    }
+    onToggleFavorite(product.id, isFavorite);
   };
 
   return (

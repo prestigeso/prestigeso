@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { ADMIN_COOKIE_NAME, verifyAdminSessionCookie } from "@/lib/adminAuth";
 
-const COOKIE_NAME = "prestigeso_admin";
-
-export function proxy(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
-  // Her zaman izin verilenler
   const isLoginPage = pathname === "/admin/login";
   const isLoginApi = pathname === "/api/admin/login";
   const isLogoutApi = pathname === "/api/admin/logout";
@@ -22,8 +20,16 @@ export function proxy(req: NextRequest) {
     return NextResponse.next();
   }
 
-  const cookie = req.cookies.get(COOKIE_NAME)?.value;
-  const authed = cookie === "1";
+  const adminSecret = (process.env.ADMIN_COOKIE_SECRET ?? "").trim();
+  if (!adminSecret) {
+    return NextResponse.json(
+      { error: "Server misconfigured: ADMIN_COOKIE_SECRET boş veya okunamadı" },
+      { status: 500 }
+    );
+  }
+
+  const cookieValue = req.cookies.get(ADMIN_COOKIE_NAME)?.value ?? "";
+  const authed = await verifyAdminSessionCookie(adminSecret, cookieValue);
 
   if (isAdminApi && !authed) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
