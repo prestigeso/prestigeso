@@ -7,11 +7,9 @@ type Props = {
   open: boolean;
   onClose: () => void;
 
-  // submit
   onSubmit: (e: FormEvent<HTMLFormElement>) => void;
   creating: boolean;
 
-  // images state (parent'ta tutuluyor)
   files: File[];
   setFiles: (files: File[]) => void;
 
@@ -46,6 +44,7 @@ export default function AddProductModal({
       <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl flex flex-col max-h-[90vh]">
         <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
           <h2 className="text-xl font-black">Yeni Ürün Ekle</h2>
+
           <button
             type="button"
             onClick={handleClose}
@@ -68,11 +67,10 @@ export default function AddProductModal({
               required
               name="name"
               type="text"
-              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium"
+              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium outline-none focus:ring-2 focus:ring-black transition-all"
             />
           </div>
 
-          {/* ✅ SKU (Zorunlu - Barkoddan bağımsız - Serbest Format) */}
           <div>
             <label className="text-xs font-bold text-gray-500 uppercase">
               SKU (Zorunlu)
@@ -89,7 +87,6 @@ export default function AddProductModal({
             />
           </div>
 
-          {/* Barkod opsiyonel - SKU’dan bağımsız */}
           <div>
             <label className="text-xs font-bold text-gray-500 uppercase">
               Barkod (Opsiyonel)
@@ -98,7 +95,7 @@ export default function AddProductModal({
               name="barcode"
               type="text"
               placeholder="Örn: 8680..."
-              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium font-mono text-blue-600"
+              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium font-mono text-blue-600 outline-none focus:ring-2 focus:ring-black transition-all"
             />
           </div>
 
@@ -111,9 +108,12 @@ export default function AddProductModal({
                 required
                 name="price"
                 type="number"
-                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium"
+                min="0"
+                step="0.01"
+                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium outline-none focus:ring-2 focus:ring-black transition-all"
               />
             </div>
+
             <div>
               <label className="text-xs font-bold text-gray-500 uppercase">
                 Stok
@@ -122,8 +122,10 @@ export default function AddProductModal({
                 required
                 name="stock"
                 type="number"
+                min="0"
+                step="1"
                 defaultValue="1"
-                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium"
+                className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium outline-none focus:ring-2 focus:ring-black transition-all"
               />
             </div>
           </div>
@@ -135,7 +137,7 @@ export default function AddProductModal({
             <select
               required
               name="category"
-              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium text-black outline-none focus:ring-2 focus:ring-black"
+              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium text-black outline-none focus:ring-2 focus:ring-black transition-all"
             >
               <option value="Kolyeler">Kolyeler</option>
               <option value="Yüzükler">Yüzükler</option>
@@ -154,13 +156,13 @@ export default function AddProductModal({
               required
               name="description"
               rows={3}
-              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium resize-none"
+              className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium resize-none outline-none focus:ring-2 focus:ring-black transition-all"
             />
           </div>
 
           <div className="bg-gray-50 p-3 border border-gray-200 rounded-xl">
             <label className="text-xs font-bold text-gray-500 uppercase block mb-2">
-              Fotoğraflar
+              Fotoğraflar {files.length > 0 ? `(${files.length})` : ""}
             </label>
 
             <input
@@ -189,7 +191,11 @@ export default function AddProductModal({
                       {i + 1} {i === 0 && "(Kapak)"}
                     </span>
 
-                    <img src={url} className="w-full h-20 object-cover" alt="" />
+                    <img
+                      src={url}
+                      className="w-full h-20 object-cover"
+                      alt={`Ürün görseli ${i + 1}`}
+                    />
 
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-between px-1">
                       <button
@@ -201,6 +207,7 @@ export default function AddProductModal({
                       >
                         ◀
                       </button>
+
                       <button
                         type="button"
                         onClick={() => moveImage(i, "right")}
@@ -223,6 +230,7 @@ export default function AddProductModal({
               name="is_bestseller"
               className="w-5 h-5 rounded border-gray-300 text-black focus:ring-black"
             />
+
             <div>
               <span className="font-bold text-sm block text-gray-900">
                 Çok Satan
@@ -233,7 +241,7 @@ export default function AddProductModal({
           <button
             type="submit"
             disabled={creating}
-            className="w-full bg-black text-white py-4 rounded-xl font-bold mt-4 shadow-lg disabled:opacity-60"
+            className="w-full bg-black text-white py-4 rounded-xl font-bold mt-4 shadow-lg disabled:opacity-60 active:scale-95 transition-all"
           >
             {creating ? "Ekleniyor..." : "🚀 Ürünü Ekle"}
           </button>

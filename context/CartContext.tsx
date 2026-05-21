@@ -40,6 +40,28 @@ type CartContextType = {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
+function safeParseIds(ids: unknown): number[] {
+  if (Array.isArray(ids)) {
+    return ids.map((x) => Number(x)).filter((x) => Number.isFinite(x));
+  }
+
+  if (typeof ids === "string") {
+    try {
+      const parsed = JSON.parse(ids);
+
+      if (Array.isArray(parsed)) {
+        return parsed.map((x) => Number(x)).filter((x) => Number.isFinite(x));
+      }
+
+      return [];
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+}
+
 export function CartProvider({ children }: { children: ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -52,75 +74,98 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
     const loadAndSyncCart = async () => {
       const savedCart = localStorage.getItem("prestigeso_cart");
-      if (savedCart) {
-        try {
-          const localCart: CartItem[] = JSON.parse(savedCart);
-          setCart(localCart);
 
-          if (localCart.length > 0) {
-            const ids = localCart.map((item) => item.id);
+      if (!savedCart) return;
 
-            // 1. Ürünleri Çek
-            const { data: pData, error } = await supabase
-              .from("products")
-              .select("id, price, stock")
-              .in("id", ids);
+      try {
+        const localCart: CartItem[] = JSON.parse(savedCart);
 
-            // 2. Aktif Kampanyaları Çek
-            const { data: campaigns } = await supabase
-              .from("campaigns")
-              .select("*");
-
-            const nowIso = new Date().toISOString();
-
-            if (pData && !error) {
-              let isChanged = false;
-
-              // 1) Stoğu bitenleri çıkar
-              const availableItems = localCart.filter((item) => {
-                const dbItem = pData.find((p) => p.id === item.id);
-                if (!dbItem || Number(dbItem.stock) <= 0) {
-                  isChanged = true;
-                  return false;
-                }
-                return true;
-              });
-
-              // 2) Kalanları güncelle (kampanya fiyatı varsa uygula)
-              const syncedCart = availableItems.map((item) => {
-                const dbItem = pData.find((p) => p.id === item.id);
-                if (dbItem) {
-                  const activeCamp = campaigns?.find((c: any) => {
-                    const cIds = Array.isArray(c.product_ids)
-                      ? c.product_ids
-                      : typeof c.product_ids === "string"
-                      ? JSON.parse(c.product_ids || "[]")
-                      : [];
-                    return (
-                      cIds.includes(dbItem.id) &&
-                      nowIso >= c.start_date &&
-                      nowIso <= c.end_date
-                    );
-                  });
-
-                  const activePrice = activeCamp
-                    ? Number(dbItem.price) * (1 - activeCamp.discount_percent / 100)
-                    : Number(dbItem.price);
-
-                  if (item.price !== activePrice) {
-                    isChanged = true;
-                    return { ...item, price: activePrice };
-                  }
-                }
-                return item;
-              });
-
-              if (isChanged) setCart(syncedCart);
-            }
-          }
-        } catch (e) {
-          console.error("Sepet okunurken hata oluştu", e);
+        if (!Array.isArray(localCart)) {
+          localStorage.removeItem("prestigeso_cart");
+          setCart([]);
+          return;
         }
+
+        setCart(localCart);
+
+        if (localCart.length === 0) return;
+
+        const ids = localCart.map((item) => item.id);
+
+        const { data: pData, error } = await supabase
+          .from("products")
+          .select("id, price, stock")
+          .in("id", ids);
+
+        const { data: campaigns } = await supabase
+          .from("campaigns")
+          .select("*");
+
+        const nowIso = new Date().toISOString();
+
+        if (!pData || error) return;
+
+        let isChanged = false;
+
+        const availableItems = localCart.filter((item) => {
+          const dbItem = pData.find((p) => String(p.id) === String(item.id));
+
+          if (!dbItem || Number(dbItem.stock) <= 0) {
+            isChanged = true;
+            return false;
+          }
+
+          return true;
+        });
+
+        const syncedCart = availableItems.map((item) => {
+          const dbItem = pData.find((p) => String(p.id) === String(item.id));
+
+          if (!dbItem) {
+            isChanged = true;
+            return item;
+          }
+
+          const activeCamp = campaigns?.find((c: any) => {
+            const campaignProductIds = safeParseIds(c.product_ids);
+
+            return (
+              campaignProductIds.includes(Number(dbItem.id)) &&
+              nowIso >= c.start_date &&
+              nowIso <= c.end_date
+            );
+          });
+
+          const activePrice = activeCamp
+            ? Number(dbItem.price) * (1 - activeCamp.discount_percent / 100)
+            : Number(dbItem.price);
+
+          const dbStock = Number(dbItem.stock || 0);
+          const fixedQuantity = Math.min(Number(item.quantity || 1), dbStock);
+
+          if (
+            Number(item.price) !== Number(activePrice) ||
+            Number(item.quantity) !== Number(fixedQuantity)
+          ) {
+            isChanged = true;
+
+            return {
+              ...item,
+              price: activePrice,
+              quantity: fixedQuantity > 0 ? fixedQuantity : 1,
+            };
+          }
+
+          return item;
+        });
+
+        if (isChanged) {
+          setCart(syncedCart);
+        }
+      } catch (e) {
+        console.error("Sepet okunurken hata oluştu:", e);
+        localStorage.removeItem("prestigeso_cart");
+        setCart([]);
       }
     };
 
@@ -132,42 +177,62 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!mounted) return;
+
     localStorage.setItem("prestigeso_cart", JSON.stringify(cart));
   }, [cart, mounted]);
 
   useEffect(() => {
     if (!mounted) return;
+
     localStorage.setItem("prestigeso_campaign", campaignText);
   }, [campaignText, mounted]);
 
-  const toggleCart = () => setIsCartOpen((v) => !v);
+  const toggleCart = () => {
+    setIsCartOpen((value) => !value);
+  };
 
   const addToCart = (product: CartItem) => {
     setCart((prev) => {
-      const existing = prev.find((item) => item.id === product.id);
+      const existing = prev.find(
+        (item) => String(item.id) === String(product.id)
+      );
+
       if (existing) {
         return prev.map((item) =>
-          item.id === product.id
-            ? { ...item, quantity: item.quantity + 1 }
+          String(item.id) === String(product.id)
+            ? {
+                ...item,
+                quantity: Number(item.quantity || 1) + Number(product.quantity || 1),
+              }
             : item
         );
       }
-      return [...prev, { ...product, quantity: 1 }];
+
+      return [
+        ...prev,
+        {
+          ...product,
+          quantity: Number(product.quantity || 1),
+        },
+      ];
     });
   };
 
   const removeFromCart = (id: number | string) => {
-    setCart((prev) => prev.filter((item) => item.id !== id));
+    setCart((prev) => prev.filter((item) => String(item.id) !== String(id)));
   };
 
   const updateQuantity = (id: number | string, amount: number) => {
     setCart((prev) =>
       prev.map((item) => {
-        if (item.id === id) {
-          const newQuantity = item.quantity + amount;
-          return { ...item, quantity: newQuantity > 0 ? newQuantity : 1 };
-        }
-        return item;
+        if (String(item.id) !== String(id)) return item;
+
+        const newQuantity = Number(item.quantity || 1) + amount;
+
+        return {
+          ...item,
+          quantity: newQuantity > 0 ? newQuantity : 1,
+        };
       })
     );
   };
@@ -177,10 +242,11 @@ export function CartProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem("prestigeso_cart");
   };
 
-  const cartTotal = useMemo(
-    () => cart.reduce((total, item) => total + item.price * item.quantity, 0),
-    [cart]
-  );
+  const cartTotal = useMemo(() => {
+    return cart.reduce((total, item) => {
+      return total + Number(item.price || 0) * Number(item.quantity || 1);
+    }, 0);
+  }, [cart]);
 
   const value: CartContextType = {
     cart,
@@ -202,6 +268,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
 export const useCart = () => {
   const context = useContext(CartContext);
-  if (!context) throw new Error("useCart must be used within a CartProvider");
+
+  if (!context) {
+    throw new Error("useCart must be used within a CartProvider");
+  }
+
   return context;
 };

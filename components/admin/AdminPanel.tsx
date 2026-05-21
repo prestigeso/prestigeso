@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 import type { Slide } from "./types";
-import { uploadToStorageAndGetPublicUrl } from "./utils";
+import { uploadToStorageAndGetPublicUrl, revokeUrls } from "./utils";
 
 import { useAdminData } from "./hooks/useAdminData";
 import { useAdminNotifications } from "./hooks/useAdminNotifications";
@@ -23,8 +23,6 @@ import {
   AnalysisModal,
 } from "./modals";
 
-
-
 function normalizeSku(input: any) {
   return (input ?? "").toString().trim().toUpperCase();
 }
@@ -34,9 +32,6 @@ export default function AdminPanel() {
     .toLocaleString("tr-TR", { month: "long" })
     .toUpperCase();
 
-  // -------------------------
-  // DATA (hook)
-  // -------------------------
   const {
     loading,
 
@@ -68,9 +63,6 @@ export default function AdminPanel() {
     setDbReviews,
   } = useAdminData();
 
-  // -------------------------
-  // UI STATE
-  // -------------------------
   const [searchTerm, setSearchTerm] = useState("");
   const [stockTab, setStockTab] = useState<"all" | "in" | "out">("all");
   const [activeNavMenu, setActiveNavMenu] = useState<string | null>(null);
@@ -78,7 +70,6 @@ export default function AdminPanel() {
   const [isFabOpen, setIsFabOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
-  // modals
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [isCampaignOpen, setIsCampaignOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -94,13 +85,10 @@ export default function AdminPanel() {
   );
 
   const [isAnalysisOpen, setIsAnalysisOpen] = useState(false);
-  const [analysisTab, setAnalysisTab] = useState<"revenue" | "orders" | "visits">(
-    "revenue"
-  );
+  const [analysisTab, setAnalysisTab] = useState<
+    "revenue" | "orders" | "visits"
+  >("revenue");
 
-  // -------------------------
-  // NOTIFICATIONS (hook)
-  // -------------------------
   const {
     unifiedNotifications,
     totalNotifications,
@@ -137,9 +125,6 @@ export default function AdminPanel() {
     },
   });
 
-  // -------------------------
-  // ADD PRODUCT modal state
-  // -------------------------
   const [creating, setCreating] = useState(false);
   const [newProductFiles, setNewProductFiles] = useState<File[]>([]);
   const [newProductPreviews, setNewProductPreviews] = useState<string[]>([]);
@@ -155,6 +140,7 @@ export default function AdminPanel() {
         previews[index],
       ];
     }
+
     if (direction === "right" && index < files.length - 1) {
       [files[index], files[index + 1]] = [files[index + 1], files[index]];
       [previews[index], previews[index + 1]] = [
@@ -167,9 +153,6 @@ export default function AdminPanel() {
     setNewProductPreviews(previews);
   };
 
-  // -------------------------
-  // EDIT PRODUCT modal state
-  // -------------------------
   const [editingProduct, setEditingProduct] = useState<any>(null);
   const [editLoading, setEditLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -188,6 +171,7 @@ export default function AdminPanel() {
     if (direction === "left" && index > 0) {
       [images[index], images[index - 1]] = [images[index - 1], images[index]];
     }
+
     if (direction === "right" && index < images.length - 1) {
       [images[index], images[index + 1]] = [images[index + 1], images[index]];
     }
@@ -207,6 +191,7 @@ export default function AdminPanel() {
       : [];
 
     const next = images.filter((x) => x !== url);
+
     setEditingProduct((prev: any) => ({
       ...prev,
       images: next,
@@ -214,31 +199,19 @@ export default function AdminPanel() {
     }));
   };
 
-  // -------------------------
-  // MESSAGES modal state
-  // -------------------------
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [replyText, setReplyText] = useState("");
 
-  // -------------------------
-  // QUESTIONS modal state
-  // -------------------------
   const [replyingToQ, setReplyingToQ] = useState<number | null>(null);
   const [qReplyText, setQReplyText] = useState("");
 
-  // -------------------------
-  // CAMPAIGN modal state
-  // -------------------------
   const [campaignName, setCampaignName] = useState("");
-  const [selectedCampaignProducts, setSelectedCampaignProducts] = useState<number[]>(
-    []
-  );
+  const [selectedCampaignProducts, setSelectedCampaignProducts] = useState<
+    number[]
+  >([]);
   const [campaignDates, setCampaignDates] = useState({ start: "", end: "" });
   const [discountPercent, setDiscountPercent] = useState<number>(20);
 
-  // -------------------------
-  // SETTINGS modal state
-  // -------------------------
   const [marquee, setMarquee] = useState("");
 
   const [newSlideFiles, setNewSlideFiles] = useState<File[]>([]);
@@ -249,14 +222,12 @@ export default function AdminPanel() {
     setMarquee(localStorage.getItem("prestigeso_campaign") || "");
   }, []);
 
-  // -------------------------
-  // PERFORMANCE ranks
-  // -------------------------
   const favoritesRank = useMemo(() => {
     const favCounts = (dbAllFavorites || []).reduce((acc: any, curr: any) => {
       acc[curr.product_id] = (acc[curr.product_id] || 0) + 1;
       return acc;
     }, {});
+
     return (dbProducts || [])
       .map((p: any) => ({ ...p, count: favCounts[p.id] || 0 }))
       .filter((p: any) => p.count > 0)
@@ -268,6 +239,7 @@ export default function AdminPanel() {
       acc[curr.product_id] = (acc[curr.product_id] || 0) + 1;
       return acc;
     }, {});
+
     return (dbProducts || [])
       .map((p: any) => ({ ...p, count: viewCounts[p.id] || 0 }))
       .filter((p: any) => p.count > 0)
@@ -278,13 +250,15 @@ export default function AdminPanel() {
     return (dbProducts || [])
       .map((p: any) => {
         const pRevs = (dbReviews || []).filter(
-          (r: any) => r.product_id === String(p.id) && r.is_approved
+          (r: any) => String(r.product_id) === String(p.id) && r.is_approved
         );
+
         const count = pRevs.length;
         const avg =
           count > 0
             ? pRevs.reduce((a: number, r: any) => a + r.rating, 0) / count
             : 0;
+
         return { ...p, ratingCount: count, ratingAvg: avg };
       })
       .filter((p: any) => p.ratingCount > 0)
@@ -294,13 +268,11 @@ export default function AdminPanel() {
       );
   }, [dbProducts, dbReviews]);
 
-  // -------------------------
-  // ACTIONS (DB)
-  // -------------------------
   const openEditProduct = async (id: number) => {
     setEditLoading(true);
     setEditingProduct(null);
 
+    revokeUrls(editAddPreviews);
     setEditAddFiles([]);
     setEditAddPreviews([]);
 
@@ -311,7 +283,11 @@ export default function AdminPanel() {
       .single();
 
     setEditLoading(false);
-    if (error) return alert("Ürün detayı çekilemedi: " + error.message);
+
+    if (error) {
+      alert("Ürün detayı çekilemedi: " + error.message);
+      return;
+    }
 
     const row: any = data;
     const arr = Array.isArray(row.images) ? row.images : [];
@@ -327,16 +303,20 @@ export default function AdminPanel() {
 
   const handleAddMoreImagesToProduct = async () => {
     if (!editingProduct) return;
-    if (editAddFiles.length === 0)
-      return alert("Eklemek için en az 1 fotoğraf seç!");
+
+    if (editAddFiles.length === 0) {
+      alert("Eklemek için en az 1 fotoğraf seç!");
+      return;
+    }
 
     setEditAddUploading(true);
 
     try {
       const urls: string[] = [];
-      for (const f of editAddFiles) {
-        const u = await uploadToStorageAndGetPublicUrl(f, "product_extra");
-        urls.push(u);
+
+      for (const file of editAddFiles) {
+        const url = await uploadToStorageAndGetPublicUrl(file, "product_extra");
+        urls.push(url);
       }
 
       const images: string[] = Array.isArray(editingProduct.images)
@@ -351,12 +331,13 @@ export default function AdminPanel() {
         image: next[0] || "",
       }));
 
+      revokeUrls(editAddPreviews);
       setEditAddFiles([]);
       setEditAddPreviews([]);
 
       alert("Fotoğraflar eklendi ✅ (Sonra Kaydet'e bas)");
-    } catch (e: any) {
-      alert("Fotoğraf eklenemedi: " + e.message);
+    } catch (err: any) {
+      alert("Fotoğraf eklenemedi: " + (err?.message || "Bilinmeyen hata"));
     } finally {
       setEditAddUploading(false);
     }
@@ -364,10 +345,16 @@ export default function AdminPanel() {
 
   const handleUpdateProduct = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
     if (!editingProduct) return;
 
     const sku = normalizeSku(editingProduct?.["SKU"]);
-    if (!sku) return alert("SKU zorunludur!");
+
+    if (!sku) {
+      alert("SKU zorunludur!");
+      return;
+    }
+
     setSaving(true);
 
     const images: string[] = Array.isArray(editingProduct.images)
@@ -393,7 +380,11 @@ export default function AdminPanel() {
       .eq("id", editingProduct.id);
 
     setSaving(false);
-    if (error) return alert("KAYDET HATASI: " + error.message);
+
+    if (error) {
+      alert("KAYDET HATASI: " + error.message);
+      return;
+    }
 
     alert("Kaydedildi ✅");
     setEditingProduct(null);
@@ -401,11 +392,16 @@ export default function AdminPanel() {
   };
 
   const handleDeleteProduct = async (id: number) => {
-    if (!window.confirm("Bu ürünü KALICI olarak silmek istiyor musun?"))
+    if (!window.confirm("Bu ürünü KALICI olarak silmek istiyor musun?")) {
       return;
+    }
 
     const { error } = await supabase.from("products").delete().eq("id", id);
-    if (error) return alert("Silinemedi: " + error.message);
+
+    if (error) {
+      alert("Silinemedi: " + error.message);
+      return;
+    }
 
     setEditingProduct(null);
     loadAllData();
@@ -413,6 +409,7 @@ export default function AdminPanel() {
 
   const handleAddProduct = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+
     const form = e.target as HTMLFormElement;
 
     const name = (form.elements.namedItem("name") as HTMLInputElement).value;
@@ -420,34 +417,47 @@ export default function AdminPanel() {
       (form.elements.namedItem("sku") as HTMLInputElement).value
     );
 
-    if (!sku) return alert("SKU zorunludur!");
+    if (!sku) {
+      alert("SKU zorunludur!");
+      return;
+    }
 
     const price = Number(
       (form.elements.namedItem("price") as HTMLInputElement).value
     );
+
     const category = (form.elements.namedItem("category") as HTMLSelectElement)
       .value;
+
     const stock = Number(
       (form.elements.namedItem("stock") as HTMLInputElement).value
     );
-    const barcode = (form.elements.namedItem("barcode") as HTMLInputElement).value;
+
+    const barcode = (
+      form.elements.namedItem("barcode") as HTMLInputElement
+    ).value;
+
     const description = (
       form.elements.namedItem("description") as HTMLTextAreaElement
     ).value;
+
     const is_bestseller = (
       form.elements.namedItem("is_bestseller") as HTMLInputElement
     ).checked;
 
-    if (newProductFiles.length === 0)
-      return alert("Lütfen en az bir ürün görseli seçin!");
+    if (newProductFiles.length === 0) {
+      alert("Lütfen en az bir ürün görseli seçin!");
+      return;
+    }
 
     setCreating(true);
 
     try {
       const urls: string[] = [];
-      for (const f of newProductFiles) {
-        const u = await uploadToStorageAndGetPublicUrl(f, "product");
-        urls.push(u);
+
+      for (const file of newProductFiles) {
+        const url = await uploadToStorageAndGetPublicUrl(file, "product");
+        urls.push(url);
       }
 
       const { error } = await supabase.from("products").insert([
@@ -468,6 +478,7 @@ export default function AdminPanel() {
 
       if (error) throw error;
 
+      revokeUrls(newProductPreviews);
       setNewProductFiles([]);
       setNewProductPreviews([]);
       setIsAddProductOpen(false);
@@ -475,14 +486,18 @@ export default function AdminPanel() {
       alert("Ürün eklendi ✅");
       loadAllData();
     } catch (err: any) {
-      alert("Ürün eklenemedi: " + err.message);
+      alert("Ürün eklenemedi: " + (err?.message || "Bilinmeyen hata"));
     } finally {
       setCreating(false);
     }
   };
 
   const handleSendMessageReply = async (messageId: number) => {
-    if (!replyText.trim()) return alert("Lütfen bir cevap yazın!");
+    if (!replyText.trim()) {
+      alert("Lütfen bir cevap yazın!");
+      return;
+    }
+
     const now = new Date().toISOString();
 
     const { error } = await supabase
@@ -490,7 +505,10 @@ export default function AdminPanel() {
       .update({ answer: replyText, answered_at: now })
       .eq("id", messageId);
 
-    if (error) return alert("Cevap gönderilemedi: " + error.message);
+    if (error) {
+      alert("Cevap gönderilemedi: " + error.message);
+      return;
+    }
 
     alert("Cevap müşteriye asilce iletildi! ✅");
 
@@ -505,21 +523,33 @@ export default function AdminPanel() {
   };
 
   const handleSendQuestionReply = async (questionId: number) => {
-    if (!qReplyText.trim()) return alert("Lütfen bir cevap yazın!");
+    if (!qReplyText.trim()) {
+      alert("Lütfen bir cevap yazın!");
+      return;
+    }
+
     const now = new Date().toISOString();
 
     const { error } = await supabase
       .from("questions")
-      .update({ answer: qReplyText, answered_at: now })
+      .update({
+        answer: qReplyText,
+        answered_at: now,
+      })
       .eq("id", questionId);
 
-    if (error) return alert("Cevap gönderilemedi: " + error.message);
+    if (error) {
+      alert("Cevap gönderilemedi: " + error.message);
+      return;
+    }
 
     alert("Ürün sorusu asilce cevaplandı! ✅");
 
     setDbQuestions((prev: any) =>
       prev.map((q: any) =>
-        q.id === questionId ? { ...q, answer: qReplyText, answered_at: now } : q
+        q.id === questionId
+          ? { ...q, answer: qReplyText, answered_at: now }
+          : q
       )
     );
 
@@ -538,7 +568,10 @@ export default function AdminPanel() {
       .update({ is_approved: newStatus })
       .eq("id", questionId);
 
-    if (error) return alert("Durum güncellenemedi: " + error.message);
+    if (error) {
+      alert("Durum güncellenemedi: " + error.message);
+      return;
+    }
 
     setDbQuestions((prev: any) =>
       prev.map((q: any) =>
@@ -553,7 +586,10 @@ export default function AdminPanel() {
       .update({ status: newStatus })
       .eq("id", orderId);
 
-    if (error) return alert("Hata: " + error.message);
+    if (error) {
+      alert("Hata: " + error.message);
+      return;
+    }
 
     alert(`Sipariş durumu "${newStatus}" olarak güncellendi! 📦`);
 
@@ -568,7 +604,10 @@ export default function AdminPanel() {
       .update({ is_approved: true })
       .eq("id", reviewId);
 
-    if (error) return alert("Hata: " + error.message);
+    if (error) {
+      alert("Hata: " + error.message);
+      return;
+    }
 
     alert("Yorum asilce yayına alındı! ✅");
 
@@ -580,23 +619,40 @@ export default function AdminPanel() {
   };
 
   const handleDeleteReview = async (reviewId: string) => {
-    if (!window.confirm("Bu yorumu tamamen silmek istediğinize emin misiniz?"))
+    if (!window.confirm("Bu yorumu tamamen silmek istediğinize emin misiniz?")) {
       return;
+    }
 
     const { error } = await supabase.from("reviews").delete().eq("id", reviewId);
-    if (error) return alert("Hata: " + error.message);
+
+    if (error) {
+      alert("Hata: " + error.message);
+      return;
+    }
 
     setDbReviews((prev: any) => prev.filter((r: any) => r.id !== reviewId));
   };
 
   const handleCreateCampaign = async () => {
-    if (!campaignName.trim()) return alert("Lütfen kampanya için bir isim girin!");
-    if (selectedCampaignProducts.length === 0)
-      return alert("Kampanyaya dahil edilecek ürünleri seçin!");
-    if (!campaignDates.start || !campaignDates.end)
-      return alert("Lütfen kampanya başlangıç ve bitiş tarihlerini seçin!");
-    if (discountPercent <= 0 || discountPercent >= 90)
-      return alert("İndirim yüzdesi 1-89 arası olmalıdır.");
+    if (!campaignName.trim()) {
+      alert("Lütfen kampanya için bir isim girin!");
+      return;
+    }
+
+    if (selectedCampaignProducts.length === 0) {
+      alert("Kampanyaya dahil edilecek ürünleri seçin!");
+      return;
+    }
+
+    if (!campaignDates.start || !campaignDates.end) {
+      alert("Lütfen kampanya başlangıç ve bitiş tarihlerini seçin!");
+      return;
+    }
+
+    if (discountPercent <= 0 || discountPercent >= 90) {
+      alert("İndirim yüzdesi 1-89 arası olmalıdır.");
+      return;
+    }
 
     const startIso = new Date(campaignDates.start).toISOString();
     const endIso = new Date(campaignDates.end + "T23:59:59").toISOString();
@@ -611,20 +667,33 @@ export default function AdminPanel() {
       },
     ]);
 
-    if (error) return alert("Kampanya oluşturulamadı: " + error.message);
+    if (error) {
+      alert("Kampanya oluşturulamadı: " + error.message);
+      return;
+    }
 
     alert("Yeni Kampanya Başarıyla Kuruldu! 🚀");
+
     setSelectedCampaignProducts([]);
     setCampaignDates({ start: "", end: "" });
     setCampaignName("");
     setDiscountPercent(20);
+
     loadAllData();
   };
 
   const handleDeleteCampaign = async (id: number) => {
-    if (!window.confirm("Bu kampanyayı tamamen silmek istediğine emin misin?"))
+    if (!window.confirm("Bu kampanyayı tamamen silmek istediğine emin misin?")) {
       return;
-    await supabase.from("campaigns").delete().eq("id", id);
+    }
+
+    const { error } = await supabase.from("campaigns").delete().eq("id", id);
+
+    if (error) {
+      alert("Kampanya silinemedi: " + error.message);
+      return;
+    }
+
     alert("Kampanya silindi! ✅");
     loadAllData();
   };
@@ -635,11 +704,14 @@ export default function AdminPanel() {
   };
 
   const handleAddSlide = async () => {
-    if (newSlideFiles.length === 0) return alert("Lütfen en az bir görsel seçin!");
+    if (newSlideFiles.length === 0) {
+      alert("Lütfen en az bir görsel seçin!");
+      return;
+    }
 
     try {
       const urls = await Promise.all(
-        newSlideFiles.map((f) => uploadToStorageAndGetPublicUrl(f, "hero"))
+        newSlideFiles.map((file) => uploadToStorageAndGetPublicUrl(file, "hero"))
       );
 
       const inserts = urls.map((url) => ({
@@ -649,23 +721,32 @@ export default function AdminPanel() {
       }));
 
       const { error } = await supabase.from("hero_slides").insert(inserts);
+
       if (error) throw error;
 
       alert("Slide'lar eklendi ✅");
 
+      revokeUrls(newSlidePreviews);
       setNewSlideFiles([]);
       setNewSlidePreviews([]);
       setNewSlide({ title: "", subtitle: "" });
 
       loadAllData();
-    } catch (e: any) {
-      alert("Slide eklenemedi: " + e.message);
+    } catch (err: any) {
+      alert("Slide eklenemedi: " + (err?.message || "Bilinmeyen hata"));
     }
   };
 
   const handleDeleteSlide = async (id: number) => {
     if (!window.confirm("Bu slide'ı silmek istediğine emin misin?")) return;
-    await supabase.from("hero_slides").delete().eq("id", id);
+
+    const { error } = await supabase.from("hero_slides").delete().eq("id", id);
+
+    if (error) {
+      alert("Slide silinemedi: " + error.message);
+      return;
+    }
+
     loadAllData();
   };
 
@@ -679,17 +760,17 @@ export default function AdminPanel() {
       })
       .eq("id", slide.id);
 
-    if (error) return alert("Slide güncellenemedi: " + error.message);
+    if (error) {
+      alert("Slide güncellenemedi: " + error.message);
+      return;
+    }
+
     alert("Slide kaydedildi ✅");
     loadAllData();
   };
 
-  // -------------------------
-  // RENDER
-  // -------------------------
   return (
     <div className="min-h-screen bg-gray-100 font-sans text-black pb-32">
-      {/* HEADER */}
       <HeaderBar
         unreadMessagesCount={unreadMessagesCount}
         onOpenMessages={() => setIsMessagesOpen(true)}
@@ -700,7 +781,6 @@ export default function AdminPanel() {
         avatarLetter="A"
       />
 
-      {/* NAV */}
       <AdminNav
         activeNavMenu={activeNavMenu}
         setActiveNavMenu={setActiveNavMenu}
@@ -738,9 +818,7 @@ export default function AdminPanel() {
         }}
       />
 
-      {/* BODY */}
       <div className="px-6 max-w-6xl mx-auto space-y-6">
-        {/* TOP CARDS */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center text-center hover:border-green-200 hover:shadow-md transition-all">
             <span className="text-3xl mb-2">💸</span>
@@ -765,7 +843,9 @@ export default function AdminPanel() {
             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">
               {activeMonth} ZİYARETİ
             </p>
-            <p className="text-3xl font-black text-blue-600">{monthlyVisits}</p>
+            <p className="text-3xl font-black text-blue-600">
+              {monthlyVisits}
+            </p>
           </div>
 
           <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center text-center hover:border-black hover:shadow-md transition-all">
@@ -773,11 +853,12 @@ export default function AdminPanel() {
             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">
               TOPLAM ÜRÜN
             </p>
-            <p className="text-3xl font-black text-black">{dbProducts.length}</p>
+            <p className="text-3xl font-black text-black">
+              {dbProducts.length}
+            </p>
           </div>
         </div>
 
-        {/* PRODUCT LIST */}
         <ProductList
           loading={loading}
           dbProducts={dbProducts as any}
@@ -791,7 +872,6 @@ export default function AdminPanel() {
         />
       </div>
 
-      {/* LEFT BOTTOM - SETTINGS */}
       <div className="fixed bottom-6 left-6 z-40">
         <button
           onClick={() => setIsSettingsOpen(true)}
@@ -801,7 +881,6 @@ export default function AdminPanel() {
         </button>
       </div>
 
-      {/* RIGHT BOTTOM - FAB */}
       <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-3">
         <div
           className={`flex flex-col items-end gap-3 transition-all duration-300 origin-bottom ${
@@ -843,9 +922,6 @@ export default function AdminPanel() {
         </button>
       </div>
 
-      {/* -------------------------
-         MODALS
-      ------------------------- */}
       <AddProductModal
         open={isAddProductOpen}
         onClose={() => setIsAddProductOpen(false)}

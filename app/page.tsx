@@ -1,24 +1,40 @@
 "use client";
 
 import { useCart } from "@/context/CartContext";
-import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearch } from "@/context/SearchContext";
 import { supabase } from "@/lib/supabase";
 
+function safeParseIds(ids: unknown): number[] {
+  if (Array.isArray(ids)) {
+    return ids.map((x) => Number(x)).filter((x) => Number.isFinite(x));
+  }
+
+  if (typeof ids === "string") {
+    try {
+      const parsed = JSON.parse(ids);
+      if (Array.isArray(parsed)) {
+        return parsed.map((x) => Number(x)).filter((x) => Number.isFinite(x));
+      }
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+}
 
 export default function Home() {
   const { searchQuery, setSearchQuery, selectedCategory, setSelectedCategory } =
     useSearch() as any;
 
   const { items, setIsCartOpen } = useCart();
+
   const totalItemsInCart = (items || []).reduce(
-    (total: any, item: any) => total + item.quantity,
+    (total: number, item: any) => total + Number(item.quantity || 0),
     0
   );
-
-  const router = useRouter();
 
   const [nowIso] = useState(() => new Date().toISOString());
   const [dbProducts, setDbProducts] = useState<any[]>([]);
@@ -29,11 +45,8 @@ export default function Home() {
   const [showAll, setShowAll] = useState(false);
   const [localCampaign, setLocalCampaign] = useState("");
   const [authUserId, setAuthUserId] = useState<string | null>(null);
-  const [favoriteIds, setFavoriteIds] = useState<Set<number>>(
-    () => new Set()
-  );
+  const [favoriteIds, setFavoriteIds] = useState<Set<number>>(() => new Set());
 
-  // Mobilde "Arama" butonuna basınca açılacak dev ekran
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
 
   const baseCategories = [
@@ -70,35 +83,41 @@ export default function Home() {
 
       if (session) {
         setAuthUserId(session.user.id);
+
         const { data: favData } = await supabase
           .from("favorites")
           .select("product_id")
           .eq("user_id", session.user.id);
+
         setFavoriteIds(
-          () => new Set((favData || []).map((fav: any) => fav.product_id))
+          () =>
+            new Set(
+              (favData || []).map((fav: any) => Number(fav.product_id))
+            )
         );
       } else {
         setAuthUserId(null);
         setFavoriteIds(() => new Set());
       }
 
-      // 1) Sayfa görüntülenme sayacı (oturum bazlı)
       try {
         const isHere = sessionStorage.getItem("prestige_session_active");
+
         if (!isHere) {
           sessionStorage.setItem("prestige_session_active", "true");
+
           await supabase
             .from("page_views")
             .insert([{ created_at: new Date().toISOString() }]);
         }
-      } catch (err) {}
+      } catch {}
 
-      // 2) Verileri yükle
       try {
         const { data: slidesData } = await supabase
           .from("hero_slides")
           .select("*")
           .order("created_at", { ascending: false });
+
         if (slidesData) setHeroSlides(slidesData);
 
         const { data: campData } = await supabase.from("campaigns").select("*");
@@ -116,16 +135,25 @@ export default function Home() {
           .eq("is_approved", true);
 
         if (productsData && !pError) {
-          const productsWithStats = productsData.map((p) => {
-            const pRevs = reviewsData?.filter((r) => r.product_id === p.id) || [];
+          const productsWithStats = productsData.map((p: any) => {
+            const pRevs =
+              reviewsData?.filter(
+                (r: any) => String(r.product_id) === String(p.id)
+              ) || [];
+
             const avg =
               pRevs.length > 0
                 ? pRevs.reduce((acc: number, r: any) => acc + r.rating, 0) /
                   pRevs.length
                 : 0;
 
-            return { ...p, ratingAvg: avg, reviewCount: pRevs.length };
+            return {
+              ...p,
+              ratingAvg: avg,
+              reviewCount: pRevs.length,
+            };
           });
+
           setDbProducts(productsWithStats);
         }
       } catch (err) {
@@ -140,23 +168,24 @@ export default function Home() {
 
   useEffect(() => {
     if (heroSlides.length <= 1) return;
-    const interval = setInterval(
-      () => setCurrentSlide((prev) => (prev + 1) % heroSlides.length),
-      5000
-    );
+
+    const interval = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % heroSlides.length);
+    }, 5000);
+
     return () => clearInterval(interval);
   }, [heroSlides.length]);
-
 
   const discountedFull = useMemo(() => {
     return dbProducts.filter((p) => {
       return dbCampaigns.find((c) => {
-        const ids = Array.isArray(c.product_ids)
-          ? c.product_ids
-          : typeof c.product_ids === "string"
-          ? JSON.parse(c.product_ids || "[]")
-          : [];
-        return ids.includes(p.id) && nowIso >= c.start_date && nowIso <= c.end_date;
+        const ids = safeParseIds(c.product_ids);
+
+        return (
+          ids.includes(Number(p.id)) &&
+          nowIso >= c.start_date &&
+          nowIso <= c.end_date
+        );
       });
     });
   }, [dbProducts, dbCampaigns, nowIso]);
@@ -171,14 +200,19 @@ export default function Home() {
   const filteredProducts = useMemo(() => {
     let result = dbProducts;
 
-    if (selectedCategory === "En Çok Satanlar") result = bestsellersFull;
-    else if (selectedCategory === "Yeni Gelenler") result = newArrivalsFull;
-    else if (selectedCategory === "İndirimler") result = discountedFull;
-    else if (selectedCategory !== "Tümü")
+    if (selectedCategory === "En Çok Satanlar") {
+      result = bestsellersFull;
+    } else if (selectedCategory === "Yeni Gelenler") {
+      result = newArrivalsFull;
+    } else if (selectedCategory === "İndirimler") {
+      result = discountedFull;
+    } else if (selectedCategory !== "Tümü") {
       result = dbProducts.filter((p) => p.category === selectedCategory);
+    }
 
     if (searchQuery && searchQuery.trim() !== "") {
       const query = searchQuery.toLowerCase();
+
       result = result.filter(
         (product) =>
           (product.name || "").toLowerCase().includes(query) ||
@@ -217,6 +251,7 @@ export default function Home() {
         .delete()
         .eq("user_id", authUserId)
         .eq("product_id", productId);
+
       if (!error) {
         setFavoriteIds((prev) => {
           const next = new Set(prev);
@@ -224,12 +259,14 @@ export default function Home() {
           return next;
         });
       }
+
       return;
     }
 
     const { error } = await supabase
       .from("favorites")
       .insert([{ user_id: authUserId, product_id: productId }]);
+
     if (!error) {
       setFavoriteIds((prev) => {
         const next = new Set(prev);
@@ -239,58 +276,76 @@ export default function Home() {
     }
   };
 
-  if (loading)
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center font-black text-gray-400 uppercase tracking-widest bg-white">
         Vitrin Hazırlanıyor...
       </div>
     );
+  }
 
   return (
     <div className="min-h-screen bg-white font-sans text-black pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-24">
-      {/* 1. ÜST KAYAN YAZI */}
+      {/* ÜST KAYAN YAZI */}
       {localCampaign && (
         <div className="bg-black text-white text-[10px] md:text-xs font-bold uppercase tracking-[0.2em] py-2.5 overflow-hidden w-full sticky top-0 z-40">
           <div className="flex animate-marquee whitespace-nowrap">
-            <span className="mx-4">{Array(20).fill(localCampaign).join(" ✦ ")}</span>
-            <span className="mx-4">{Array(20).fill(localCampaign).join(" ✦ ")}</span>
+            <span className="mx-4">
+              {Array(20).fill(localCampaign).join(" ✦ ")}
+            </span>
+            <span className="mx-4">
+              {Array(20).fill(localCampaign).join(" ✦ ")}
+            </span>
           </div>
         </div>
       )}
 
-      {/* 2. HERO SLIDER */}
+      {/* HERO SLIDER */}
       {!showAll && (
         <div
           className="relative w-full aspect-video md:h-[75vh] flex items-center justify-center overflow-hidden bg-gray-900 group cursor-pointer"
           onClick={() => handleSeeAll("Tümü")}
         >
-          {heroSlides.map((slide, index) => (
-            <div
-              key={slide.id}
-              className={`absolute inset-0 transition-opacity duration-1000 ${
-                index === currentSlide ? "opacity-100 z-10" : "opacity-0 z-0"
-              }`}
-            >
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent z-10 transition-colors duration-500" />
-              <img
-                src={slide.image_url}
-                alt=""
-                className="w-full h-full object-cover transition-transform duration-[10s] group-hover:scale-105"
-              />
-              <div className="absolute inset-0 z-20 flex flex-col items-center justify-end md:justify-center pb-6 md:pb-0 text-center px-4">
-                <h1 className="text-2xl md:text-7xl font-black text-white mb-1 md:mb-4 uppercase tracking-tight drop-shadow-2xl">
-                  {slide.title || "Yeni Sezon"}
-                </h1>
-                <p className="text-gray-200 text-[10px] md:text-lg uppercase tracking-widest drop-shadow-md">
-                  {slide.subtitle}
-                </p>
-              </div>
+          {heroSlides.length === 0 ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-black">
+              <h1 className="text-3xl md:text-7xl font-black uppercase tracking-tight">
+                PRESTIGESO
+              </h1>
+              <p className="text-gray-300 text-xs md:text-lg uppercase tracking-widest mt-3">
+                Yeni Sezon
+              </p>
             </div>
-          ))}
+          ) : (
+            heroSlides.map((slide, index) => (
+              <div
+                key={slide.id}
+                className={`absolute inset-0 transition-opacity duration-1000 ${
+                  index === currentSlide ? "opacity-100 z-10" : "opacity-0 z-0"
+                }`}
+              >
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent z-10 transition-colors duration-500" />
+
+                <img
+                  src={slide.image_url}
+                  alt={slide.title || "PrestigeSO"}
+                  className="w-full h-full object-cover transition-transform duration-[10s] group-hover:scale-105"
+                />
+
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-end md:justify-center pb-6 md:pb-0 text-center px-4">
+                  <h1 className="text-2xl md:text-7xl font-black text-white mb-1 md:mb-4 uppercase tracking-tight drop-shadow-2xl">
+                    {slide.title || "Yeni Sezon"}
+                  </h1>
+                  <p className="text-gray-200 text-[10px] md:text-lg uppercase tracking-widest drop-shadow-md">
+                    {slide.subtitle}
+                  </p>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       )}
 
-      {/* 3. ANA İÇERİK */}
+      {/* ANA İÇERİK */}
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
         {showAll ? (
           <div className="animate-in fade-in duration-500">
@@ -298,6 +353,7 @@ export default function Home() {
               <h2 className="text-lg md:text-2xl font-black uppercase tracking-tight truncate pr-4">
                 {searchQuery ? `Arama: "${searchQuery}"` : selectedCategory}
               </h2>
+
               <button
                 onClick={handleCloseShowcase}
                 className="text-[10px] md:text-xs font-bold text-gray-500 hover:text-black uppercase border border-gray-200 px-3 md:px-4 py-1.5 md:py-2 rounded-full flex-shrink-0"
@@ -319,7 +375,7 @@ export default function Home() {
                     key={p.id}
                     product={p}
                     campaigns={dbCampaigns}
-                    isFavorite={favoriteIds.has(p.id)}
+                    isFavorite={favoriteIds.has(Number(p.id))}
                     onToggleFavorite={handleToggleFavorite}
                   />
                 ))}
@@ -334,6 +390,8 @@ export default function Home() {
               campaigns={dbCampaigns}
               badgeLabel="🔥 Çok Satan"
               onSeeAll={() => handleSeeAll("En Çok Satanlar")}
+              favoriteIds={favoriteIds}
+              onToggleFavorite={handleToggleFavorite}
             />
 
             <ProductCarousel
@@ -342,6 +400,8 @@ export default function Home() {
               campaigns={dbCampaigns}
               badgeLabel="Yeni"
               onSeeAll={() => handleSeeAll("Yeni Gelenler")}
+              favoriteIds={favoriteIds}
+              onToggleFavorite={handleToggleFavorite}
             />
 
             <ProductCarousel
@@ -350,12 +410,15 @@ export default function Home() {
               campaigns={dbCampaigns}
               badgeLabel="İndirim"
               onSeeAll={() => handleSeeAll("İndirimler")}
+              favoriteIds={favoriteIds}
+              onToggleFavorite={handleToggleFavorite}
             />
 
             {baseCategories.map((cat) => {
               const catProducts = dbProducts
                 .filter((p) => p.category === cat)
                 .slice(0, 5);
+
               return catProducts.length > 0 ? (
                 <ProductCarousel
                   key={cat}
@@ -363,6 +426,8 @@ export default function Home() {
                   products={catProducts}
                   campaigns={dbCampaigns}
                   onSeeAll={() => handleSeeAll(cat)}
+                  favoriteIds={favoriteIds}
+                  onToggleFavorite={handleToggleFavorite}
                 />
               ) : null;
             })}
@@ -370,7 +435,7 @@ export default function Home() {
         )}
       </div>
 
-      {/* MOBİL: FULLSCREEN ARAMA */}
+      {/* MOBİL TAM EKRAN ARAMA */}
       {isMobileSearchOpen && (
         <div className="md:hidden fixed inset-0 bg-white z-[999] flex flex-col animate-in slide-in-from-bottom-full duration-300">
           <div className="flex items-center gap-3 p-4 border-b border-gray-100 bg-white">
@@ -407,6 +472,7 @@ export default function Home() {
             <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">
               Popüler Aramalar
             </h3>
+
             <div className="flex flex-wrap gap-2">
               <button
                 onClick={() => {
@@ -418,6 +484,7 @@ export default function Home() {
               >
                 Kolye
               </button>
+
               <button
                 onClick={() => {
                   setSearchQuery("Yüzük");
@@ -428,6 +495,7 @@ export default function Home() {
               >
                 Yüzük
               </button>
+
               <button
                 onClick={() => {
                   setSelectedCategory("İndirimler");
@@ -443,7 +511,7 @@ export default function Home() {
         </div>
       )}
 
-      {/* MOBİL: BOTTOM NAV */}
+      {/* MOBİL BOTTOM NAV */}
       <div className="md:hidden fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-md border-t border-gray-200 flex justify-around items-center pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] z-[100] shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
         <button
           onClick={() => {
@@ -498,6 +566,7 @@ export default function Home() {
               </span>
             )}
           </span>
+
           <span className="text-[9px] font-black uppercase tracking-widest">
             Sepet
           </span>
@@ -507,16 +576,14 @@ export default function Home() {
   );
 }
 
-/* -------------------------------------------------------
-   ALT BİLEŞENLER
--------------------------------------------------------- */
-
 function ProductCarousel({
   title,
   products,
   campaigns,
   badgeLabel,
   onSeeAll,
+  favoriteIds,
+  onToggleFavorite,
 }: any) {
   if (!products || products.length === 0) return null;
 
@@ -526,6 +593,7 @@ function ProductCarousel({
         <h2 className="text-base md:text-xl font-black uppercase border-l-4 border-black pl-2 md:pl-3">
           {title}
         </h2>
+
         {onSeeAll && (
           <button
             onClick={onSeeAll}
@@ -546,8 +614,8 @@ function ProductCarousel({
               product={p}
               campaigns={campaigns}
               badgeLabel={badgeLabel}
-              isFavorite={favoriteIds.has(p.id)}
-              onToggleFavorite={handleToggleFavorite}
+              isFavorite={favoriteIds?.has?.(Number(p.id)) || false}
+              onToggleFavorite={onToggleFavorite}
             />
           </div>
         ))}
@@ -574,16 +642,19 @@ function PrestigeCard({
   const avgRating = product.ratingAvg || 0;
 
   const nowIso = new Date().toISOString();
+
   const activeCamp = campaigns?.find((c) => {
-    const ids = Array.isArray(c.product_ids)
-      ? c.product_ids
-      : typeof c.product_ids === "string"
-      ? JSON.parse(c.product_ids || "[]")
-      : [];
-    return ids.includes(product.id) && nowIso >= c.start_date && nowIso <= c.end_date;
+    const ids = safeParseIds(c.product_ids);
+
+    return (
+      ids.includes(Number(product.id)) &&
+      nowIso >= c.start_date &&
+      nowIso <= c.end_date
+    );
   });
 
   let activePrice = Number(product.price);
+
   if (activeCamp) {
     activePrice = Number(product.price) * (1 - activeCamp.discount_percent / 100);
   }
@@ -591,7 +662,7 @@ function PrestigeCard({
   const handleFavoriteClick = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    onToggleFavorite(product.id, isFavorite);
+    onToggleFavorite(Number(product.id), isFavorite);
   };
 
   return (
@@ -602,7 +673,7 @@ function PrestigeCard({
       <div className="aspect-[4/5] md:aspect-square w-full overflow-hidden rounded-xl bg-gray-50 relative mb-3">
         <img
           src={displayImage}
-          alt={product.name}
+          alt={product.name || "Ürün"}
           className="h-full w-full object-cover mix-blend-multiply group-hover:scale-105 transition-transform duration-700"
           loading="lazy"
         />
@@ -610,6 +681,7 @@ function PrestigeCard({
         <button
           onClick={handleFavoriteClick}
           className="absolute top-2 right-2 w-7 h-7 md:w-8 md:h-8 bg-white/90 rounded-full shadow-sm flex items-center justify-center z-10 transition-transform hover:scale-110 active:scale-95"
+          aria-label="Favori"
         >
           <svg
             viewBox="0 0 24 24"
@@ -655,6 +727,7 @@ function PrestigeCard({
             {"★".repeat(Math.round(avgRating))}
             {"☆".repeat(5 - Math.round(avgRating))}
           </span>
+
           <span className="text-[8px] md:text-[9px] font-bold text-gray-400">
             ({ratingCount})
           </span>
