@@ -70,8 +70,8 @@ export default function Footer() {
             © {new Date().getFullYear()} PRESTIGESO. Tüm Hakları Saklıdır.
           </p>
           <div className="flex gap-4 text-gray-500">
-             <Link href="https://instagram.com" target="_blank" className="hover:text-white transition-colors">Instagram</Link>
-             <Link href="https://twitter.com" target="_blank" className="hover:text-white transition-colors">Twitter</Link>
+             <Link href="https://instagram.com/prestigeso" target="_blank" className="hover:text-white transition-colors">Instagram</Link>
+             <Link href="https://twitter.com/prestigeso" target="_blank" className="hover:text-white transition-colors">Twitter</Link>
           </div>
         </div>
 

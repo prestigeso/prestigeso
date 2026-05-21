@@ -10,7 +10,7 @@ export default function ShopPage() {
   const [dbProducts, setDbProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const categories = ["Tümü", "Masa Süsleri", "Yüzükler", "Setler", "Bilezikler", "Küpeler"];
+  const categories = ["Tümü", "Setler", "Masa Süsleri", "Kolyeler", "Yüzükler", "Bilezikler", "Küpeler"];
 
   useEffect(() => {
     const fetchProducts = async () => {
@@ -18,6 +18,7 @@ export default function ShopPage() {
       const { data } = await supabase
         .from("products")
         .select("*")
+        .gt("stock", 0)
         .order("created_at", { ascending: false });
 
       if (data) setDbProducts(data);
@@ -89,35 +90,38 @@ function ShopCard({ product }: { product: any }) {
 
   // JİLET GÜVENLİK DUVARI VE FAVORİ EKLEME FONKSİYONU
   const handleFavoriteClick = async (e: React.MouseEvent) => {
-    e.preventDefault(); // Ürün detay sayfasına yönlenmesini engeller!
-    e.stopPropagation(); // Link tıklamasını durdurur!
+    e.preventDefault();
+    e.stopPropagation();
 
-    // 1. KONTROL: Adam giriş yapmış mı?
     const {
       data: { session },
     } = await supabase.auth.getSession();
 
     if (!session) {
-      alert("Ürünleri favorilemek için lütfen önce asilce giriş yapın! 🛡️");
+      alert("Ürünleri favorilemek için lütfen önce giriş yapın! 🛡️");
       return;
     }
 
-    // 2. KAYIT: Giriş yapmışsa ürünü LocalStorage'a ekle
-    const currentFavs = JSON.parse(
-      localStorage.getItem("prestige_favorites") || "[]"
-    );
+    // Check if already favorited
+    const { data: existing } = await supabase
+      .from("favorites")
+      .select("id")
+      .eq("user_id", session.user.id)
+      .eq("product_id", product.id)
+      .single();
 
-    // Ürün zaten favorilerde var mı kontrolü
-    const isExist = currentFavs.find((fav: any) => fav.id === product.id);
-
-    if (!isExist) {
-      const newFavs = [...currentFavs, product];
-      localStorage.setItem("prestige_favorites", JSON.stringify(newFavs));
-      alert("Ürün asilce favorilere eklendi! ❤️");
-    } else {
-      const newFavs = currentFavs.filter((fav: any) => fav.id !== product.id);
-      localStorage.setItem("prestige_favorites", JSON.stringify(newFavs));
+    if (existing) {
+      await supabase
+        .from("favorites")
+        .delete()
+        .eq("user_id", session.user.id)
+        .eq("product_id", product.id);
       alert("Ürün favorilerden çıkarıldı. 💔");
+    } else {
+      await supabase
+        .from("favorites")
+        .insert([{ user_id: session.user.id, product_id: product.id }]);
+      alert("Ürün favorilere eklendi! ❤️");
     }
   };
 

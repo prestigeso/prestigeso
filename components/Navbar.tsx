@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useSearch } from "@/context/SearchContext";
 import { useCart } from "@/context/CartContext";
 import { supabase } from "@/lib/supabase";
+import Link from "next/link";
 
 export default function Navbar() {
   const router = useRouter();
@@ -76,7 +77,7 @@ export default function Navbar() {
           </button>
 
           {/* ORTA: Logo */}
-          <a
+          <Link
             href="/"
             className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 font-black text-2xl tracking-widest cursor-pointer"
           >
@@ -85,7 +86,7 @@ export default function Navbar() {
               alt="PrestigeSO"
               className="h-8 object-contain"
             />
-          </a>
+          </Link>
 
           {/* SAĞ: Profil */}
           <button
@@ -101,13 +102,13 @@ export default function Navbar() {
         {/* ========================================== */}
         <div className="hidden md:flex p-4 items-center justify-between gap-4">
           {/* Logo */}
-          <a href="/" className="font-black text-2xl tracking-widest cursor-pointer">
+          <Link href="/" className="font-black text-2xl tracking-widest cursor-pointer">
             <img
               src="/logo.jpeg"
               alt="PrestigeSO"
               className="h-10 object-contain"
             />
-          </a>
+          </Link>
 
           {/* Arama Çubuğu */}
           <div className="relative w-full max-w-md">

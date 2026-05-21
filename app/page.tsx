@@ -7,7 +7,6 @@ import Link from "next/link";
 import { useSearch } from "@/context/SearchContext";
 import { supabase } from "@/lib/supabase";
 
-export const dynamic = "force-dynamic";
 
 export default function Home() {
   const { searchQuery, setSearchQuery, selectedCategory, setSelectedCategory } =
@@ -21,6 +20,7 @@ export default function Home() {
 
   const router = useRouter();
 
+  const [nowIso] = useState(() => new Date().toISOString());
   const [dbProducts, setDbProducts] = useState<any[]>([]);
   const [dbCampaigns, setDbCampaigns] = useState<any[]>([]);
   const [heroSlides, setHeroSlides] = useState<any[]>([]);
@@ -125,7 +125,6 @@ export default function Home() {
     return () => clearInterval(interval);
   }, [heroSlides.length]);
 
-  const nowIso = new Date().toISOString();
 
   const discountedFull = useMemo(() => {
     return dbProducts.filter((p) => {
@@ -193,9 +192,10 @@ export default function Home() {
       {/* 1. ÜST KAYAN YAZI */}
       {localCampaign && (
         <div className="bg-black text-white text-[10px] md:text-xs font-bold uppercase tracking-[0.2em] py-2.5 overflow-hidden w-full sticky top-0 z-40">
-          <marquee scrollamount={6} className="w-full">
-            {Array(15).fill(localCampaign).join(" ✦ ")}
-          </marquee>
+          <div className="flex animate-marquee whitespace-nowrap">
+            <span className="mx-4">{Array(20).fill(localCampaign).join(" ✦ ")}</span>
+            <span className="mx-4">{Array(20).fill(localCampaign).join(" ✦ ")}</span>
+          </div>
         </div>
       )}
 
