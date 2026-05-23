@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
-import { supabase } from "@/lib/supabase";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
+export const runtime = "nodejs";
 
 function safeParseIds(ids: unknown): number[] {
   if (Array.isArray(ids)) {
@@ -96,7 +98,7 @@ export async function POST(req: NextRequest) {
 
     const productIds = items.map((item: any) => Number(item.id));
 
-    const { data: products, error: productError } = await supabase
+    const { data: products, error: productError } = await supabaseAdmin
       .from("products")
       .select("id, name, price, stock, image, images")
       .in("id", productIds);
@@ -108,7 +110,9 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { data: campaigns } = await supabase.from("campaigns").select("*");
+    const { data: campaigns } = await supabaseAdmin
+      .from("campaigns")
+      .select("*");
 
     const nowIso = new Date().toISOString();
 
@@ -217,7 +221,7 @@ export async function POST(req: NextRequest) {
       .update(hashStr + merchantSalt)
       .digest("base64");
 
-    const { error: orderError } = await supabase.from("orders").insert([
+    const { error: orderError } = await supabaseAdmin.from("orders").insert([
       {
         order_no: merchantOid,
         merchant_oid: merchantOid,
@@ -225,7 +229,7 @@ export async function POST(req: NextRequest) {
         user_email: userEmail,
         items: checkedItems,
         total_amount: totalAmount,
-        shipping_address: shippingAddress,
+        shipping_address: JSON.stringify(shippingAddress),
         status: "Ödeme Bekleniyor",
         payment_provider: "paytr",
         payment_status: "pending",
@@ -275,7 +279,7 @@ export async function POST(req: NextRequest) {
     const paytrResult = await paytrResponse.json();
 
     if (paytrResult.status !== "success") {
-      await supabase
+      await supabaseAdmin
         .from("orders")
         .update({
           payment_status: "failed",
