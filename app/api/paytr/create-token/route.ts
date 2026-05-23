@@ -51,7 +51,7 @@ function makeMerchantOid() {
 
   const random = Math.random().toString(36).slice(2, 10).toUpperCase();
 
-  return `PRS-${year}${month}${day}-${random}`;
+  return `PRS${year}${month}${day}${random}`;
 }
 
 export async function POST(req: NextRequest) {
@@ -93,7 +93,10 @@ export async function POST(req: NextRequest) {
     }
 
     if (items.length === 0) {
-      return NextResponse.json({ error: "Sepet boş." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Sepet boş." },
+        { status: 400 }
+      );
     }
 
     const productIds = items.map((item: any) => Number(item.id));
