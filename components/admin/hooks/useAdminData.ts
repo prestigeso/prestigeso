@@ -14,11 +14,10 @@ import type {
 
 /**
  * Admin panelde kullanılan tüm verileri tek yerden çeker.
- * - products, hero_slides, campaigns
- * - monthly: revenue/orders/visits
- * - all-time: revenue/orders/visits
- * - messages, questions, orders, reviews
- * - favorites (count) ve product_views (count) için ham listeler
+ *
+ * Önemli:
+ * - Siparişlerde sadece ödeme alınmış kayıtlar çekilir.
+ * - payment_status = "paid" olmayan siparişler admin panelde gerçek sipariş gibi gösterilmez.
  */
 export function useAdminData() {
   const [loading, setLoading] = useState(true);
@@ -52,7 +51,7 @@ export function useAdminData() {
     setLoading(true);
 
     try {
-      // 1) PRODUCTS  ✅ SKU seçimi eklendi
+      // 1) PRODUCTS
       const { data: pData, error: pErr } = await supabase
         .from("products")
         .select(
@@ -62,6 +61,7 @@ export function useAdminData() {
 
       if (pErr) {
         console.error("Ürünler çekilemedi:", pErr);
+        setDbProducts([]);
       } else {
         setDbProducts((pData as any) || []);
       }
@@ -72,8 +72,12 @@ export function useAdminData() {
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (sErr) console.error("Slide'lar çekilemedi:", sErr);
-      else setDbSlides((sData as any) || []);
+      if (sErr) {
+        console.error("Slide'lar çekilemedi:", sErr);
+        setDbSlides([]);
+      } else {
+        setDbSlides((sData as any) || []);
+      }
 
       // 3) CAMPAIGNS
       const { data: campData, error: campErr } = await supabase
@@ -81,24 +85,35 @@ export function useAdminData() {
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (campErr) console.error("Kampanyalar çekilemedi:", campErr);
-      else setDbCampaigns((campData as any) || []);
+      if (campErr) {
+        console.error("Kampanyalar çekilemedi:", campErr);
+        setDbCampaigns([]);
+      } else {
+        setDbCampaigns((campData as any) || []);
+      }
 
       // 4) MONTHLY METRICS
+      // Sadece ödenmiş siparişler aylık sipariş/ciro hesabına girer.
       const { data: monthlyOrdersData, error: moErr } = await supabase
         .from("orders")
-        .select("total_amount, created_at")
+        .select("total_amount, created_at, payment_status")
+        .eq("payment_status", "paid")
         .gte("created_at", firstDayOfThisMonthIso);
 
       if (moErr) {
-        console.error("Aylık siparişler çekilemedi:", moErr);
+        console.error("Aylık ödenmiş siparişler çekilemedi:", moErr);
         setMonthlyOrders(0);
         setMonthlyRevenue(0);
       } else {
         const list = monthlyOrdersData || [];
+
         setMonthlyOrders(list.length);
         setMonthlyRevenue(
-          list.reduce((acc: number, o: any) => acc + Number(o.total_amount || 0), 0)
+          list.reduce(
+            (acc: number, order: any) =>
+              acc + Number(order.total_amount || 0),
+            0
+          )
         );
       }
 
@@ -120,8 +135,12 @@ export function useAdminData() {
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (mErr) console.error("Mesajlar çekilemedi:", mErr);
-      else setDbMessages((mData as any) || []);
+      if (mErr) {
+        console.error("Mesajlar çekilemedi:", mErr);
+        setDbMessages([]);
+      } else {
+        setDbMessages((mData as any) || []);
+      }
 
       // 6) REVIEWS
       const { data: rData, error: rErr } = await supabase
@@ -129,53 +148,80 @@ export function useAdminData() {
         .select("*, products(name, image, images)")
         .order("created_at", { ascending: false });
 
-      if (rErr) console.error("Yorumlar çekilemedi:", rErr);
-      else setDbReviews((rData as any) || []);
+      if (rErr) {
+        console.error("Yorumlar çekilemedi:", rErr);
+        setDbReviews([]);
+      } else {
+        setDbReviews((rData as any) || []);
+      }
 
-      // 7) FAVORITES + VIEWS (ham listeler)
+      // 7) FAVORITES
       const { data: favData, error: favErr } = await supabase
         .from("favorites")
         .select("product_id");
 
-      if (favErr) console.error("Favoriler çekilemedi:", favErr);
-      else setDbAllFavorites((favData as any) || []);
+      if (favErr) {
+        console.error("Favoriler çekilemedi:", favErr);
+        setDbAllFavorites([]);
+      } else {
+        setDbAllFavorites((favData as any) || []);
+      }
 
+      // 8) PRODUCT VIEWS
       const { data: viewData, error: viewErr } = await supabase
         .from("product_views")
         .select("product_id");
 
-      if (viewErr) console.error("Ürün görüntülenmeleri çekilemedi:", viewErr);
-      else setDbProductViews((viewData as any) || []);
+      if (viewErr) {
+        console.error("Ürün görüntülenmeleri çekilemedi:", viewErr);
+        setDbProductViews([]);
+      } else {
+        setDbProductViews((viewData as any) || []);
+      }
 
-      // 8) QUESTIONS
+      // 9) QUESTIONS
       const { data: qData, error: qErr } = await supabase
         .from("questions")
         .select("*, products(name, image, images)")
         .order("created_at", { ascending: false });
 
-      if (qErr) console.error("Sorular çekilemedi:", qErr);
-      else setDbQuestions((qData as any) || []);
+      if (qErr) {
+        console.error("Sorular çekilemedi:", qErr);
+        setDbQuestions([]);
+      } else {
+        setDbQuestions((qData as any) || []);
+      }
 
-      // 9) ALL TIME (orders + visits)
+      // 10) ALL TIME ORDERS
+      // Admin sipariş listesinde sadece ödeme alınmış siparişler görünür.
       const { data: allOrdersData, error: aoErr } = await supabase
         .from("orders")
-        .select("id, created_at, user_email, items, shipping_address, status, total_amount")
+        .select(
+          "id, order_no, merchant_oid, user_id, user_email, items, shipping_address, status, total_amount, created_at, shipping_carrier, tracking_number, payment_provider, payment_status, paytr_total_amount, paid_at, failed_reason"
+        )
+        .eq("payment_status", "paid")
         .order("created_at", { ascending: false });
 
       if (aoErr) {
-        console.error("Tüm siparişler çekilemedi:", aoErr);
+        console.error("Ödenmiş siparişler çekilemedi:", aoErr);
         setDbOrders([]);
         setAllTimeOrders(0);
         setAllTimeRevenue(0);
       } else {
         const list = (allOrdersData as any[]) || [];
+
         setDbOrders(list);
         setAllTimeOrders(list.length);
         setAllTimeRevenue(
-          list.reduce((acc: number, o: any) => acc + Number(o.total_amount || 0), 0)
+          list.reduce(
+            (acc: number, order: any) =>
+              acc + Number(order.total_amount || 0),
+            0
+          )
         );
       }
 
+      // 11) ALL TIME VISITS
       const { data: allVisitsData, error: avErr } = await supabase
         .from("page_views")
         .select("id");
@@ -191,7 +237,6 @@ export function useAdminData() {
     }
   }, [firstDayOfThisMonthIso]);
 
-  // İlk yükleme
   useEffect(() => {
     loadAllData();
   }, [loadAllData]);
@@ -199,7 +244,6 @@ export function useAdminData() {
   return {
     loading,
 
-    // base data
     dbProducts,
     dbSlides,
     dbCampaigns,
@@ -208,24 +252,19 @@ export function useAdminData() {
     dbOrders,
     dbReviews,
 
-    // perf raw
     dbAllFavorites,
     dbProductViews,
 
-    // monthly
     monthlyRevenue,
     monthlyOrders,
     monthlyVisits,
 
-    // all time
     allTimeRevenue,
     allTimeOrders,
     allTimeVisits,
 
-    // actions
     loadAllData,
 
-    // setters
     setDbProducts,
     setDbSlides,
     setDbCampaigns,
