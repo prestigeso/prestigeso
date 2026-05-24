@@ -1,7 +1,32 @@
 "use client";
 
-import type { FormEvent } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 import { revokeUrls } from "../utils";
+
+const MAX_IMAGE_COUNT = 8;
+const MAX_IMAGE_SIZE_MB = 5;
+const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
+
+function validateImageFiles(files: File[]) {
+  if (files.length > MAX_IMAGE_COUNT) {
+    return `En fazla ${MAX_IMAGE_COUNT} fotoğraf seçebilirsiniz.`;
+  }
+
+  const invalidType = files.find((file) => !ALLOWED_IMAGE_TYPES.includes(file.type));
+
+  if (invalidType) {
+    return "Sadece JPG, PNG, WEBP veya AVIF formatında görsel yükleyebilirsiniz. SVG/HTML kabul edilmez.";
+  }
+
+  const oversized = files.find((file) => file.size > MAX_IMAGE_SIZE_BYTES);
+
+  if (oversized) {
+    return `Her fotoğraf en fazla ${MAX_IMAGE_SIZE_MB} MB olmalıdır.`;
+  }
+
+  return null;
+}
 
 type Props = {
   open: boolean;
@@ -39,6 +64,24 @@ export default function AddProductModal({
     onClose();
   };
 
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files || []);
+
+    if (picked.length === 0) return;
+
+    const errorMessage = validateImageFiles(picked);
+
+    if (errorMessage) {
+      e.currentTarget.value = "";
+      alert(errorMessage);
+      return;
+    }
+
+    revokeUrls(previews);
+    setFiles(picked);
+    setPreviews(picked.map((file) => URL.createObjectURL(file)));
+  };
+
   return (
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl flex flex-col max-h-[90vh]">
@@ -67,6 +110,7 @@ export default function AddProductModal({
               required
               name="name"
               type="text"
+              maxLength={140}
               className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium outline-none focus:ring-2 focus:ring-black transition-all"
             />
           </div>
@@ -79,6 +123,7 @@ export default function AddProductModal({
               required
               name="sku"
               type="text"
+              maxLength={64}
               placeholder="Örn: YUZUK-01, PRSTG-KOLYE veya 102938"
               onChange={(e) => {
                 e.currentTarget.value = e.currentTarget.value.toUpperCase();
@@ -94,6 +139,7 @@ export default function AddProductModal({
             <input
               name="barcode"
               type="text"
+              maxLength={80}
               placeholder="Örn: 8680..."
               className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium font-mono text-blue-600 outline-none focus:ring-2 focus:ring-black transition-all"
             />
@@ -109,6 +155,7 @@ export default function AddProductModal({
                 name="price"
                 type="number"
                 min="0"
+                max="9999999"
                 step="0.01"
                 className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium outline-none focus:ring-2 focus:ring-black transition-all"
               />
@@ -123,6 +170,7 @@ export default function AddProductModal({
                 name="stock"
                 type="number"
                 min="0"
+                max="999999"
                 step="1"
                 defaultValue="1"
                 className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium outline-none focus:ring-2 focus:ring-black transition-all"
@@ -156,6 +204,7 @@ export default function AddProductModal({
               required
               name="description"
               rows={3}
+              maxLength={5000}
               className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium resize-none outline-none focus:ring-2 focus:ring-black transition-all"
             />
           </div>
@@ -167,18 +216,15 @@ export default function AddProductModal({
 
             <input
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png,image/webp,image/avif"
               multiple
-              onChange={(e) => {
-                const picked = Array.from(e.target.files || []);
-                if (picked.length === 0) return;
-
-                revokeUrls(previews);
-                setFiles(picked);
-                setPreviews(picked.map((f) => URL.createObjectURL(f)));
-              }}
+              onChange={handleFileChange}
               className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-bold file:bg-black file:text-white"
             />
+
+            <p className="text-[10px] text-gray-400 font-bold mt-2">
+              En fazla {MAX_IMAGE_COUNT} görsel. Her görsel en fazla {MAX_IMAGE_SIZE_MB} MB. SVG/HTML kabul edilmez.
+            </p>
 
             {previews.length > 0 && (
               <div className="mt-3 grid grid-cols-3 gap-2">

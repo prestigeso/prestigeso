@@ -1,37 +1,48 @@
 "use client";
 
-import type { FormEvent } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 import { revokeUrls } from "../utils";
+
+const MAX_ADDED_IMAGE_COUNT = 8;
+const MAX_IMAGE_SIZE_MB = 5;
+const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
+const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
+
+function validateImageFiles(files: File[]) {
+  if (files.length > MAX_ADDED_IMAGE_COUNT) {
+    return `Tek seferde en fazla ${MAX_ADDED_IMAGE_COUNT} fotoğraf seçebilirsiniz.`;
+  }
+
+  const invalidType = files.find((file) => !ALLOWED_IMAGE_TYPES.includes(file.type));
+
+  if (invalidType) {
+    return "Sadece JPG, PNG, WEBP veya AVIF formatında görsel yükleyebilirsiniz. SVG/HTML kabul edilmez.";
+  }
+
+  const oversized = files.find((file) => file.size > MAX_IMAGE_SIZE_BYTES);
+
+  if (oversized) {
+    return `Her fotoğraf en fazla ${MAX_IMAGE_SIZE_MB} MB olmalıdır.`;
+  }
+
+  return null;
+}
 
 type Props = {
   open: boolean;
-
-  // modal close
   onClose: () => void;
-
-  // loading state (product fetch)
   loading: boolean;
-
-  // product state (parent’ta tutuluyor)
   editingProduct: any | null;
   setEditingProduct: (p: any | null) => void;
-
-  // submit / delete
   onSubmit: (e: FormEvent<HTMLFormElement>) => void;
   saving: boolean;
   onDelete: (id: number) => void;
-
-  // gallery operations
   moveImage: (index: number, direction: "left" | "right") => void;
   removeImage: (url: string) => void;
-
-  // add more images
   addFiles: File[];
   setAddFiles: (files: File[]) => void;
-
   addPreviews: string[];
   setAddPreviews: (urls: string[]) => void;
-
   addUploading: boolean;
   onAddMoreImages: () => void;
 };
@@ -40,35 +51,46 @@ export default function EditProductModal({
   open,
   onClose,
   loading,
-
   editingProduct,
   setEditingProduct,
-
   onSubmit,
   saving,
   onDelete,
-
   moveImage,
   removeImage,
-
   addFiles,
   setAddFiles,
-
   addPreviews,
   setAddPreviews,
-
   addUploading,
   onAddMoreImages,
 }: Props) {
   if (!open) return null;
 
   const handleClose = () => {
-    // local preview cleanup
     revokeUrls(addPreviews);
     setAddPreviews([]);
     setAddFiles([]);
     setEditingProduct(null);
     onClose();
+  };
+
+  const handleAddFilesChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+
+    if (files.length === 0) return;
+
+    const errorMessage = validateImageFiles(files);
+
+    if (errorMessage) {
+      e.currentTarget.value = "";
+      alert(errorMessage);
+      return;
+    }
+
+    revokeUrls(addPreviews);
+    setAddFiles(files);
+    setAddPreviews(files.map((file) => URL.createObjectURL(file)));
   };
 
   const copyText = async (text: string) => {
@@ -79,7 +101,6 @@ export default function EditProductModal({
       await navigator.clipboard.writeText(value);
       alert("Kopyalandı ✅");
     } catch {
-      // Fallback
       try {
         const el = document.createElement("textarea");
         el.value = value;
@@ -123,7 +144,6 @@ export default function EditProductModal({
 
         {!loading && editingProduct && (
           <>
-            {/* ✅ SKU KARTI (En Üstte + Kopyala) */}
             <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 mb-5">
               <div className="flex items-center justify-between gap-2 mb-2">
                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
@@ -143,6 +163,7 @@ export default function EditProductModal({
                 required
                 type="text"
                 value={skuValue}
+                maxLength={64}
                 onChange={(e) =>
                   setEditingProduct({
                     ...editingProduct,
@@ -154,7 +175,6 @@ export default function EditProductModal({
               />
             </div>
 
-            {/* GALERİ SIRALAMA */}
             <div className="mt-2">
               <p className="text-xs font-black text-gray-700 mb-2">
                 📸 Fotoğrafları Sırala
@@ -217,26 +237,20 @@ export default function EditProductModal({
               )}
             </div>
 
-            {/* GALERİYE FOTO EKLE */}
             <div className="mt-4 bg-gray-50 border border-gray-200 rounded-2xl p-3">
               <p className="text-xs font-black mb-2">➕ Galeriye Fotoğraf Ekle</p>
 
               <input
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/png,image/webp,image/avif"
                 multiple
-                onChange={(e) => {
-                  const files = Array.from(e.target.files || []);
-                  if (files.length === 0) return;
-
-                  // önce eskileri temizle
-                  revokeUrls(addPreviews);
-
-                  setAddFiles(files);
-                  setAddPreviews(files.map((f) => URL.createObjectURL(f)));
-                }}
+                onChange={handleAddFilesChange}
                 className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-black file:text-white"
               />
+
+              <p className="text-[10px] text-gray-400 font-bold mt-2">
+                Tek seferde en fazla {MAX_ADDED_IMAGE_COUNT} görsel. Her görsel en fazla {MAX_IMAGE_SIZE_MB} MB. SVG/HTML kabul edilmez.
+              </p>
 
               {addPreviews.length > 0 && (
                 <div className="flex gap-2 overflow-x-auto mt-3 pb-2">
@@ -253,7 +267,7 @@ export default function EditProductModal({
 
               <button
                 type="button"
-                disabled={addUploading}
+                disabled={addUploading || addFiles.length === 0}
                 onClick={onAddMoreImages}
                 className="w-full mt-2 bg-blue-600 text-white py-2 rounded-xl font-bold text-sm disabled:opacity-60"
               >
@@ -261,7 +275,6 @@ export default function EditProductModal({
               </button>
             </div>
 
-            {/* FORM */}
             <form onSubmit={onSubmit} className="space-y-4 mt-5">
               <div>
                 <label className="text-xs font-bold text-gray-500 uppercase">
@@ -270,6 +283,7 @@ export default function EditProductModal({
                 <input
                   required
                   type="text"
+                  maxLength={140}
                   value={editingProduct.name || ""}
                   onChange={(e) =>
                     setEditingProduct({ ...editingProduct, name: e.target.value })
@@ -285,6 +299,9 @@ export default function EditProductModal({
                 <input
                   required
                   type="number"
+                  min="0"
+                  max="9999999"
+                  step="0.01"
                   value={editingProduct.price ?? ""}
                   onChange={(e) =>
                     setEditingProduct({ ...editingProduct, price: e.target.value })
@@ -293,7 +310,6 @@ export default function EditProductModal({
                 />
               </div>
 
-              {/* Barkod opsiyonel + Kopyala */}
               <div>
                 <div className="flex items-center justify-between gap-2">
                   <label className="text-xs font-bold text-gray-500 uppercase">
@@ -313,6 +329,7 @@ export default function EditProductModal({
 
                 <input
                   type="text"
+                  maxLength={80}
                   value={barcodeValue}
                   onChange={(e) =>
                     setEditingProduct({ ...editingProduct, barcode: e.target.value })
@@ -347,6 +364,9 @@ export default function EditProductModal({
                 </label>
                 <input
                   type="number"
+                  min="0"
+                  max="999999"
+                  step="1"
                   value={editingProduct.stock ?? 0}
                   onChange={(e) =>
                     setEditingProduct({
@@ -364,6 +384,7 @@ export default function EditProductModal({
                 </label>
                 <textarea
                   rows={3}
+                  maxLength={5000}
                   value={editingProduct.description ?? ""}
                   onChange={(e) =>
                     setEditingProduct({
