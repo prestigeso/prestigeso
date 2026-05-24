@@ -1,10 +1,11 @@
 ﻿
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useCart } from "@/context/CartContext";
+import { useAppAlert } from "@/context/AppAlertContext";
 
 function safeParseIds(ids: unknown): number[] {
   if (Array.isArray(ids)) {
@@ -35,10 +36,35 @@ function safeParseItems(items: any): any[] {
   }
 }
 
+const MAX_REVIEW_IMAGES = 3;
+const MAX_REVIEW_IMAGE_SIZE_MB = 5;
+const MAX_REVIEW_IMAGE_SIZE_BYTES = MAX_REVIEW_IMAGE_SIZE_MB * 1024 * 1024;
+const ALLOWED_REVIEW_IMAGE_TYPES: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/avif": "avif",
+};
+
+function createSafeReviewFileName(file: File, productId: string | number) {
+  const ext = ALLOWED_REVIEW_IMAGE_TYPES[file.type];
+
+  if (!ext) {
+    throw new Error("Fotoğraflar JPG, PNG, WEBP veya AVIF formatında olmalıdır.");
+  }
+
+  const randomPart = crypto.randomUUID
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+  return `reviews/${productId}/${Date.now()}-${randomPart}.${ext}`;
+}
+
 export default function ProductDetailPage() {
   const params = useParams();
   const router = useRouter();
   const { addToCart, setIsCartOpen } = useCart();
+  const { showToast } = useAppAlert();
 
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -121,7 +147,9 @@ export default function ProductDetailPage() {
             await supabase.from("product_views").insert([{ product_id: pData.id }]);
             sessionStorage.setItem(viewedKey, "true");
           }
-        } catch {}
+        } catch {
+          // ignore view tracking errors
+        }
 
         try {
           const currentViewed = JSON.parse(
@@ -135,7 +163,9 @@ export default function ProductDetailPage() {
             const newViewed = [pData, ...filteredViewed].slice(0, 10);
             localStorage.setItem("prestige_viewed", JSON.stringify(newViewed));
           }
-        } catch {}
+        } catch {
+          // ignore recently viewed errors
+        }
 
         const { data: revData } = await supabase
           .from("reviews")
@@ -188,7 +218,9 @@ export default function ProductDetailPage() {
 
               setHasPurchased(bought);
             }
-          } catch {}
+          } catch {
+            // ignore purchase check errors
+          }
         }
       }
 
@@ -230,7 +262,13 @@ export default function ProductDetailPage() {
         .eq("user_id", user.id)
         .eq("product_id", product.id);
 
-      if (error) setIsFavorite(true);
+      if (error) {
+        setIsFavorite(true);
+        showToast("Favorilerden kaldırılırken bir hata oluştu.", "error");
+        return;
+      }
+
+      showToast("Ürün favorilerden kaldırıldı.", "success");
       return;
     }
 
@@ -240,7 +278,13 @@ export default function ProductDetailPage() {
       .from("favorites")
       .insert([{ user_id: user.id, product_id: product.id }]);
 
-    if (error) setIsFavorite(false);
+    if (error) {
+      setIsFavorite(false);
+      showToast("Favorilere eklenirken bir hata oluştu.", "error");
+      return;
+    }
+
+    showToast("Ürün favorilere eklendi.", "success");
   };
 
   const openQuestionModal = async () => {
@@ -254,20 +298,25 @@ export default function ProductDetailPage() {
     if (!user) return;
 
     if (!hasPurchased) {
-      alert("Yorum yapabilmek için bu ürünü satın almış olmanız gerekir.");
+      showToast("Yorum yapabilmek için bu ürünü satın almış olmanız gerekir.", "warning");
       return;
     }
 
     setShowReviewModal(true);
   };
 
-  let activePrice = product ? Number(product.price || 0) : 0;
+  const activePrice = useMemo(() => {
+    if (!product) return 0;
 
-  if (activeCampaign && product) {
-    activePrice =
-      Number(product.price || 0) *
-      (1 - Number(activeCampaign.discount_percent || 0) / 100);
-  }
+    if (activeCampaign) {
+      return (
+        Number(product.price || 0) *
+        (1 - Number(activeCampaign.discount_percent || 0) / 100)
+      );
+    }
+
+    return Number(product.price || 0);
+  }, [activeCampaign, product]);
 
   const productImages =
     product?.images?.length > 0 ? product.images : [product?.image || "/logo.jpeg"];
@@ -296,6 +345,25 @@ export default function ProductDetailPage() {
     setTouchEndX(0);
   };
 
+  const addProductToCart = (openCart = false) => {
+    if (!product) return;
+
+    addToCart({
+      id: product.id,
+      name: product.name,
+      price: activePrice,
+      image: productImages[0],
+      category: product.category,
+      quantity: 1,
+    });
+
+    if (openCart) {
+      setIsCartOpen(true);
+    } else {
+      showToast("Ürün başarıyla sepete eklendi.", "success");
+    }
+  };
+
   const submitReview = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -303,11 +371,14 @@ export default function ProductDetailPage() {
     if (!user || !product) return;
 
     if (!hasPurchased) {
-      alert("Yorum yapabilmek için ürünü satın almış olmanız gerekir.");
+      showToast("Yorum yapabilmek için ürünü satın almış olmanız gerekir.", "warning");
       return;
     }
 
-    if (!comment.trim()) return alert("Lütfen bir yorum yazın.");
+    if (!comment.trim()) {
+      showToast("Lütfen bir yorum yazın.", "warning");
+      return;
+    }
 
     setIsSubmitting(true);
 
@@ -315,14 +386,15 @@ export default function ProductDetailPage() {
       const imageUrls: string[] = [];
 
       for (const file of reviewFiles) {
-        const ext = file.name.split(".").pop() || "jpg";
-        const fileName = `review_${product.id}_${Date.now()}_${Math.random()
-          .toString(16)
-          .slice(2)}.${ext}`;
+        const fileName = createSafeReviewFileName(file, product.id);
 
         const { error: uploadError } = await supabase.storage
           .from("products")
-          .upload(fileName, file);
+          .upload(fileName, file, {
+            contentType: file.type,
+            cacheControl: "31536000",
+            upsert: false,
+          });
 
         if (uploadError) throw uploadError;
 
@@ -343,7 +415,10 @@ export default function ProductDetailPage() {
 
       if (error) throw error;
 
-      alert("Değerlendirmeniz alındı! Yönetici onayından sonra yayınlanacaktır. 🌟");
+      showToast(
+        "Değerlendirmeniz alındı. Yönetici onayından sonra yayınlanacaktır.",
+        "success"
+      );
 
       setShowReviewModal(false);
       setComment("");
@@ -351,7 +426,7 @@ export default function ProductDetailPage() {
       setReviewFiles([]);
       setReviewPreviews([]);
     } catch (err: any) {
-      alert("Hata: " + (err?.message || "Bilinmeyen hata"));
+      showToast("Hata: " + (err?.message || "Bilinmeyen hata"), "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -363,7 +438,10 @@ export default function ProductDetailPage() {
     const user = await checkAuth("Soru sorabilmek için giriş yapmanız gerekiyor.");
     if (!user || !product) return;
 
-    if (!questionText.trim()) return alert("Lütfen sorunuzu yazın.");
+    if (!questionText.trim()) {
+      showToast("Lütfen sorunuzu yazın.", "warning");
+      return;
+    }
 
     setIsSubmitting(true);
 
@@ -379,12 +457,15 @@ export default function ProductDetailPage() {
 
       if (error) throw error;
 
-      alert("Sorunuz satıcıya iletildi! Cevaplandığında burada görünecektir. 💬");
+      showToast(
+        "Sorunuz satıcıya iletildi. Cevaplandığında burada görünecektir.",
+        "success"
+      );
 
       setShowQuestionModal(false);
       setQuestionText("");
     } catch (err: any) {
-      alert("Hata: " + (err?.message || "Bilinmeyen hata"));
+      showToast("Hata: " + (err?.message || "Bilinmeyen hata"), "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -393,19 +474,23 @@ export default function ProductDetailPage() {
   const handleReviewFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
 
-    if (files.length > 3) {
+    if (files.length > MAX_REVIEW_IMAGES) {
       e.target.value = "";
-      return alert("En fazla 3 fotoğraf yükleyebilirsiniz.");
+      showToast(`En fazla ${MAX_REVIEW_IMAGES} fotoğraf yükleyebilirsiniz.`, "warning");
+      return;
     }
 
-    const maxFileSize = 5 * 1024 * 1024;
     const invalidFile = files.find(
-      (file) => !file.type.startsWith("image/") || file.size > maxFileSize
+      (file) => !ALLOWED_REVIEW_IMAGE_TYPES[file.type] || file.size > MAX_REVIEW_IMAGE_SIZE_BYTES
     );
 
     if (invalidFile) {
       e.target.value = "";
-      return alert("Fotoğraflar image/* formatında ve en fazla 5 MB olmalıdır.");
+      showToast(
+        `Fotoğraflar JPG, PNG, WEBP veya AVIF formatında ve en fazla ${MAX_REVIEW_IMAGE_SIZE_MB} MB olmalıdır.`,
+        "warning"
+      );
+      return;
     }
 
     reviewPreviews.forEach((url) => URL.revokeObjectURL(url));
@@ -612,17 +697,7 @@ export default function ProductDetailPage() {
               <>
                 <button
                   type="button"
-                  onClick={() => {
-                    addToCart({
-                      id: product.id,
-                      name: product.name,
-                      price: activePrice,
-                      image: productImages[0],
-                      category: product.category,
-                      quantity: 1,
-                    });
-                    setIsCartOpen(true);
-                  }}
+                  onClick={() => addProductToCart(true)}
                   className="flex-1 h-[54px] bg-white text-black border-[1.5px] border-black rounded-[18px] font-black text-[13px] tracking-tight hover:bg-gray-50 transition-all flex items-center justify-center active:scale-95"
                 >
                   ŞİMDİ AL
@@ -630,17 +705,7 @@ export default function ProductDetailPage() {
 
                 <button
                   type="button"
-                  onClick={() => {
-                    addToCart({
-                      id: product.id,
-                      name: product.name,
-                      price: activePrice,
-                      image: productImages[0],
-                      category: product.category,
-                      quantity: 1,
-                    });
-                    alert("Ürün başarıyla sepete eklendi! 🛍️");
-                  }}
+                  onClick={() => addProductToCart(false)}
                   className="flex-1 h-[54px] bg-black text-white rounded-[18px] font-black text-[13px] tracking-tight hover:bg-gray-800 transition-all shadow-md flex items-center justify-center active:scale-95"
                 >
                   SEPETE EKLE
@@ -897,17 +962,7 @@ export default function ProductDetailPage() {
             <>
               <button
                 type="button"
-                onClick={() => {
-                  addToCart({
-                    id: product.id,
-                    name: product.name,
-                    price: activePrice,
-                    image: productImages[0],
-                    category: product.category,
-                    quantity: 1,
-                  });
-                  setIsCartOpen(true);
-                }}
+                onClick={() => addProductToCart(true)}
                 className="flex-1 h-[54px] bg-white text-black border-[1.5px] border-black rounded-[18px] font-black text-[13px] tracking-tight hover:bg-gray-50 transition-all flex items-center justify-center active:scale-95"
               >
                 ŞİMDİ AL
@@ -915,17 +970,7 @@ export default function ProductDetailPage() {
 
               <button
                 type="button"
-                onClick={() => {
-                  addToCart({
-                    id: product.id,
-                    name: product.name,
-                    price: activePrice,
-                    image: productImages[0],
-                    category: product.category,
-                    quantity: 1,
-                  });
-                  alert("Ürün başarıyla sepete eklendi! 🛍️");
-                }}
+                onClick={() => addProductToCart(false)}
                 className="flex-1 h-[54px] bg-black text-white rounded-[18px] font-black text-[13px] tracking-tight hover:bg-gray-800 transition-all shadow-md flex items-center justify-center active:scale-95"
               >
                 SEPETE EKLE
@@ -1030,7 +1075,7 @@ export default function ProductDetailPage() {
                 </label>
                 <input
                   type="file"
-                  accept="image/*"
+                  accept="image/jpeg,image/png,image/webp,image/avif"
                   multiple
                   onChange={handleReviewFileChange}
                   className="w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-gray-100 file:text-black cursor-pointer"
