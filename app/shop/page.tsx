@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useSearch } from "@/context/SearchContext";
-import Link from "next/link";
+import { useAppAlert } from "@/context/AppAlertContext";
 
 type Product = {
   id: number | string;
@@ -61,6 +62,7 @@ function getActiveCampaign(productId: number | string, campaigns: Campaign[]) {
 
 export default function ShopPage() {
   const { searchQuery, selectedCategory, setSelectedCategory } = useSearch();
+  const { showToast } = useAppAlert();
 
   const [dbProducts, setDbProducts] = useState<Product[]>([]);
   const [dbCampaigns, setDbCampaigns] = useState<Campaign[]>([]);
@@ -152,7 +154,7 @@ export default function ShopPage() {
     isCurrentlyFavorite: boolean
   ) => {
     if (!authUserId) {
-      alert("Ürünleri favorilemek için lütfen önce giriş yapın! 🛡️");
+      showToast("Ürünleri favorilemek için lütfen önce giriş yapın.", "warning");
       return;
     }
 
@@ -163,14 +165,18 @@ export default function ShopPage() {
         .eq("user_id", authUserId)
         .eq("product_id", productId);
 
-      if (!error) {
-        setFavoriteIds((prev) => {
-          const next = new Set(prev);
-          next.delete(productId);
-          return next;
-        });
+      if (error) {
+        showToast("Favorilerden kaldırılırken bir hata oluştu.", "error");
+        return;
       }
 
+      setFavoriteIds((prev) => {
+        const next = new Set(prev);
+        next.delete(productId);
+        return next;
+      });
+
+      showToast("Ürün favorilerden kaldırıldı.", "success");
       return;
     }
 
@@ -178,13 +184,18 @@ export default function ShopPage() {
       .from("favorites")
       .insert([{ user_id: authUserId, product_id: productId }]);
 
-    if (!error) {
-      setFavoriteIds((prev) => {
-        const next = new Set(prev);
-        next.add(productId);
-        return next;
-      });
+    if (error) {
+      showToast("Favorilere eklenirken bir hata oluştu.", "error");
+      return;
     }
+
+    setFavoriteIds((prev) => {
+      const next = new Set(prev);
+      next.add(productId);
+      return next;
+    });
+
+    showToast("Ürün favorilere eklendi.", "success");
   };
 
   return (
