@@ -1,4 +1,5 @@
-﻿"use client";
+﻿
+"use client";
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
@@ -13,7 +14,6 @@ function safeParseIds(ids: unknown): number[] {
   if (typeof ids === "string") {
     try {
       const parsed = JSON.parse(ids);
-
       if (Array.isArray(parsed)) {
         return parsed.map((x) => Number(x)).filter((x) => Number.isFinite(x));
       }
@@ -63,6 +63,11 @@ export default function ProductDetailPage() {
   const [questionText, setQuestionText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authModalMessage, setAuthModalMessage] = useState(
+    "Bu işlem için giriş yapmanız gerekiyor."
+  );
+
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [hasPurchased, setHasPurchased] = useState(false);
 
@@ -96,10 +101,8 @@ export default function ProductDetailPage() {
 
         if (campData) {
           const nowIso = new Date().toISOString();
-
           const activeCamp = campData.find((campaign: any) => {
             const ids = safeParseIds(campaign.product_ids);
-
             return (
               ids.includes(Number(pData.id)) &&
               nowIso >= campaign.start_date &&
@@ -129,7 +132,6 @@ export default function ProductDetailPage() {
             const filteredViewed = currentViewed.filter(
               (item: any) => String(item.id) !== String(pData.id)
             );
-
             const newViewed = [pData, ...filteredViewed].slice(0, 10);
             localStorage.setItem("prestige_viewed", JSON.stringify(newViewed));
           }
@@ -142,8 +144,7 @@ export default function ProductDetailPage() {
           .eq("is_approved", true)
           .order("created_at", { ascending: false });
 
-        if (revData) setReviews(revData);
-        else setReviews([]);
+        setReviews(revData || []);
 
         const { data: qData } = await supabase
           .from("questions")
@@ -152,8 +153,7 @@ export default function ProductDetailPage() {
           .eq("is_approved", true)
           .order("created_at", { ascending: false });
 
-        if (qData) setQuestions(qData);
-        else setQuestions([]);
+        setQuestions(qData || []);
 
         const {
           data: { session },
@@ -181,7 +181,6 @@ export default function ProductDetailPage() {
             if (orders) {
               const bought = orders.some((order: any) => {
                 const itemsList = safeParseItems(order.items);
-
                 return itemsList.some(
                   (item: any) => String(item.id) === String(pData.id)
                 );
@@ -199,7 +198,9 @@ export default function ProductDetailPage() {
     fetchProductAndData();
   }, [params?.id]);
 
-  const checkAuth = async () => {
+  const checkAuth = async (
+    message = "Bu işlem için giriş yapmanız gerekiyor."
+  ) => {
     if (currentUser) return currentUser;
 
     const {
@@ -207,8 +208,8 @@ export default function ProductDetailPage() {
     } = await supabase.auth.getSession();
 
     if (!session) {
-      alert("Bu işlem için giriş yapmalısınız!");
-      router.push("/login");
+      setAuthModalMessage(message);
+      setShowAuthModal(true);
       return null;
     }
 
@@ -217,7 +218,7 @@ export default function ProductDetailPage() {
   };
 
   const handleFavoriteClick = async () => {
-    const user = await checkAuth();
+    const user = await checkAuth("Favorilere eklemek için giriş yapmanız gerekiyor.");
     if (!user || !product) return;
 
     if (isFavorite) {
@@ -243,13 +244,13 @@ export default function ProductDetailPage() {
   };
 
   const openQuestionModal = async () => {
-    const user = await checkAuth();
+    const user = await checkAuth("Soru sorabilmek için giriş yapmanız gerekiyor.");
     if (!user) return;
     setShowQuestionModal(true);
   };
 
   const openReviewModal = async () => {
-    const user = await checkAuth();
+    const user = await checkAuth("Yorum yapabilmek için giriş yapmanız gerekiyor.");
     if (!user) return;
 
     if (!hasPurchased) {
@@ -263,7 +264,8 @@ export default function ProductDetailPage() {
   let activePrice = product ? Number(product.price || 0) : 0;
 
   if (activeCampaign && product) {
-    activePrice = Number(product.price || 0) *
+    activePrice =
+      Number(product.price || 0) *
       (1 - Number(activeCampaign.discount_percent || 0) / 100);
   }
 
@@ -297,10 +299,14 @@ export default function ProductDetailPage() {
   const submitReview = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const user = await checkAuth();
+    const user = await checkAuth("Yorum yapabilmek için giriş yapmanız gerekiyor.");
     if (!user || !product) return;
 
-    if (!hasPurchased) return alert("Yorum yapabilmek için ürünü satın almış olmanız gerekir.");
+    if (!hasPurchased) {
+      alert("Yorum yapabilmek için ürünü satın almış olmanız gerekir.");
+      return;
+    }
+
     if (!comment.trim()) return alert("Lütfen bir yorum yazın.");
 
     setIsSubmitting(true);
@@ -354,7 +360,7 @@ export default function ProductDetailPage() {
   const submitQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const user = await checkAuth();
+    const user = await checkAuth("Soru sorabilmek için giriş yapmanız gerekiyor.");
     if (!user || !product) return;
 
     if (!questionText.trim()) return alert("Lütfen sorunuzu yazın.");
@@ -393,7 +399,6 @@ export default function ProductDetailPage() {
     }
 
     const maxFileSize = 5 * 1024 * 1024;
-
     const invalidFile = files.find(
       (file) => !file.type.startsWith("image/") || file.size > maxFileSize
     );
@@ -765,7 +770,7 @@ export default function ProductDetailPage() {
                     ) : (
                       <button
                         type="button"
-                        onClick={() => router.push("/login")}
+                        onClick={openReviewModal}
                         className="bg-white border border-gray-200 text-black px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest"
                       >
                         Giriş Yap
@@ -930,6 +935,44 @@ export default function ProductDetailPage() {
         </div>
       </div>
 
+      {showAuthModal && (
+        <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-sm rounded-3xl p-7 shadow-2xl animate-in zoom-in duration-200">
+            <div className="text-center">
+              <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4 text-2xl">
+                🔐
+              </div>
+
+              <h2 className="text-lg font-black uppercase tracking-tight text-black mb-3">
+                Giriş Gerekli
+              </h2>
+
+              <p className="text-sm font-medium text-gray-600 leading-relaxed mb-6">
+                {authModalMessage}
+              </p>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAuthModal(false)}
+                  className="w-full bg-gray-100 text-black py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-gray-200 active:scale-95 transition-all"
+                >
+                  İptal
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => router.push("/login")}
+                  className="w-full bg-black text-white py-3 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-gray-800 active:scale-95 transition-all"
+                >
+                  Giriş Yap
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showReviewModal && (
         <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl">
@@ -956,7 +999,9 @@ export default function ProductDetailPage() {
                       key={star}
                       onClick={() => setRating(star)}
                       className={`transition-colors ${
-                        star <= rating ? "text-yellow-400" : "text-gray-200 hover:text-yellow-200"
+                        star <= rating
+                          ? "text-yellow-400"
+                          : "text-gray-200 hover:text-yellow-200"
                       }`}
                     >
                       ★
@@ -1059,4 +1104,3 @@ export default function ProductDetailPage() {
     </div>
   );
 }
-
