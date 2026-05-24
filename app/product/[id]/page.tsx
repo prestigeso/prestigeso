@@ -5,6 +5,36 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useCart } from "@/context/CartContext";
 
+function safeParseIds(ids: unknown): number[] {
+  if (Array.isArray(ids)) {
+    return ids.map((x) => Number(x)).filter((x) => Number.isFinite(x));
+  }
+
+  if (typeof ids === "string") {
+    try {
+      const parsed = JSON.parse(ids);
+
+      if (Array.isArray(parsed)) {
+        return parsed.map((x) => Number(x)).filter((x) => Number.isFinite(x));
+      }
+    } catch {
+      return [];
+    }
+  }
+
+  return [];
+}
+
+function safeParseItems(items: any): any[] {
+  try {
+    if (Array.isArray(items)) return items;
+    if (typeof items === "string") return JSON.parse(items || "[]");
+    return [];
+  } catch {
+    return [];
+  }
+}
+
 export default function ProductDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -13,22 +43,17 @@ export default function ProductDetailPage() {
   const [product, setProduct] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [isFavorite, setIsFavorite] = useState(false);
-
-  // KAMPANYA
   const [activeCampaign, setActiveCampaign] = useState<any>(null);
 
-  // GALERİ & SWIPE
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [touchStartX, setTouchStartX] = useState(0);
   const [touchEndX, setTouchEndX] = useState(0);
   const [isDescExpanded, setIsDescExpanded] = useState(false);
 
-  // SEKME
   const [activeTab, setActiveTab] = useState<"desc" | "reviews" | "qa">("desc");
   const [reviews, setReviews] = useState<any[]>([]);
   const [questions, setQuestions] = useState<any[]>([]);
 
-  // MODAL & FORM
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [showQuestionModal, setShowQuestionModal] = useState(false);
   const [rating, setRating] = useState(5);
@@ -38,18 +63,26 @@ export default function ProductDetailPage() {
   const [questionText, setQuestionText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // USER & PURCHASE CHECK
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [hasPurchased, setHasPurchased] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      reviewPreviews.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [reviewPreviews]);
 
   useEffect(() => {
     const fetchProductAndData = async () => {
       if (!params?.id) return;
 
       setSelectedImageIndex(0);
+      setIsFavorite(false);
+      setHasPurchased(false);
+      setCurrentUser(null);
+      setActiveCampaign(null);
       setLoading(true);
 
-      // 1) Ürün
       const { data: pData } = await supabase
         .from("products")
         .select("*")
@@ -59,26 +92,24 @@ export default function ProductDetailPage() {
       if (pData) {
         setProduct(pData);
 
-        // 2) Kampanya sorgulama
         const { data: campData } = await supabase.from("campaigns").select("*");
+
         if (campData) {
           const nowIso = new Date().toISOString();
-          const activeCamp = campData.find((c: any) => {
-            const ids = Array.isArray(c.product_ids)
-              ? c.product_ids
-              : typeof c.product_ids === "string"
-              ? JSON.parse(c.product_ids || "[]")
-              : [];
+
+          const activeCamp = campData.find((campaign: any) => {
+            const ids = safeParseIds(campaign.product_ids);
+
             return (
-              ids.includes(pData.id) &&
-              nowIso >= c.start_date &&
-              nowIso <= c.end_date
+              ids.includes(Number(pData.id)) &&
+              nowIso >= campaign.start_date &&
+              nowIso <= campaign.end_date
             );
           });
+
           setActiveCampaign(activeCamp || null);
         }
 
-        // 3) Ürün görüntülenmesi log
         try {
           const viewedKey = `viewed_product_log_${pData.id}`;
           const isAlreadyViewedThisSession = sessionStorage.getItem(viewedKey);
@@ -89,34 +120,41 @@ export default function ProductDetailPage() {
           }
         } catch {}
 
-        // 4) Göz Attıklarım (localStorage)
-        const currentViewed = JSON.parse(
-          localStorage.getItem("prestige_viewed") || "[]"
-        );
-        if (!currentViewed.find((item: any) => item.id === pData.id)) {
-          const newViewed = [pData, ...currentViewed].slice(0, 10);
-          localStorage.setItem("prestige_viewed", JSON.stringify(newViewed));
-        }
+        try {
+          const currentViewed = JSON.parse(
+            localStorage.getItem("prestige_viewed") || "[]"
+          );
 
-        // 5) Yorumlar
+          if (Array.isArray(currentViewed)) {
+            const filteredViewed = currentViewed.filter(
+              (item: any) => String(item.id) !== String(pData.id)
+            );
+
+            const newViewed = [pData, ...filteredViewed].slice(0, 10);
+            localStorage.setItem("prestige_viewed", JSON.stringify(newViewed));
+          }
+        } catch {}
+
         const { data: revData } = await supabase
           .from("reviews")
           .select("*")
           .eq("product_id", pData.id)
           .eq("is_approved", true)
           .order("created_at", { ascending: false });
-        if (revData) setReviews(revData);
 
-        // 6) Sorular
+        if (revData) setReviews(revData);
+        else setReviews([]);
+
         const { data: qData } = await supabase
           .from("questions")
           .select("*")
           .eq("product_id", pData.id)
           .eq("is_approved", true)
           .order("created_at", { ascending: false });
-        if (qData) setQuestions(qData);
 
-        // 7) Kullanıcı kontrolleri
+        if (qData) setQuestions(qData);
+        else setQuestions([]);
+
         const {
           data: { session },
         } = await supabase.auth.getSession();
@@ -129,26 +167,23 @@ export default function ProductDetailPage() {
             .select("id")
             .eq("user_id", session.user.id)
             .eq("product_id", pData.id)
-            .single();
-          if (favData) setIsFavorite(true);
+            .maybeSingle();
 
-          // Satın almış mı?
+          setIsFavorite(!!favData);
+
           try {
             const { data: orders } = await supabase
               .from("orders")
               .select("items")
-              .eq("user_id", session.user.id);
+              .eq("user_id", session.user.id)
+              .eq("payment_status", "paid");
 
             if (orders) {
               const bought = orders.some((order: any) => {
-                const itemsList =
-                  typeof order.items === "string"
-                    ? JSON.parse(order.items)
-                    : order.items;
+                const itemsList = safeParseItems(order.items);
 
-                return (
-                  Array.isArray(itemsList) &&
-                  itemsList.some((item: any) => item.id === pData.id)
+                return itemsList.some(
+                  (item: any) => String(item.id) === String(pData.id)
                 );
               });
 
@@ -164,85 +199,132 @@ export default function ProductDetailPage() {
     fetchProductAndData();
   }, [params?.id]);
 
+  const checkAuth = async () => {
+    if (currentUser) return currentUser;
+
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    if (!session) {
+      alert("Bu işlem için giriş yapmalısınız!");
+      router.push("/login");
+      return null;
+    }
+
+    setCurrentUser(session.user);
+    return session.user;
+  };
+
   const handleFavoriteClick = async () => {
-    if (!currentUser)
-      return alert("Favorilere eklemek için asilce giriş yapmalısınız! 👑");
+    const user = await checkAuth();
+    if (!user || !product) return;
 
     if (isFavorite) {
       setIsFavorite(false);
-      await supabase
+
+      const { error } = await supabase
         .from("favorites")
         .delete()
-        .eq("user_id", currentUser.id)
+        .eq("user_id", user.id)
         .eq("product_id", product.id);
-    } else {
-      setIsFavorite(true);
-      await supabase
-        .from("favorites")
-        .insert([{ user_id: currentUser.id, product_id: product.id }]);
+
+      if (error) setIsFavorite(true);
+      return;
     }
+
+    setIsFavorite(true);
+
+    const { error } = await supabase
+      .from("favorites")
+      .insert([{ user_id: user.id, product_id: product.id }]);
+
+    if (error) setIsFavorite(false);
   };
 
-  // CANLI FİYAT HESAPLAMA
-  let activePrice = product ? Number(product.price) : 0;
+  const openQuestionModal = async () => {
+    const user = await checkAuth();
+    if (!user) return;
+    setShowQuestionModal(true);
+  };
+
+  const openReviewModal = async () => {
+    const user = await checkAuth();
+    if (!user) return;
+
+    if (!hasPurchased) {
+      alert("Yorum yapabilmek için bu ürünü satın almış olmanız gerekir.");
+      return;
+    }
+
+    setShowReviewModal(true);
+  };
+
+  let activePrice = product ? Number(product.price || 0) : 0;
+
   if (activeCampaign && product) {
-    activePrice = Number(product.price) * (1 - activeCampaign.discount_percent / 100);
+    activePrice = Number(product.price || 0) *
+      (1 - Number(activeCampaign.discount_percent || 0) / 100);
   }
 
   const productImages =
     product?.images?.length > 0 ? product.images : [product?.image || "/logo.jpeg"];
 
-  // Galeri prev/next
   const handleNextPrev = (dir: "prev" | "next") => {
     if (dir === "prev") {
-      setSelectedImageIndex((p) => (p === 0 ? productImages.length - 1 : p - 1));
+      setSelectedImageIndex((prev) =>
+        prev === 0 ? productImages.length - 1 : prev - 1
+      );
     } else {
-      setSelectedImageIndex((p) => (p === productImages.length - 1 ? 0 : p + 1));
+      setSelectedImageIndex((prev) =>
+        prev === productImages.length - 1 ? 0 : prev + 1
+      );
     }
   };
 
   const handleTouchEnd = () => {
     if (!touchStartX || !touchEndX) return;
+
     const distance = touchStartX - touchEndX;
+
     if (distance > 50) handleNextPrev("next");
     else if (distance < -50) handleNextPrev("prev");
+
     setTouchStartX(0);
     setTouchEndX(0);
   };
 
-  // Auth check
-  const checkAuth = async () => {
-    if (!currentUser) {
-      alert("Bu işlem için giriş yapmalısınız!");
-      router.push("/login");
-      return null;
-    }
-    return currentUser;
-  };
-
   const submitReview = async (e: React.FormEvent) => {
     e.preventDefault();
-    const user = await checkAuth();
-    if (!user) return;
 
+    const user = await checkAuth();
+    if (!user || !product) return;
+
+    if (!hasPurchased) return alert("Yorum yapabilmek için ürünü satın almış olmanız gerekir.");
     if (!comment.trim()) return alert("Lütfen bir yorum yazın.");
+
     setIsSubmitting(true);
 
     try {
       const imageUrls: string[] = [];
 
       for (const file of reviewFiles) {
-        const ext = file.name.split(".").pop();
-        const fileName = `review_${Date.now()}_${Math.random()
+        const ext = file.name.split(".").pop() || "jpg";
+        const fileName = `review_${product.id}_${Date.now()}_${Math.random()
           .toString(16)
           .slice(2)}.${ext}`;
 
-        await supabase.storage.from("products").upload(fileName, file);
+        const { error: uploadError } = await supabase.storage
+          .from("products")
+          .upload(fileName, file);
+
+        if (uploadError) throw uploadError;
+
         const { data } = supabase.storage.from("products").getPublicUrl(fileName);
         imageUrls.push(data.publicUrl);
       }
 
-      await supabase.from("reviews").insert([
+      const { error } = await supabase.from("reviews").insert([
         {
           product_id: product.id,
           user_id: user.id,
@@ -253,14 +335,17 @@ export default function ProductDetailPage() {
         },
       ]);
 
+      if (error) throw error;
+
       alert("Değerlendirmeniz alındı! Yönetici onayından sonra yayınlanacaktır. 🌟");
+
       setShowReviewModal(false);
       setComment("");
       setRating(5);
       setReviewFiles([]);
       setReviewPreviews([]);
     } catch (err: any) {
-      alert("Hata: " + err.message);
+      alert("Hata: " + (err?.message || "Bilinmeyen hata"));
     } finally {
       setIsSubmitting(false);
     }
@@ -268,14 +353,16 @@ export default function ProductDetailPage() {
 
   const submitQuestion = async (e: React.FormEvent) => {
     e.preventDefault();
+
     const user = await checkAuth();
-    if (!user) return;
+    if (!user || !product) return;
 
     if (!questionText.trim()) return alert("Lütfen sorunuzu yazın.");
+
     setIsSubmitting(true);
 
     try {
-      await supabase.from("questions").insert([
+      const { error } = await supabase.from("questions").insert([
         {
           product_id: product.id,
           user_id: user.id,
@@ -284,11 +371,14 @@ export default function ProductDetailPage() {
         },
       ]);
 
+      if (error) throw error;
+
       alert("Sorunuz satıcıya iletildi! Cevaplandığında burada görünecektir. 💬");
+
       setShowQuestionModal(false);
       setQuestionText("");
     } catch (err: any) {
-      alert("Hata: " + err.message);
+      alert("Hata: " + (err?.message || "Bilinmeyen hata"));
     } finally {
       setIsSubmitting(false);
     }
@@ -296,34 +386,57 @@ export default function ProductDetailPage() {
 
   const handleReviewFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    if (files.length > 3) return alert("En fazla 3 fotoğraf yükleyebilirsiniz.");
+
+    if (files.length > 3) {
+      e.target.value = "";
+      return alert("En fazla 3 fotoğraf yükleyebilirsiniz.");
+    }
+
+    const maxFileSize = 5 * 1024 * 1024;
+
+    const invalidFile = files.find(
+      (file) => !file.type.startsWith("image/") || file.size > maxFileSize
+    );
+
+    if (invalidFile) {
+      e.target.value = "";
+      return alert("Fotoğraflar image/* formatında ve en fazla 5 MB olmalıdır.");
+    }
+
+    reviewPreviews.forEach((url) => URL.revokeObjectURL(url));
+
     setReviewFiles(files);
-    setReviewPreviews(files.map((f) => URL.createObjectURL(f)));
+    setReviewPreviews(files.map((file) => URL.createObjectURL(file)));
   };
 
-  if (loading)
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center font-black uppercase tracking-widest text-gray-400">
         Ürün Hazırlanıyor...
       </div>
     );
+  }
 
-  if (!product)
+  if (!product) {
     return (
       <div className="min-h-screen flex items-center justify-center font-black uppercase tracking-widest text-black">
         Ürün Bulunamadı
       </div>
     );
+  }
 
   const avgRating =
     reviews.length > 0
-      ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1)
+      ? (
+          reviews.reduce((acc, review) => acc + Number(review.rating || 0), 0) /
+          reviews.length
+        ).toFixed(1)
       : "0.0";
 
   return (
     <div className="min-h-screen bg-white pt-6 md:pt-12 pb-32 md:pb-20 px-0 md:px-10">
-      {/* Mobil geri */}
       <button
+        type="button"
         onClick={() => router.back()}
         className="md:hidden absolute top-4 left-4 z-50 w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full shadow-md flex items-center justify-center text-xl font-bold"
       >
@@ -331,7 +444,6 @@ export default function ProductDetailPage() {
       </button>
 
       <div className="max-w-6xl mx-auto flex flex-col md:flex-row gap-6 lg:gap-16">
-        {/* SOL: ÜRÜN GÖRSEL */}
         <div className="w-full md:w-1/2 group relative">
           <div
             className="aspect-[4/5] md:aspect-square bg-gray-50 md:rounded-3xl border-b md:border border-gray-100 overflow-hidden relative transition-all"
@@ -345,12 +457,13 @@ export default function ProductDetailPage() {
               className="w-full h-full object-cover mix-blend-multiply transition-opacity duration-300 pointer-events-none"
             />
 
-            {/* MOBİL FAVORİ */}
             <button
+              type="button"
               onClick={handleFavoriteClick}
               className={`md:hidden absolute top-4 right-4 w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full shadow-md flex items-center justify-center transition-transform active:scale-95 ${
                 isFavorite ? "text-red-500" : "text-black"
               }`}
+              aria-label="Favori"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -370,12 +483,15 @@ export default function ProductDetailPage() {
             {productImages.length > 1 && (
               <>
                 <button
+                  type="button"
                   onClick={() => handleNextPrev("prev")}
                   className="absolute left-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-black p-3 rounded-full shadow-lg transition-all opacity-0 md:group-hover:opacity-100 active:scale-95 hidden md:block"
                 >
                   ◀
                 </button>
+
                 <button
+                  type="button"
                   onClick={() => handleNextPrev("next")}
                   className="absolute right-4 top-1/2 -translate-y-1/2 bg-white/80 hover:bg-white text-black p-3 rounded-full shadow-lg transition-all opacity-0 md:group-hover:opacity-100 active:scale-95 hidden md:block"
                 >
@@ -383,19 +499,20 @@ export default function ProductDetailPage() {
                 </button>
 
                 <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex gap-1.5 md:hidden">
-                  {productImages.map((_: any, i: number) => (
+                  {productImages.map((_: any, index: number) => (
                     <div
-                      key={i}
+                      key={index}
                       className={`h-1.5 rounded-full transition-all ${
-                        i === selectedImageIndex ? "w-4 bg-black" : "w-1.5 bg-gray-300"
+                        index === selectedImageIndex
+                          ? "w-4 bg-black"
+                          : "w-1.5 bg-gray-300"
                       }`}
-                    ></div>
+                    />
                   ))}
                 </div>
               </>
             )}
 
-            {/* KAMPANYA ETİKETİ */}
             {activeCampaign && (
               <div className="absolute bottom-0 w-full bg-red-600/90 backdrop-blur-sm text-white text-xs md:text-sm font-black text-center py-2 md:py-3 uppercase tracking-[0.2em] z-10 shadow-[0_-5px_20px_rgba(220,38,38,0.3)]">
                 % {activeCampaign.discount_percent} {activeCampaign.name}
@@ -403,11 +520,11 @@ export default function ProductDetailPage() {
             )}
           </div>
 
-          {/* DESKTOP THUMBS */}
           {productImages.length > 1 && (
             <div className="hidden md:flex gap-3 mt-4 overflow-x-auto pb-2 scrollbar-hide snap-x">
               {productImages.map((url: string, index: number) => (
                 <button
+                  type="button"
                   key={index}
                   onClick={() => setSelectedImageIndex(index)}
                   className={`w-20 h-20 flex-shrink-0 rounded-xl border-2 overflow-hidden snap-center transition-all ${
@@ -423,7 +540,6 @@ export default function ProductDetailPage() {
           )}
         </div>
 
-        {/* SAĞ: DETAY */}
         <div className="w-full md:w-1/2 flex flex-col justify-start px-4 md:px-0">
           <p className="text-[10px] md:text-xs font-black uppercase text-gray-400 tracking-widest mb-1">
             {product.category}
@@ -443,7 +559,8 @@ export default function ProductDetailPage() {
               {"☆".repeat(5 - Math.round(Number(avgRating)))}
             </span>
 
-            <span
+            <button
+              type="button"
               className="text-[10px] md:text-xs font-bold text-gray-400 border-b border-gray-400 cursor-pointer hover:text-black"
               onClick={() => {
                 setActiveTab("reviews");
@@ -451,10 +568,9 @@ export default function ProductDetailPage() {
               }}
             >
               {avgRating} ({reviews.length} Değerlendirme)
-            </span>
+            </button>
           </div>
 
-          {/* FİYAT */}
           <div className="flex flex-col md:flex-row md:items-baseline gap-1 md:gap-4 mb-6 md:mb-8">
             {activeCampaign ? (
               <>
@@ -478,10 +594,10 @@ export default function ProductDetailPage() {
             )}
           </div>
 
-          {/* DESKTOP BUTONLAR */}
           <div className="hidden md:flex items-center gap-3 mt-4 w-full max-w-[500px]">
             {Number(product.stock) <= 0 ? (
               <button
+                type="button"
                 disabled
                 className="flex-1 h-[54px] bg-gray-50 text-gray-400 rounded-[18px] font-black text-[13px] uppercase border border-gray-200 cursor-not-allowed"
               >
@@ -490,6 +606,7 @@ export default function ProductDetailPage() {
             ) : (
               <>
                 <button
+                  type="button"
                   onClick={() => {
                     addToCart({
                       id: product.id,
@@ -507,6 +624,7 @@ export default function ProductDetailPage() {
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => {
                     addToCart({
                       id: product.id,
@@ -526,12 +644,14 @@ export default function ProductDetailPage() {
             )}
 
             <button
+              type="button"
               onClick={handleFavoriteClick}
               className={`w-[54px] h-[54px] flex-shrink-0 border rounded-[18px] flex items-center justify-center transition-all shadow-sm active:scale-95 ${
                 isFavorite
                   ? "bg-red-50 border-red-200 text-red-500"
                   : "bg-white border-gray-100 text-black hover:scale-105"
               }`}
+              aria-label="Favori"
             >
               <svg
                 viewBox="0 0 24 24"
@@ -549,10 +669,10 @@ export default function ProductDetailPage() {
             </button>
           </div>
 
-          {/* TABS */}
           <div id="tabs" className="mt-10 md:mt-12">
             <div className="flex gap-4 md:gap-6 border-b border-gray-200 mb-6 overflow-x-auto hide-scrollbar">
               <button
+                type="button"
                 onClick={() => setActiveTab("desc")}
                 className={`pb-3 text-[10px] md:text-xs font-black uppercase tracking-widest transition-colors whitespace-nowrap ${
                   activeTab === "desc"
@@ -564,6 +684,7 @@ export default function ProductDetailPage() {
               </button>
 
               <button
+                type="button"
                 onClick={() => setActiveTab("reviews")}
                 className={`pb-3 text-[10px] md:text-xs font-black uppercase tracking-widest transition-colors whitespace-nowrap ${
                   activeTab === "reviews"
@@ -575,6 +696,7 @@ export default function ProductDetailPage() {
               </button>
 
               <button
+                type="button"
                 onClick={() => setActiveTab("qa")}
                 className={`pb-3 text-[10px] md:text-xs font-black uppercase tracking-widest transition-colors whitespace-nowrap ${
                   activeTab === "qa"
@@ -587,7 +709,6 @@ export default function ProductDetailPage() {
             </div>
 
             <div className="animate-in fade-in duration-300">
-              {/* DESC */}
               {activeTab === "desc" && (
                 <div className="bg-gray-50 rounded-2xl p-5 md:p-6 border border-gray-100">
                   {product.description ? (
@@ -600,8 +721,9 @@ export default function ProductDetailPage() {
 
                       {product.description.length > 150 && (
                         <div className="relative mt-6 md:mt-8 flex justify-center items-center">
-                          <div className="absolute w-full border-t border-gray-200"></div>
+                          <div className="absolute w-full border-t border-gray-200" />
                           <button
+                            type="button"
                             onClick={() => setIsDescExpanded(!isDescExpanded)}
                             className="relative z-10 bg-gray-50 hover:bg-white border border-gray-200 text-gray-800 text-[10px] md:text-[11px] font-bold tracking-widest uppercase px-5 py-2.5 rounded-full flex items-center transition-all"
                           >
@@ -616,7 +738,6 @@ export default function ProductDetailPage() {
                 </div>
               )}
 
-              {/* REVIEWS */}
               {activeTab === "reviews" && (
                 <div className="space-y-6">
                   <div className="flex justify-between items-center bg-gray-50 p-4 rounded-2xl border border-gray-100">
@@ -630,16 +751,20 @@ export default function ProductDetailPage() {
                     {currentUser ? (
                       hasPurchased ? (
                         <button
-                          onClick={() => setShowReviewModal(true)}
+                          type="button"
+                          onClick={openReviewModal}
                           className="bg-black text-white px-4 md:px-6 py-2.5 rounded-xl text-[10px] md:text-[11px] font-black uppercase tracking-widest hover:bg-gray-800 transition-all shadow-md"
                         >
                           Yorum Yap
                         </button>
                       ) : (
-                        <p></p>
+                        <p className="text-[10px] font-bold text-gray-400 max-w-[160px] text-right">
+                          Yorum için ürünü satın almış olmalısınız.
+                        </p>
                       )
                     ) : (
                       <button
+                        type="button"
                         onClick={() => router.push("/login")}
                         className="bg-white border border-gray-200 text-black px-4 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest"
                       >
@@ -654,27 +779,27 @@ export default function ProductDetailPage() {
                     </p>
                   ) : (
                     <div className="space-y-4">
-                      {reviews.map((rev) => (
-                        <div key={rev.id} className="border-b border-gray-100 pb-4">
+                      {reviews.map((review) => (
+                        <div key={review.id} className="border-b border-gray-100 pb-4">
                           <div className="flex items-center gap-2 mb-2">
                             <span className="text-yellow-400 text-xs md:text-sm">
-                              {"★".repeat(rev.rating)}
-                              {"☆".repeat(5 - rev.rating)}
+                              {"★".repeat(Number(review.rating || 0))}
+                              {"☆".repeat(5 - Number(review.rating || 0))}
                             </span>
                             <span className="text-[9px] md:text-[10px] font-bold text-gray-400 border-l border-gray-300 pl-2">
-                              {new Date(rev.created_at).toLocaleDateString("tr-TR")}
+                              {new Date(review.created_at).toLocaleDateString("tr-TR")}
                             </span>
                           </div>
 
                           <p className="text-xs md:text-sm font-medium text-gray-700 mb-3">
-                            {rev.comment}
+                            {review.comment}
                           </p>
 
-                          {rev.images && rev.images.length > 0 && (
+                          {review.images && review.images.length > 0 && (
                             <div className="flex gap-2 overflow-x-auto pb-2">
-                              {rev.images.map((img: string, i: number) => (
+                              {review.images.map((img: string, index: number) => (
                                 <img
-                                  key={i}
+                                  key={index}
                                   src={img}
                                   className="w-14 h-14 md:w-16 md:h-16 rounded-lg object-cover border border-gray-200"
                                   alt="Yorum"
@@ -684,8 +809,7 @@ export default function ProductDetailPage() {
                           )}
 
                           <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest">
-                            {rev.user_name}{" "}
-                            <span className="text-green-600 ml-1">✓ Satın Aldı</span>
+                            {review.user_name} <span className="text-green-600 ml-1">✓ Satın Aldı</span>
                           </p>
                         </div>
                       ))}
@@ -694,7 +818,6 @@ export default function ProductDetailPage() {
                 </div>
               )}
 
-              {/* QA */}
               {activeTab === "qa" && (
                 <div className="space-y-6">
                   <div className="flex justify-between items-center">
@@ -702,7 +825,8 @@ export default function ProductDetailPage() {
                       Satıcıya ürünle ilgili sorularınızı sorun.
                     </p>
                     <button
-                      onClick={() => setShowQuestionModal(true)}
+                      type="button"
+                      onClick={openQuestionModal}
                       className="border border-black text-black px-4 md:px-6 py-2 md:py-3 rounded-xl text-[10px] md:text-[11px] font-black uppercase tracking-widest"
                     >
                       Soru Sor
@@ -715,27 +839,27 @@ export default function ProductDetailPage() {
                     </p>
                   ) : (
                     <div className="space-y-4">
-                      {questions.map((q) => (
+                      {questions.map((question) => (
                         <div
-                          key={q.id}
+                          key={question.id}
                           className="bg-gray-50 p-4 rounded-2xl border border-gray-100"
                         >
                           <div className="mb-3">
                             <p className="text-[9px] font-black text-gray-400 uppercase tracking-widest mb-1">
-                              Soru | {q.user_name}
+                              Soru | {question.user_name}
                             </p>
                             <p className="text-xs md:text-sm font-bold text-black">
-                              {q.question}
+                              {question.question}
                             </p>
                           </div>
 
-                          {q.answer ? (
+                          {question.answer ? (
                             <div className="pl-4 border-l-2 border-green-500">
                               <p className="text-[9px] font-black text-green-600 uppercase tracking-widest mb-1">
                                 Satıcı Cevabı
                               </p>
                               <p className="text-xs md:text-sm font-medium text-gray-700">
-                                {q.answer}
+                                {question.answer}
                               </p>
                             </div>
                           ) : (
@@ -754,11 +878,11 @@ export default function ProductDetailPage() {
         </div>
       </div>
 
-      {/* MOBİL STICKY BAR */}
       <div className="md:hidden fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-md border-t border-gray-200 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] z-[100] shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
         <div className="flex items-center gap-3">
           {Number(product.stock) <= 0 ? (
             <button
+              type="button"
               disabled
               className="flex-1 py-3.5 bg-gray-100 text-gray-400 rounded-xl font-black text-xs uppercase tracking-widest border border-gray-200"
             >
@@ -767,6 +891,7 @@ export default function ProductDetailPage() {
           ) : (
             <>
               <button
+                type="button"
                 onClick={() => {
                   addToCart({
                     id: product.id,
@@ -784,6 +909,7 @@ export default function ProductDetailPage() {
               </button>
 
               <button
+                type="button"
                 onClick={() => {
                   addToCart({
                     id: product.id,
@@ -804,13 +930,13 @@ export default function ProductDetailPage() {
         </div>
       </div>
 
-      {/* YORUM MODALI */}
       {showReviewModal && (
         <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-black uppercase tracking-tight">Değerlendir</h2>
               <button
+                type="button"
                 onClick={() => setShowReviewModal(false)}
                 className="w-8 h-8 bg-gray-100 rounded-full font-bold"
               >
@@ -866,8 +992,13 @@ export default function ProductDetailPage() {
                 />
                 {reviewPreviews.length > 0 && (
                   <div className="flex gap-2 overflow-x-auto mt-3 pb-2">
-                    {reviewPreviews.map((url, i) => (
-                      <img key={i} src={url} className="w-16 h-16 object-cover rounded-lg border border-gray-200" alt="" />
+                    {reviewPreviews.map((url, index) => (
+                      <img
+                        key={index}
+                        src={url}
+                        className="w-16 h-16 object-cover rounded-lg border border-gray-200"
+                        alt=""
+                      />
                     ))}
                   </div>
                 )}
@@ -885,13 +1016,13 @@ export default function ProductDetailPage() {
         </div>
       )}
 
-      {/* SORU MODALI */}
       {showQuestionModal && (
         <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4">
           <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-black uppercase tracking-tight">Soru Sor</h2>
               <button
+                type="button"
                 onClick={() => setShowQuestionModal(false)}
                 className="w-8 h-8 bg-gray-100 rounded-full font-bold"
               >
