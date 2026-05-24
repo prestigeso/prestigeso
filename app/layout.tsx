@@ -5,6 +5,7 @@ import "./globals.css";
 import { CartProvider } from "@/context/CartContext";
 import { SearchProvider } from "@/context/SearchContext";
 import ConditionalLayout from "@/components/ConditionalUI";
+import AppAlertProvider from "@/components/ui/AppAlertProvider";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -60,11 +61,13 @@ export default function RootLayout({
   return (
     <html lang="tr">
       <body className={inter.className}>
-        <SearchProvider>
-          <CartProvider>
-            <ConditionalLayout>{children}</ConditionalLayout>
-          </CartProvider>
-        </SearchProvider>
+        <AppAlertProvider>
+          <SearchProvider>
+            <CartProvider>
+              <ConditionalLayout>{children}</ConditionalLayout>
+            </CartProvider>
+          </SearchProvider>
+        </AppAlertProvider>
       </body>
     </html>
   );
