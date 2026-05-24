@@ -1,4 +1,5 @@
 import Link from "next/link";
+import ClearCartOnSuccess from "@/components/payment/ClearCartOnSuccess";
 
 type PaymentSuccessPageProps = {
   searchParams?: Promise<{
@@ -14,6 +15,8 @@ export default async function PaymentSuccessPage({
 
   return (
     <div className="min-h-screen bg-white flex items-center justify-center px-4 py-16 font-sans">
+      <ClearCartOnSuccess />
+
       <div className="max-w-md w-full text-center bg-gray-50 border border-gray-100 rounded-3xl p-8 shadow-sm">
         <div className="text-5xl mb-4">✅</div>
 
