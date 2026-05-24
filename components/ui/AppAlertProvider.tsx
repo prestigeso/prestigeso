@@ -18,36 +18,22 @@ type ConfirmState = ShowConfirmOptions & {
   resolve: (value: boolean) => void;
 };
 
+const DEFAULT_TOAST_DURATION_MS = 2600;
+
 function AppToast({ toast }: { toast: ToastState }) {
-  const tone =
-    toast.type === "success"
-      ? "bg-green-600 text-white"
-      : toast.type === "warning"
-      ? "bg-black text-white"
-      : toast.type === "error"
-      ? "bg-black text-white"
-      : "bg-gray-900 text-white";
-
-  const iconTone =
-    toast.type === "success"
-      ? "bg-white text-green-700"
-      : "bg-white text-black";
-
   const icon = toast.type === "success" ? "✓" : "!";
 
   return (
     <div
       role="status"
       aria-live="polite"
-      className={`fixed top-4 left-1/2 -translate-x-1/2 z-[1300] w-[calc(100%-24px)] sm:w-auto sm:min-w-[520px] sm:max-w-[720px] rounded-2xl px-4 sm:px-6 py-3 shadow-2xl flex items-center justify-center gap-3 ${tone}`}
+      className="fixed top-4 left-1/2 -translate-x-1/2 z-[1300] w-[calc(100%-24px)] sm:w-auto sm:min-w-[520px] sm:max-w-[760px] rounded-2xl bg-white text-black border border-gray-200 px-4 sm:px-6 py-3 shadow-2xl flex items-center justify-center gap-3"
     >
-      <span
-        className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-black shrink-0 ${iconTone}`}
-      >
+      <span className="w-6 h-6 rounded-full bg-black text-white flex items-center justify-center text-sm font-black shrink-0">
         {icon}
       </span>
 
-      <span className="text-xs sm:text-sm font-black leading-snug sm:leading-none text-center sm:text-left">
+      <span className="text-xs sm:text-sm font-black leading-snug sm:leading-none text-center">
         {toast.message}
       </span>
     </div>
@@ -134,7 +120,7 @@ export default function AppAlertProvider({ children }: { children: ReactNode }) 
 
       toastTimerRef.current = setTimeout(() => {
         setToast(null);
-      }, normalizedOptions.durationMs || 3500);
+      }, normalizedOptions.durationMs || DEFAULT_TOAST_DURATION_MS);
     },
     []
   );
