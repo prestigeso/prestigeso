@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { useAppAlert } from "@/context/AppAlertContext";
 
 import AddressesTab from "@/components/profile/AddressesTab";
 import OrdersTab from "@/components/profile/OrdersTab";
@@ -27,6 +28,7 @@ const VALID_PROFILE_TABS = [
 
 export default function ProfilePage() {
   const router = useRouter();
+  const { showToast } = useAppAlert();
 
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -189,17 +191,25 @@ export default function ProfilePage() {
       .eq("user_id", user.id)
       .eq("product_id", productId);
 
-    if (!error) {
-      setFavorites((prev) =>
-        prev.filter((item) => String(item.id) !== String(productId))
-      );
+    if (error) {
+      showToast("Favorilerden kaldırılırken bir hata oluştu.", "error");
+      return;
     }
+
+    setFavorites((prev) =>
+      prev.filter((item) => String(item.id) !== String(productId))
+    );
+
+    showToast("Ürün favorilerden kaldırıldı.", "success");
   };
 
   const handleSendMessage = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    if (!messageText.trim() || !user) return;
+    if (!messageText.trim() || !user) {
+      showToast("Lütfen mesajınızı yazın.", "warning");
+      return;
+    }
 
     setIsSending(true);
 
@@ -215,7 +225,10 @@ export default function ProfilePage() {
 
       if (error) throw error;
 
-      alert("Mesajınız başarıyla iletildi! En kısa sürede dönüş sağlayacağız. 🖤");
+      showToast(
+        "Mesajınız başarıyla iletildi. En kısa sürede dönüş sağlayacağız.",
+        "success"
+      );
 
       setMessageText("");
       setIsMessageModalOpen(false);
@@ -228,7 +241,7 @@ export default function ProfilePage() {
 
       if (mData) setMyMessages(mData);
     } catch (err: any) {
-      alert("Hata oluştu: " + err.message);
+      showToast("Hata oluştu: " + (err?.message || "Bilinmeyen hata"), "error");
     } finally {
       setIsSending(false);
     }
@@ -281,6 +294,7 @@ export default function ProfilePage() {
 
           <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden shadow-sm flex flex-col">
             <button
+              type="button"
               onClick={() => handleTabChange("orders")}
               className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${
                 activeTab === "orders"
@@ -292,6 +306,7 @@ export default function ProfilePage() {
             </button>
 
             <button
+              type="button"
               onClick={() => handleTabChange("favorites")}
               className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${
                 activeTab === "favorites"
@@ -303,6 +318,7 @@ export default function ProfilePage() {
             </button>
 
             <button
+              type="button"
               onClick={() => handleTabChange("addresses")}
               className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${
                 activeTab === "addresses"
@@ -314,6 +330,7 @@ export default function ProfilePage() {
             </button>
 
             <button
+              type="button"
               onClick={() => handleTabChange("coupons")}
               className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${
                 activeTab === "coupons"
@@ -325,6 +342,7 @@ export default function ProfilePage() {
             </button>
 
             <button
+              type="button"
               onClick={() => handleTabChange("reviews")}
               className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${
                 activeTab === "reviews"
@@ -336,6 +354,7 @@ export default function ProfilePage() {
             </button>
 
             <button
+              type="button"
               onClick={() => handleTabChange("questions")}
               className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${
                 activeTab === "questions"
@@ -347,6 +366,7 @@ export default function ProfilePage() {
             </button>
 
             <button
+              type="button"
               onClick={() => handleTabChange("messages")}
               className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${
                 activeTab === "messages"
@@ -358,6 +378,7 @@ export default function ProfilePage() {
             </button>
 
             <button
+              type="button"
               onClick={() => handleTabChange("settings")}
               className={`text-left p-4 font-bold text-sm transition-all flex items-center gap-3 ${
                 activeTab === "settings"
@@ -370,6 +391,7 @@ export default function ProfilePage() {
           </div>
 
           <button
+            type="button"
             onClick={() => setIsMessageModalOpen(true)}
             className="w-full text-center bg-white p-4 rounded-3xl border border-gray-100 font-black text-black text-xs uppercase tracking-widest hover:bg-gray-50 transition-all shadow-sm flex items-center justify-center gap-3"
           >
@@ -377,6 +399,7 @@ export default function ProfilePage() {
           </button>
 
           <button
+            type="button"
             onClick={() =>
               supabase.auth.signOut().then(() => router.push("/login"))
             }
