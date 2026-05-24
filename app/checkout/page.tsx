@@ -33,6 +33,73 @@ type AddressForm = {
   addressTitle: string;
 };
 
+const MAX_NAME_LENGTH = 60;
+const MAX_EMAIL_LENGTH = 120;
+const MAX_PHONE_LENGTH = 20;
+const MAX_ADDRESS_TITLE_LENGTH = 40;
+const MAX_FULL_ADDRESS_LENGTH = 500;
+
+function normalizeText(value: string) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function normalizeEmail(value: string) {
+  return normalizeText(value).toLowerCase();
+}
+
+function normalizePhone(value: string) {
+  return String(value || "").replace(/[^0-9+]/g, "").slice(0, MAX_PHONE_LENGTH);
+}
+
+function isValidEmail(value: string) {
+  const email = normalizeEmail(value);
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) && email.length <= MAX_EMAIL_LENGTH;
+}
+
+function isValidTurkishPhone(value: string) {
+  const digits = String(value || "").replace(/\D/g, "");
+  return /^(05\d{9}|5\d{9}|90\d{10})$/.test(digits);
+}
+
+function validateAddressForm(data: AddressForm, requireEmail: boolean) {
+  if (requireEmail && !isValidEmail(data.email)) {
+    return "Lütfen geçerli bir e-posta adresi giriniz.";
+  }
+
+  if (!normalizeText(data.addressTitle)) return "Adres başlığı zorunludur.";
+  if (normalizeText(data.addressTitle).length > MAX_ADDRESS_TITLE_LENGTH) {
+    return `Adres başlığı en fazla ${MAX_ADDRESS_TITLE_LENGTH} karakter olabilir.`;
+  }
+
+  if (!normalizeText(data.firstName)) return "Ad alanı zorunludur.";
+  if (normalizeText(data.firstName).length > MAX_NAME_LENGTH) {
+    return `Ad en fazla ${MAX_NAME_LENGTH} karakter olabilir.`;
+  }
+
+  if (!normalizeText(data.lastName)) return "Soyad alanı zorunludur.";
+  if (normalizeText(data.lastName).length > MAX_NAME_LENGTH) {
+    return `Soyad en fazla ${MAX_NAME_LENGTH} karakter olabilir.`;
+  }
+
+  if (!isValidTurkishPhone(data.phone)) {
+    return "Lütfen geçerli bir Türkiye telefon numarası giriniz. Örn: 05XXXXXXXXX";
+  }
+
+  if (!data.city || !data.district || !data.neighborhood) {
+    return "Lütfen İl, İlçe ve Mahalle seçiniz.";
+  }
+
+  if (!normalizeText(data.fullAddress)) return "Açık adres zorunludur.";
+  if (normalizeText(data.fullAddress).length < 10) {
+    return "Açık adres en az 10 karakter olmalıdır.";
+  }
+  if (normalizeText(data.fullAddress).length > MAX_FULL_ADDRESS_LENGTH) {
+    return `Açık adres en fazla ${MAX_FULL_ADDRESS_LENGTH} karakter olabilir.`;
+  }
+
+  return null;
+}
+
 export default function CheckoutPage() {
   const router = useRouter();
   const { items: cartItems, cartTotal } = useCart();
@@ -144,9 +211,17 @@ export default function CheckoutPage() {
   const handleInputChange = (e: any) => {
     const { name, value } = e.target;
 
+    let nextValue = value;
+
+    if (name === "email") nextValue = normalizeEmail(value).slice(0, MAX_EMAIL_LENGTH);
+    if (name === "phone") nextValue = normalizePhone(value);
+    if (name === "firstName" || name === "lastName") nextValue = value.slice(0, MAX_NAME_LENGTH);
+    if (name === "addressTitle") nextValue = value.slice(0, MAX_ADDRESS_TITLE_LENGTH);
+    if (name === "fullAddress") nextValue = value.slice(0, MAX_FULL_ADDRESS_LENGTH);
+
     setAddressData((prev) => ({
       ...prev,
-      [name]: value,
+      [name]: nextValue,
     }));
   };
 
@@ -217,28 +292,34 @@ export default function CheckoutPage() {
   const handleSaveAddressModal = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
-    if (!addressData.city || !addressData.district || !addressData.neighborhood) {
-      alert("Lütfen İl, İlçe ve Mahalle seçiniz!");
+    const validationError = validateAddressForm(addressData, isGuest);
+
+    if (validationError) {
+      alert(validationError);
       return;
     }
 
     setIsSavingAddress(true);
 
     try {
+      const cleanedAddress = {
+        title: normalizeText(addressData.addressTitle),
+        first_name: normalizeText(addressData.firstName),
+        last_name: normalizeText(addressData.lastName),
+        phone: normalizePhone(addressData.phone),
+        city: addressData.city,
+        district: addressData.district,
+        neighborhood: addressData.neighborhood,
+        full_address: normalizeText(addressData.fullAddress),
+      };
+
       if (user) {
         const { data: inserted, error: insErr } = await supabase
           .from("addresses")
           .insert([
             {
               user_id: user.id,
-              title: addressData.addressTitle,
-              first_name: addressData.firstName,
-              last_name: addressData.lastName,
-              phone: addressData.phone,
-              city: addressData.city,
-              district: addressData.district,
-              neighborhood: addressData.neighborhood,
-              full_address: addressData.fullAddress,
+              ...cleanedAddress,
               is_default: savedAddresses.length === 0,
             },
           ])
@@ -257,14 +338,7 @@ export default function CheckoutPage() {
         const newGuestAddr: AddressRow = {
           id: dummyId,
           user_id: "guest",
-          title: addressData.addressTitle,
-          first_name: addressData.firstName,
-          last_name: addressData.lastName,
-          phone: addressData.phone,
-          city: addressData.city,
-          district: addressData.district,
-          neighborhood: addressData.neighborhood,
-          full_address: addressData.fullAddress,
+          ...cleanedAddress,
         };
 
         setSavedAddresses([newGuestAddr]);
@@ -288,14 +362,27 @@ export default function CheckoutPage() {
   }, [savedAddresses, selectedAddressId]);
 
   const canProceedPaymentStep = useMemo(() => {
-    if (isGuest && !addressData.email) return false;
+    if (isGuest && !isValidEmail(addressData.email)) return false;
     return !!selectedAddress;
   }, [isGuest, addressData.email, selectedAddress]);
 
   const validateBeforePay = () => {
     if (!cartItems || cartItems.length === 0) return "Sepet boş.";
     if (!canProceedPaymentStep) return "Lütfen teslimat adresi seçin/ekleyin.";
-    if (isGuest && !addressData.email) return "Lütfen e-posta adresinizi giriniz.";
+
+    const email = addressData.email || user?.email || "";
+
+    if (!isValidEmail(email)) return "Lütfen geçerli bir e-posta adresi giriniz.";
+
+    if (!selectedAddress) return "Lütfen teslimat adresi seçin/ekleyin.";
+
+    if (!isValidTurkishPhone(selectedAddress.phone)) {
+      return "Seçili adresteki telefon numarası geçerli değil. Lütfen adresi güncelleyin.";
+    }
+
+    if (!selectedAddress.city || !selectedAddress.district || !selectedAddress.neighborhood || !selectedAddress.full_address) {
+      return "Seçili teslimat adresi eksik. Lütfen yeni adres ekleyin.";
+    }
 
     if (!agreeTerms) {
       return "Lütfen Mesafeli Satış ve Ön Bilgilendirme koşullarını onaylayın.";
@@ -315,7 +402,7 @@ export default function CheckoutPage() {
         const { data: existingUserOrder } = await supabase
           .from("orders")
           .select("id")
-          .eq("user_email", addressData.email.toLowerCase())
+          .eq("user_email", normalizeEmail(addressData.email))
           .not("user_id", "is", null)
           .limit(1);
 
@@ -327,7 +414,7 @@ export default function CheckoutPage() {
       }
 
       const shippingAddressObject = {
-        email: addressData.email || user?.email || "",
+        email: normalizeEmail(addressData.email || user?.email || ""),
         firstName: selectedAddress?.first_name,
         lastName: selectedAddress?.last_name,
         phone: selectedAddress?.phone,
@@ -345,7 +432,7 @@ export default function CheckoutPage() {
         },
         body: JSON.stringify({
           userId: user?.id || null,
-          userEmail: (addressData.email || user?.email || "").toLowerCase(),
+          userEmail: normalizeEmail(addressData.email || user?.email || ""),
           items: cartItems,
           shippingAddress: shippingAddressObject,
         }),
@@ -384,9 +471,10 @@ export default function CheckoutPage() {
       <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-10">
         <div className="flex-1 space-y-6">
           <section className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
-            <div
+            <button
+              type="button"
               onClick={() => setIsCartOpen(!isCartOpen)}
-              className="flex items-center justify-between cursor-pointer group"
+              className="w-full flex items-center justify-between cursor-pointer group text-left"
             >
               <div className="flex items-center gap-4">
                 <span className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center font-black text-sm">
@@ -413,7 +501,7 @@ export default function CheckoutPage() {
                   ▼
                 </div>
               </div>
-            </div>
+            </button>
 
             {isCartOpen && (
               <div className="mt-6 animate-in fade-in slide-in-from-top-2 duration-300 border-t border-gray-50 pt-6">
@@ -484,6 +572,8 @@ export default function CheckoutPage() {
                 <input
                   type="email"
                   name="email"
+                  required
+                  maxLength={MAX_EMAIL_LENGTH}
                   value={addressData.email}
                   onChange={handleInputChange}
                   placeholder="Sipariş onayı için gerekli"
@@ -781,6 +871,7 @@ export default function CheckoutPage() {
                 <input
                   required
                   name="addressTitle"
+                  maxLength={MAX_ADDRESS_TITLE_LENGTH}
                   value={addressData.addressTitle}
                   onChange={handleInputChange}
                   type="text"
@@ -798,6 +889,7 @@ export default function CheckoutPage() {
                   <input
                     required
                     name="firstName"
+                    maxLength={MAX_NAME_LENGTH}
                     value={addressData.firstName}
                     onChange={handleInputChange}
                     type="text"
@@ -814,6 +906,7 @@ export default function CheckoutPage() {
                   <input
                     required
                     name="lastName"
+                    maxLength={MAX_NAME_LENGTH}
                     value={addressData.lastName}
                     onChange={handleInputChange}
                     type="text"
@@ -835,7 +928,9 @@ export default function CheckoutPage() {
                     value={addressData.phone}
                     onChange={handleInputChange}
                     type="tel"
-                    placeholder="0 (5__) ___ __ __"
+                    inputMode="tel"
+                    maxLength={MAX_PHONE_LENGTH}
+                    placeholder="05XXXXXXXXX"
                     className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium outline-none focus:border-black transition-all"
                   />
                 </div>
@@ -845,13 +940,14 @@ export default function CheckoutPage() {
                     İl *
                   </label>
 
-                  <div
+                  <button
+                    type="button"
                     onClick={() => {
                       setShowCitySelect(!showCitySelect);
                       setShowDistrictSelect(false);
                       setShowNeighborhoodSelect(false);
                     }}
-                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium cursor-pointer flex justify-between items-center hover:border-black transition-all"
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium cursor-pointer flex justify-between items-center hover:border-black transition-all text-left"
                   >
                     <span
                       className={addressData.city ? "text-black" : "text-gray-400"}
@@ -860,7 +956,7 @@ export default function CheckoutPage() {
                     </span>
 
                     <span className="text-[10px]">▼</span>
-                  </div>
+                  </button>
 
                   {showCitySelect && (
                     <>
@@ -891,13 +987,14 @@ export default function CheckoutPage() {
                                 .includes(citySearch.toLocaleLowerCase("tr-TR"))
                             )
                             .map((city) => (
-                              <div
+                              <button
+                                type="button"
                                 key={city.id}
                                 onClick={() => handleCitySelect(city.name)}
-                                className="p-3 text-sm font-medium hover:bg-gray-100 cursor-pointer border-b border-gray-50 last:border-0 transition-colors"
+                                className="w-full text-left p-3 text-sm font-medium hover:bg-gray-100 cursor-pointer border-b border-gray-50 last:border-0 transition-colors"
                               >
                                 {city.name}
-                              </div>
+                              </button>
                             ))}
                         </div>
                       </div>
@@ -910,7 +1007,8 @@ export default function CheckoutPage() {
                     İlçe *
                   </label>
 
-                  <div
+                  <button
+                    type="button"
                     onClick={() => {
                       if (addressData.city) {
                         setShowDistrictSelect(!showDistrictSelect);
@@ -918,7 +1016,7 @@ export default function CheckoutPage() {
                         setShowNeighborhoodSelect(false);
                       }
                     }}
-                    className={`w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium flex justify-between items-center transition-all ${
+                    className={`w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium flex justify-between items-center transition-all text-left ${
                       !addressData.city
                         ? "opacity-50 cursor-not-allowed"
                         : "cursor-pointer hover:border-black"
@@ -933,7 +1031,7 @@ export default function CheckoutPage() {
                     </span>
 
                     <span className="text-[10px]">▼</span>
-                  </div>
+                  </button>
 
                   {showDistrictSelect && (
                     <>
@@ -964,13 +1062,14 @@ export default function CheckoutPage() {
                                 .includes(districtSearch.toLocaleLowerCase("tr-TR"))
                             )
                             .map((district) => (
-                              <div
+                              <button
+                                type="button"
                                 key={district.id}
                                 onClick={() => handleDistrictSelect(district)}
-                                className="p-3 text-sm font-medium hover:bg-gray-100 cursor-pointer border-b border-gray-50 last:border-0 transition-colors"
+                                className="w-full text-left p-3 text-sm font-medium hover:bg-gray-100 cursor-pointer border-b border-gray-50 last:border-0 transition-colors"
                               >
                                 {district.name}
-                              </div>
+                              </button>
                             ))}
                         </div>
                       </div>
@@ -983,7 +1082,8 @@ export default function CheckoutPage() {
                     Mahalle *
                   </label>
 
-                  <div
+                  <button
+                    type="button"
                     onClick={() => {
                       if (addressData.district) {
                         setShowNeighborhoodSelect(!showNeighborhoodSelect);
@@ -991,7 +1091,7 @@ export default function CheckoutPage() {
                         setShowDistrictSelect(false);
                       }
                     }}
-                    className={`w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium flex justify-between items-center transition-all ${
+                    className={`w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium flex justify-between items-center transition-all text-left ${
                       !addressData.district
                         ? "opacity-50 cursor-not-allowed"
                         : "cursor-pointer hover:border-black"
@@ -1008,7 +1108,7 @@ export default function CheckoutPage() {
                     </span>
 
                     <span className="text-[10px] ml-2">▼</span>
-                  </div>
+                  </button>
 
                   {showNeighborhoodSelect && (
                     <>
@@ -1046,15 +1146,16 @@ export default function CheckoutPage() {
                                   )
                               )
                               .map((neighborhood) => (
-                                <div
+                                <button
+                                  type="button"
                                   key={neighborhood.id || neighborhood.name}
                                   onClick={() =>
                                     handleNeighborhoodSelect(neighborhood.name)
                                   }
-                                  className="p-3 text-sm font-medium hover:bg-gray-100 cursor-pointer border-b border-gray-50 last:border-0 transition-colors"
+                                  className="w-full text-left p-3 text-sm font-medium hover:bg-gray-100 cursor-pointer border-b border-gray-50 last:border-0 transition-colors"
                                 >
                                   {neighborhood.name}
-                                </div>
+                                </button>
                               ))
                           )}
                         </div>
@@ -1072,6 +1173,7 @@ export default function CheckoutPage() {
                 <textarea
                   required
                   name="fullAddress"
+                  maxLength={MAX_FULL_ADDRESS_LENGTH}
                   value={addressData.fullAddress}
                   onChange={handleInputChange}
                   rows={3}
