@@ -4,15 +4,10 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 
-// JSON formatında veya Dizi olarak gelen ürünleri güvenli bir şekilde ayrıştırır
 function safeParseItems(items: any): any[] {
   try {
-    if (Array.isArray(items)) {
-      return items;
-    }
-    if (typeof items === "string") {
-      return JSON.parse(items || "[]");
-    }
+    if (Array.isArray(items)) return items;
+    if (typeof items === "string") return JSON.parse(items || "[]");
     return [];
   } catch {
     return [];
@@ -36,7 +31,6 @@ export async function POST(req: NextRequest) {
     const hash = String(formData.get("hash") || "");
     const failedReasonMsg = String(formData.get("failed_reason_msg") || "");
 
-    // 1. PayTR Hash Kontrolü (Güvenlik)
     const checkHash = crypto
       .createHmac("sha256", merchantKey)
       .update(merchantOid + merchantSalt + status + totalAmount)
@@ -48,26 +42,27 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // 2. Siparişi Veritabanından Çekme
     const { data: order, error: orderError } = await supabaseAdmin
       .from("orders")
       .select("id, payment_status, items")
       .eq("merchant_oid", merchantOid)
       .maybeSingle();
 
-    // Sipariş yoksa PayTR'a OK dönerek bildirimi durdur
-    if (orderError || !order) {
+    if (orderError) {
+      console.error("PayTR order lookup error:", orderError);
+      return new NextResponse("PAYTR order lookup failed", { status: 500 });
+    }
+
+    if (!order) {
       return new NextResponse("OK");
     }
 
-    // Sipariş zaten ödenmişse işlemi tekrar etme
     if (order.payment_status === "paid") {
       return new NextResponse("OK");
     }
 
-    // 3. Başarılı Ödeme Senaryosu
     if (status === "success") {
-      const { error: updateError } = await supabaseAdmin
+      const { data: updatedOrder, error: updateError } = await supabaseAdmin
         .from("orders")
         .update({
           payment_status: "paid",
@@ -75,14 +70,21 @@ export async function POST(req: NextRequest) {
           paid_at: new Date().toISOString(),
           failed_reason: null,
         })
-        .eq("merchant_oid", merchantOid);
+        .eq("merchant_oid", merchantOid)
+        .neq("payment_status", "paid")
+        .select("id, items")
+        .maybeSingle();
 
       if (updateError) {
+        console.error("PayTR order update error:", updateError);
+        return new NextResponse("PAYTR order update failed", { status: 500 });
+      }
+
+      if (!updatedOrder) {
         return new NextResponse("OK");
       }
 
-      // 4. Stok Düşme İşlemi
-      const items = safeParseItems(order.items);
+      const items = safeParseItems(updatedOrder.items || order.items);
 
       for (const item of items) {
         const productId = item.id;
@@ -92,41 +94,52 @@ export async function POST(req: NextRequest) {
           continue;
         }
 
-        const { data: product } = await supabaseAdmin
+        const { data: product, error: productError } = await supabaseAdmin
           .from("products")
           .select("stock")
           .eq("id", productId)
           .single();
 
-        if (!product) {
+        if (productError || !product) {
+          console.error("PayTR stock lookup error:", productError);
           continue;
         }
 
         const nextStock = Math.max(Number(product.stock || 0) - quantity, 0);
 
-        await supabaseAdmin
+        const { error: stockUpdateError } = await supabaseAdmin
           .from("products")
           .update({ stock: nextStock })
           .eq("id", productId);
+
+        if (stockUpdateError) {
+          console.error("PayTR stock update error:", stockUpdateError);
+        }
       }
 
       return new NextResponse("OK");
     }
 
-    // 5. Başarısız Ödeme Senaryosu
-    await supabaseAdmin
+    const { error: failUpdateError } = await supabaseAdmin
       .from("orders")
       .update({
         payment_status: "failed",
         status: "Ödeme Başarısız",
         failed_reason: failedReasonMsg || "Ödeme başarısız.",
       })
-      .eq("merchant_oid", merchantOid);
+      .eq("merchant_oid", merchantOid)
+      .neq("payment_status", "paid");
+
+    if (failUpdateError) {
+      console.error("PayTR failed order update error:", failUpdateError);
+      return new NextResponse("PAYTR failed order update failed", {
+        status: 500,
+      });
+    }
 
     return new NextResponse("OK");
   } catch (error) {
-    console.error("PayTR Webhook Hatası:", error);
-    // Hata olsa bile PayTR'a OK dönüyoruz ki sistemi sürekli bildirim atıp yormasın
-    return new NextResponse("OK");
+    console.error("PayTR callback unexpected error:", error);
+    return new NextResponse("PAYTR callback unexpected error", { status: 500 });
   }
 }
