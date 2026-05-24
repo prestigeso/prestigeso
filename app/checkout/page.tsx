@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
@@ -136,15 +136,31 @@ function NoticeToast({ notice }: { notice: { type: NoticeType; message: string }
       ? "bg-black text-white"
       : "bg-gray-900 text-white";
 
+  const iconTone =
+    notice.type === "success"
+      ? "bg-white text-green-700"
+      : "bg-white text-black";
+
+  const icon = notice.type === "success" ? "âœ“" : "!";
+
   return (
     <div
-      className={`fixed top-4 left-1/2 -translate-x-1/2 z-[1200] w-[calc(100%-2rem)] max-w-sm rounded-2xl px-5 py-4 shadow-2xl text-sm font-bold text-center ${tone}`}
+      role="status"
+      aria-live="polite"
+      className={`fixed top-4 left-1/2 -translate-x-1/2 z-[1200] w-[calc(100%-24px)] sm:w-auto sm:min-w-[520px] sm:max-w-[720px] rounded-2xl px-4 sm:px-6 py-3 shadow-2xl flex items-center justify-center gap-3 ${tone}`}
     >
-      {notice.message}
+      <span
+        className={`w-6 h-6 rounded-full flex items-center justify-center text-sm font-black shrink-0 ${iconTone}`}
+      >
+        {icon}
+      </span>
+
+      <span className="text-xs sm:text-sm font-black leading-snug sm:leading-none text-center sm:text-left">
+        {notice.message}
+      </span>
     </div>
   );
 }
-
 function SelectPopover<T>({
   search,
   setSearch,
@@ -1234,3 +1250,4 @@ export default function CheckoutPage() {
     </div>
   );
 }
+
