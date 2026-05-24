@@ -1,9 +1,11 @@
+
 "use client";
 
 import { useCart } from "@/context/CartContext";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearch } from "@/context/SearchContext";
+import { useAppAlert } from "@/context/AppAlertContext";
 import { supabase } from "@/lib/supabase";
 
 function safeParseIds(ids: unknown): number[] {
@@ -30,6 +32,7 @@ export default function Home() {
     useSearch() as any;
 
   const { items, setIsCartOpen } = useCart();
+  const { showToast } = useAppAlert();
 
   const totalItemsInCart = (items || []).reduce(
     (total: number, item: any) => total + Number(item.quantity || 0),
@@ -241,7 +244,7 @@ export default function Home() {
     isCurrentlyFavorite: boolean
   ) => {
     if (!authUserId) {
-      alert("Favorilemek için giriş yapın! 🛡️");
+      showToast("Favorilemek için lütfen önce giriş yapın.", "warning");
       return;
     }
 
@@ -252,14 +255,18 @@ export default function Home() {
         .eq("user_id", authUserId)
         .eq("product_id", productId);
 
-      if (!error) {
-        setFavoriteIds((prev) => {
-          const next = new Set(prev);
-          next.delete(productId);
-          return next;
-        });
+      if (error) {
+        showToast("Favorilerden kaldırılırken bir hata oluştu.", "error");
+        return;
       }
 
+      setFavoriteIds((prev) => {
+        const next = new Set(prev);
+        next.delete(productId);
+        return next;
+      });
+
+      showToast("Ürün favorilerden kaldırıldı.", "success");
       return;
     }
 
@@ -267,13 +274,18 @@ export default function Home() {
       .from("favorites")
       .insert([{ user_id: authUserId, product_id: productId }]);
 
-    if (!error) {
-      setFavoriteIds((prev) => {
-        const next = new Set(prev);
-        next.add(productId);
-        return next;
-      });
+    if (error) {
+      showToast("Favorilere eklenirken bir hata oluştu.", "error");
+      return;
     }
+
+    setFavoriteIds((prev) => {
+      const next = new Set(prev);
+      next.add(productId);
+      return next;
+    });
+
+    showToast("Ürün favorilere eklendi.", "success");
   };
 
   if (loading) {
@@ -286,7 +298,6 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-white font-sans text-black pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-24">
-      {/* ÜST KAYAN YAZI */}
       {localCampaign && (
         <div className="bg-black text-white text-[10px] md:text-xs font-bold uppercase tracking-[0.2em] py-2.5 overflow-hidden w-full sticky top-0 z-40">
           <div className="flex animate-marquee whitespace-nowrap">
@@ -300,7 +311,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* HERO SLIDER */}
       {!showAll && (
         <div
           className="relative w-full aspect-video md:h-[75vh] flex items-center justify-center overflow-hidden bg-gray-900 group cursor-pointer"
@@ -345,7 +355,6 @@ export default function Home() {
         </div>
       )}
 
-      {/* ANA İÇERİK */}
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
         {showAll ? (
           <div className="animate-in fade-in duration-500">
@@ -355,6 +364,7 @@ export default function Home() {
               </h2>
 
               <button
+                type="button"
                 onClick={handleCloseShowcase}
                 className="text-[10px] md:text-xs font-bold text-gray-500 hover:text-black uppercase border border-gray-200 px-3 md:px-4 py-1.5 md:py-2 rounded-full flex-shrink-0"
               >
@@ -435,11 +445,11 @@ export default function Home() {
         )}
       </div>
 
-      {/* MOBİL TAM EKRAN ARAMA */}
       {isMobileSearchOpen && (
         <div className="md:hidden fixed inset-0 bg-white z-[999] flex flex-col animate-in slide-in-from-bottom-full duration-300">
           <div className="flex items-center gap-3 p-4 border-b border-gray-100 bg-white">
             <button
+              type="button"
               onClick={() => setIsMobileSearchOpen(false)}
               className="text-2xl p-2 text-gray-500 hover:text-black"
             >
@@ -457,6 +467,7 @@ export default function Home() {
 
             {searchQuery && (
               <button
+                type="button"
                 onClick={() => {
                   setIsMobileSearchOpen(false);
                   setShowAll(true);
@@ -475,6 +486,7 @@ export default function Home() {
 
             <div className="flex flex-wrap gap-2">
               <button
+                type="button"
                 onClick={() => {
                   setSearchQuery("Kolye");
                   setIsMobileSearchOpen(false);
@@ -486,6 +498,7 @@ export default function Home() {
               </button>
 
               <button
+                type="button"
                 onClick={() => {
                   setSearchQuery("Yüzük");
                   setIsMobileSearchOpen(false);
@@ -497,6 +510,7 @@ export default function Home() {
               </button>
 
               <button
+                type="button"
                 onClick={() => {
                   setSelectedCategory("İndirimler");
                   setIsMobileSearchOpen(false);
@@ -511,9 +525,9 @@ export default function Home() {
         </div>
       )}
 
-      {/* MOBİL BOTTOM NAV */}
       <div className="md:hidden fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-md border-t border-gray-200 flex justify-around items-center pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] z-[100] shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
         <button
+          type="button"
           onClick={() => {
             setShowAll(false);
             window.scrollTo(0, 0);
@@ -529,6 +543,7 @@ export default function Home() {
         </button>
 
         <button
+          type="button"
           onClick={() => {
             setSelectedCategory("Tümü");
             setShowAll(true);
@@ -545,6 +560,7 @@ export default function Home() {
         </button>
 
         <button
+          type="button"
           onClick={() => setIsMobileSearchOpen(true)}
           className="flex flex-col items-center p-2 text-gray-400 transition-transform active:scale-95 w-16"
         >
@@ -555,6 +571,7 @@ export default function Home() {
         </button>
 
         <button
+          type="button"
           onClick={() => setIsCartOpen(true)}
           className="flex flex-col items-center p-2 text-gray-400 hover:text-black transition-transform active:scale-95 w-16"
         >
@@ -596,6 +613,7 @@ function ProductCarousel({
 
         {onSeeAll && (
           <button
+            type="button"
             onClick={onSeeAll}
             className="text-[9px] md:text-xs font-black text-gray-400 hover:text-black transition-colors uppercase flex items-center gap-1"
           >
@@ -679,6 +697,7 @@ function PrestigeCard({
         />
 
         <button
+          type="button"
           onClick={handleFavoriteClick}
           className="absolute top-2 right-2 w-7 h-7 md:w-8 md:h-8 bg-white/90 rounded-full shadow-sm flex items-center justify-center z-10 transition-transform hover:scale-110 active:scale-95"
           aria-label="Favori"
