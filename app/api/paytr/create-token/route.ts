@@ -5,19 +5,12 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 export const runtime = "nodejs";
 
 function safeParseIds(ids: unknown): number[] {
-  if (Array.isArray(ids)) {
-    return ids.map((x) => Number(x)).filter((x) => Number.isFinite(x));
-  }
+  if (Array.isArray(ids)) return ids.map((x) => Number(x)).filter((x) => Number.isFinite(x));
 
   if (typeof ids === "string") {
     try {
       const parsed = JSON.parse(ids);
-
-      if (Array.isArray(parsed)) {
-        return parsed.map((x) => Number(x)).filter((x) => Number.isFinite(x));
-      }
-
-      return [];
+      if (Array.isArray(parsed)) return parsed.map((x) => Number(x)).filter((x) => Number.isFinite(x));
     } catch {
       return [];
     }
@@ -28,30 +21,39 @@ function safeParseIds(ids: unknown): number[] {
 
 function getClientIp(req: NextRequest) {
   const forwarded = req.headers.get("x-forwarded-for");
-
-  if (forwarded) {
-    return forwarded.split(",")[0].trim();
-  }
+  if (forwarded) return forwarded.split(",")[0].trim();
 
   const realIp = req.headers.get("x-real-ip");
-
-  if (realIp) {
-    return realIp;
-  }
+  if (realIp) return realIp;
 
   return "127.0.0.1";
 }
 
 function makeMerchantOid() {
   const now = new Date();
-
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
-
   const random = Math.random().toString(36).slice(2, 10).toUpperCase();
 
   return `PRS${year}${month}${day}${random}`;
+}
+
+function normalizeEmail(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
+}
+
+function normalizePhone(value: unknown) {
+  return String(value || "").replace(/[^0-9+]/g, "");
+}
+
+function isValidTurkishPhone(value: string) {
+  const digits = String(value || "").replace(/\D/g, "");
+  return /^(05\d{9}|5\d{9}|90\d{10})$/.test(digits);
 }
 
 export async function POST(req: NextRequest) {
@@ -59,47 +61,51 @@ export async function POST(req: NextRequest) {
     const merchantId = process.env.PAYTR_MERCHANT_ID;
     const merchantKey = process.env.PAYTR_MERCHANT_KEY;
     const merchantSalt = process.env.PAYTR_MERCHANT_SALT;
-
     const testMode = process.env.PAYTR_TEST_MODE || "1";
-    const siteUrl =
-      process.env.NEXT_PUBLIC_SITE_URL || "https://prestigeso.com.tr";
+    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://prestigeso.com.tr";
 
     if (!merchantId || !merchantKey || !merchantSalt) {
-      return NextResponse.json(
-        { error: "PayTR API bilgileri eksik." },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "PayTR API bilgileri eksik." }, { status: 500 });
     }
 
     const body = await req.json();
-
     const userId = body.userId || null;
-    const userEmail = String(body.userEmail || "").trim().toLowerCase();
+    const checkoutMode = body.checkoutMode === "member" ? "member" : "guest";
+    const requestedEmail = normalizeEmail(body.userEmail);
     const items = Array.isArray(body.items) ? body.items : [];
     const shippingAddress = body.shippingAddress || null;
 
-    if (!userEmail) {
-      return NextResponse.json(
-        { error: "E-posta adresi zorunludur." },
-        { status: 400 }
-      );
+    if (requestedEmail && !isValidEmail(requestedEmail)) {
+      return NextResponse.json({ error: "Geçersiz e-posta adresi." }, { status: 400 });
+    }
+
+    if (checkoutMode === "member" && (!userId || !requestedEmail)) {
+      return NextResponse.json({ error: "Üye siparişi için giriş yapmanız gerekiyor." }, { status: 401 });
     }
 
     if (!shippingAddress) {
-      return NextResponse.json(
-        { error: "Teslimat adresi zorunludur." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Teslimat adresi zorunludur." }, { status: 400 });
+    }
+
+    const userPhone = normalizePhone(shippingAddress.phone);
+
+    if (!isValidTurkishPhone(userPhone)) {
+      return NextResponse.json({ error: "Geçerli bir telefon numarası zorunludur." }, { status: 400 });
+    }
+
+    if (!shippingAddress.firstName || !shippingAddress.lastName || !shippingAddress.city || !shippingAddress.district || !shippingAddress.neighborhood || !shippingAddress.fullAddress) {
+      return NextResponse.json({ error: "Teslimat adresi eksik." }, { status: 400 });
     }
 
     if (items.length === 0) {
-      return NextResponse.json(
-        { error: "Sepet boş." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Sepet boş." }, { status: 400 });
     }
 
-    const productIds = items.map((item: any) => Number(item.id));
+    const productIds = items.map((item: any) => Number(item.id)).filter((id: number) => Number.isFinite(id));
+
+    if (productIds.length === 0) {
+      return NextResponse.json({ error: "Sepet ürünleri geçersiz." }, { status: 400 });
+    }
 
     const { data: products, error: productError } = await supabaseAdmin
       .from("products")
@@ -107,46 +113,27 @@ export async function POST(req: NextRequest) {
       .in("id", productIds);
 
     if (productError || !products) {
-      return NextResponse.json(
-        { error: "Ürünler kontrol edilemedi." },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Ürünler kontrol edilemedi." }, { status: 500 });
     }
 
-    const { data: campaigns } = await supabaseAdmin
-      .from("campaigns")
-      .select("*");
-
+    const { data: campaigns } = await supabaseAdmin.from("campaigns").select("*");
     const nowIso = new Date().toISOString();
 
     const checkedItems = items.map((cartItem: any) => {
-      const product = products.find(
-        (p: any) => String(p.id) === String(cartItem.id)
-      );
-
-      if (!product) {
-        throw new Error(`${cartItem.name || "Ürün"} bulunamadı.`);
-      }
+      const product = products.find((p: any) => String(p.id) === String(cartItem.id));
+      if (!product) throw new Error(`${cartItem.name || "Ürün"} bulunamadı.`);
 
       const quantity = Number(cartItem.quantity || 1);
-
-      if (Number(product.stock || 0) < quantity) {
-        throw new Error(`${product.name} stokta yetersiz.`);
-      }
+      if (!Number.isFinite(quantity) || quantity <= 0) throw new Error(`${product.name} miktarı geçersiz.`);
+      if (Number(product.stock || 0) < quantity) throw new Error(`${product.name} stokta yetersiz.`);
 
       const activeCampaign = campaigns?.find((campaign: any) => {
         const ids = safeParseIds(campaign.product_ids);
-
-        return (
-          ids.includes(Number(product.id)) &&
-          nowIso >= campaign.start_date &&
-          nowIso <= campaign.end_date
-        );
+        return ids.includes(Number(product.id)) && nowIso >= campaign.start_date && nowIso <= campaign.end_date;
       });
 
       const activePrice = activeCampaign
-        ? Number(product.price) *
-          (1 - Number(activeCampaign.discount_percent) / 100)
+        ? Number(product.price) * (1 - Number(activeCampaign.discount_percent) / 100)
         : Number(product.price);
 
       return {
@@ -159,43 +146,22 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    const totalAmount = checkedItems.reduce((sum: number, item: any) => {
-      return sum + Number(item.price || 0) * Number(item.quantity || 1);
-    }, 0);
+    const totalAmount = checkedItems.reduce((sum: number, item: any) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0);
 
     if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
-      return NextResponse.json(
-        { error: "Geçersiz ödeme tutarı." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Geçersiz ödeme tutarı." }, { status: 400 });
     }
 
     const merchantOid = makeMerchantOid();
+    const effectiveEmail = requestedEmail || `guest-${merchantOid.toLowerCase()}@prestigeso.com.tr`;
     const userIp = getClientIp(req);
 
-    const userName =
-      `${shippingAddress.firstName || ""} ${
-        shippingAddress.lastName || ""
-      }`.trim() || userEmail;
-
-    const userAddress =
-      shippingAddress.fullAddress ||
-      shippingAddress.full_address ||
-      shippingAddress.address ||
-      "Adres belirtilmedi";
-
-    const userPhone = shippingAddress.phone || "0000000000";
-
+    const userName = `${shippingAddress.firstName || ""} ${shippingAddress.lastName || ""}`.trim() || effectiveEmail;
+    const userAddress = shippingAddress.fullAddress || shippingAddress.full_address || shippingAddress.address || "Adres belirtilmedi";
     const paymentAmount = Math.round(totalAmount * 100);
 
     const userBasket = Buffer.from(
-      JSON.stringify(
-        checkedItems.map((item: any) => [
-          item.name,
-          Number(item.price || 0).toFixed(2),
-          Number(item.quantity || 1),
-        ])
-      )
+      JSON.stringify(checkedItems.map((item: any) => [item.name, Number(item.price || 0).toFixed(2), Number(item.quantity || 1)]))
     ).toString("base64");
 
     const noInstallment = "0";
@@ -203,36 +169,21 @@ export async function POST(req: NextRequest) {
     const currency = "TL";
     const timeoutLimit = "30";
     const debugOn = "1";
-
     const merchantOkUrl = `${siteUrl}/odeme/basarili?oid=${merchantOid}`;
     const merchantFailUrl = `${siteUrl}/odeme/basarisiz?oid=${merchantOid}`;
 
-    const hashStr =
-      merchantId +
-      userIp +
-      merchantOid +
-      userEmail +
-      paymentAmount +
-      userBasket +
-      noInstallment +
-      maxInstallment +
-      currency +
-      testMode;
-
-    const paytrToken = crypto
-      .createHmac("sha256", merchantKey)
-      .update(hashStr + merchantSalt)
-      .digest("base64");
+    const hashStr = merchantId + userIp + merchantOid + effectiveEmail + paymentAmount + userBasket + noInstallment + maxInstallment + currency + testMode;
+    const paytrToken = crypto.createHmac("sha256", merchantKey).update(hashStr + merchantSalt).digest("base64");
 
     const { error: orderError } = await supabaseAdmin.from("orders").insert([
       {
         order_no: merchantOid,
         merchant_oid: merchantOid,
-        user_id: userId,
-        user_email: userEmail,
+        user_id: checkoutMode === "member" ? userId : null,
+        user_email: effectiveEmail,
         items: checkedItems,
         total_amount: totalAmount,
-        shipping_address: JSON.stringify(shippingAddress),
+        shipping_address: JSON.stringify({ ...shippingAddress, email: requestedEmail || "" }),
         status: "Ödeme Bekleniyor",
         payment_provider: "paytr",
         payment_status: "pending",
@@ -241,18 +192,14 @@ export async function POST(req: NextRequest) {
     ]);
 
     if (orderError) {
-      return NextResponse.json(
-        { error: "Sipariş oluşturulamadı: " + orderError.message },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Sipariş oluşturulamadı: " + orderError.message }, { status: 500 });
     }
 
     const params = new URLSearchParams();
-
     params.append("merchant_id", merchantId);
     params.append("user_ip", userIp);
     params.append("merchant_oid", merchantOid);
-    params.append("email", userEmail);
+    params.append("email", effectiveEmail);
     params.append("payment_amount", String(paymentAmount));
     params.append("paytr_token", paytrToken);
     params.append("user_basket", userBasket);
@@ -268,33 +215,21 @@ export async function POST(req: NextRequest) {
     params.append("currency", currency);
     params.append("test_mode", testMode);
 
-    const paytrResponse = await fetch(
-      "https://www.paytr.com/odeme/api/get-token",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: params.toString(),
-      }
-    );
+    const paytrResponse = await fetch("https://www.paytr.com/odeme/api/get-token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: params.toString(),
+    });
 
     const paytrResult = await paytrResponse.json();
 
     if (paytrResult.status !== "success") {
       await supabaseAdmin
         .from("orders")
-        .update({
-          payment_status: "failed",
-          status: "Ödeme Başlatılamadı",
-          failed_reason: paytrResult.reason || "PayTR token alınamadı.",
-        })
+        .update({ payment_status: "failed", status: "Ödeme Başlatılamadı", failed_reason: paytrResult.reason || "PayTR token alınamadı." })
         .eq("merchant_oid", merchantOid);
 
-      return NextResponse.json(
-        { error: paytrResult.reason || "PayTR token alınamadı." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: paytrResult.reason || "PayTR token alınamadı." }, { status: 400 });
     }
 
     return NextResponse.json({
@@ -303,9 +238,6 @@ export async function POST(req: NextRequest) {
       iframe_url: `https://www.paytr.com/odeme/guvenli/${paytrResult.token}`,
     });
   } catch (err: any) {
-    return NextResponse.json(
-      { error: err?.message || "PayTR token oluşturulamadı." },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: err?.message || "PayTR token oluşturulamadı." }, { status: 500 });
   }
 }

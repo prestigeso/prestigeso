@@ -6,6 +6,9 @@ import { supabase } from "@/lib/supabase";
 import { useCart } from "@/context/CartContext";
 import DistanceSellingContract from "@/components/contracts/DistanceSellingContract";
 
+type CheckoutMode = "member" | "guest";
+type NoticeType = "success" | "error" | "info";
+
 type AddressRow = {
   id: number;
   user_id: string;
@@ -31,6 +34,18 @@ type AddressForm = {
   neighborhood: string;
   fullAddress: string;
   addressTitle: string;
+};
+
+type SelectPopoverProps<T> = {
+  search: string;
+  setSearch: (value: string) => void;
+  onClose: () => void;
+  items: T[];
+  getKey: (item: T) => string | number;
+  getLabel: (item: T) => string;
+  onPick: (item: T) => void;
+  placeholder: string;
+  emptyText?: string;
 };
 
 const MAX_NAME_LENGTH = 60;
@@ -61,22 +76,31 @@ function isValidTurkishPhone(value: string) {
   return /^(05\d{9}|5\d{9}|90\d{10})$/.test(digits);
 }
 
-function validateAddressForm(data: AddressForm, requireEmail: boolean) {
-  if (requireEmail && !isValidEmail(data.email)) {
+function validateAddressForm(data: AddressForm) {
+  if (!isValidEmail(data.email)) {
     return "Lütfen geçerli bir e-posta adresi giriniz.";
   }
 
-  if (!normalizeText(data.addressTitle)) return "Adres başlığı zorunludur.";
+  if (!normalizeText(data.addressTitle)) {
+    return "Adres başlığı zorunludur.";
+  }
+
   if (normalizeText(data.addressTitle).length > MAX_ADDRESS_TITLE_LENGTH) {
     return `Adres başlığı en fazla ${MAX_ADDRESS_TITLE_LENGTH} karakter olabilir.`;
   }
 
-  if (!normalizeText(data.firstName)) return "Ad alanı zorunludur.";
+  if (!normalizeText(data.firstName)) {
+    return "Ad alanı zorunludur.";
+  }
+
   if (normalizeText(data.firstName).length > MAX_NAME_LENGTH) {
     return `Ad en fazla ${MAX_NAME_LENGTH} karakter olabilir.`;
   }
 
-  if (!normalizeText(data.lastName)) return "Soyad alanı zorunludur.";
+  if (!normalizeText(data.lastName)) {
+    return "Soyad alanı zorunludur.";
+  }
+
   if (normalizeText(data.lastName).length > MAX_NAME_LENGTH) {
     return `Soyad en fazla ${MAX_NAME_LENGTH} karakter olabilir.`;
   }
@@ -89,10 +113,14 @@ function validateAddressForm(data: AddressForm, requireEmail: boolean) {
     return "Lütfen İl, İlçe ve Mahalle seçiniz.";
   }
 
-  if (!normalizeText(data.fullAddress)) return "Açık adres zorunludur.";
+  if (!normalizeText(data.fullAddress)) {
+    return "Açık adres zorunludur.";
+  }
+
   if (normalizeText(data.fullAddress).length < 10) {
     return "Açık adres en az 10 karakter olmalıdır.";
   }
+
   if (normalizeText(data.fullAddress).length > MAX_FULL_ADDRESS_LENGTH) {
     return `Açık adres en fazla ${MAX_FULL_ADDRESS_LENGTH} karakter olabilir.`;
   }
@@ -100,18 +128,86 @@ function validateAddressForm(data: AddressForm, requireEmail: boolean) {
   return null;
 }
 
+function NoticeToast({ notice }: { notice: { type: NoticeType; message: string } }) {
+  const tone =
+    notice.type === "success"
+      ? "bg-green-600 text-white"
+      : notice.type === "error"
+      ? "bg-black text-white"
+      : "bg-gray-900 text-white";
+
+  return (
+    <div
+      className={`fixed top-4 left-1/2 -translate-x-1/2 z-[1200] w-[calc(100%-2rem)] max-w-sm rounded-2xl px-5 py-4 shadow-2xl text-sm font-bold text-center ${tone}`}
+    >
+      {notice.message}
+    </div>
+  );
+}
+
+function SelectPopover<T>({
+  search,
+  setSearch,
+  onClose,
+  items,
+  getKey,
+  getLabel,
+  onPick,
+  placeholder,
+  emptyText = "Sonuç yok",
+}: SelectPopoverProps<T>) {
+  return (
+    <>
+      <div className="fixed inset-0 z-[40]" onClick={onClose} />
+
+      <div className="absolute z-[50] w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-top-2">
+        <input
+          type="text"
+          placeholder={placeholder}
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          className="p-3 border-b border-gray-100 outline-none text-sm font-bold bg-gray-50 text-black"
+          autoFocus
+        />
+
+        <div className="max-h-48 overflow-y-auto overscroll-contain">
+          {items.length === 0 ? (
+            <div className="p-3 text-xs font-bold text-gray-400">{emptyText}</div>
+          ) : (
+            items.map((item) => (
+              <button
+                type="button"
+                key={getKey(item)}
+                onClick={() => onPick(item)}
+                className="w-full text-left p-3 text-sm font-medium hover:bg-gray-100 cursor-pointer border-b border-gray-50 last:border-0 transition-colors"
+              >
+                {getLabel(item)}
+              </button>
+            ))
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 export default function CheckoutPage() {
   const router = useRouter();
   const { items: cartItems, cartTotal } = useCart();
 
   const [user, setUser] = useState<any>(null);
-  const [isGuest, setIsGuest] = useState(false);
+  const [checkoutMode, setCheckoutMode] = useState<CheckoutMode | null>(null);
+
+  const isGuest = checkoutMode === "guest";
+  const isMember = checkoutMode === "member";
 
   const [loading, setLoading] = useState(true);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [notice, setNotice] = useState<{ type: NoticeType; message: string } | null>(null);
 
   const [paytrIframeUrl, setPaytrIframeUrl] = useState("");
   const [paytrMerchantOid, setPaytrMerchantOid] = useState("");
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
 
   const [isCartOpen, setIsCartOpen] = useState(false);
 
@@ -122,6 +218,8 @@ export default function CheckoutPage() {
 
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [isContractModalOpen, setIsContractModalOpen] = useState(false);
+
+  const [couponCode, setCouponCode] = useState("");
 
   const [addressData, setAddressData] = useState<AddressForm>({
     email: "",
@@ -148,6 +246,11 @@ export default function CheckoutPage() {
   const [showNeighborhoodSelect, setShowNeighborhoodSelect] = useState(false);
   const [neighborhoodSearch, setNeighborhoodSearch] = useState("");
 
+  const showNotice = (message: string, type: NoticeType = "info") => {
+    setNotice({ message, type });
+    window.setTimeout(() => setNotice(null), 3500);
+  };
+
   useEffect(() => {
     if (!cartItems || cartItems.length === 0) {
       router.replace("/");
@@ -164,7 +267,7 @@ export default function CheckoutPage() {
 
       if (session) {
         setUser(session.user);
-        setIsGuest(false);
+        setCheckoutMode("member");
 
         setAddressData((prev) => ({
           ...prev,
@@ -184,7 +287,7 @@ export default function CheckoutPage() {
         }
       } else {
         setUser(null);
-        setIsGuest(true);
+        setCheckoutMode(null);
       }
 
       try {
@@ -208,8 +311,37 @@ export default function CheckoutPage() {
     initCheckout();
   }, []);
 
-  const handleInputChange = (e: any) => {
-    const { name, value } = e.target;
+  const selectedAddress = useMemo(() => {
+    if (!selectedAddressId) return null;
+
+    return (
+      savedAddresses.find((address) => address.id === selectedAddressId) || null
+    );
+  }, [savedAddresses, selectedAddressId]);
+
+  const filteredCities = useMemo(() => {
+    const query = citySearch.toLocaleLowerCase("tr-TR");
+    return cities.filter((city: any) =>
+      city.name.toLocaleLowerCase("tr-TR").includes(query)
+    );
+  }, [cities, citySearch]);
+
+  const filteredDistricts = useMemo(() => {
+    const query = districtSearch.toLocaleLowerCase("tr-TR");
+    return districts.filter((district: any) =>
+      district.name.toLocaleLowerCase("tr-TR").includes(query)
+    );
+  }, [districts, districtSearch]);
+
+  const filteredNeighborhoods = useMemo(() => {
+    const query = neighborhoodSearch.toLocaleLowerCase("tr-TR");
+    return neighborhoods.filter((neighborhood: any) =>
+      neighborhood.name.toLocaleLowerCase("tr-TR").includes(query)
+    );
+  }, [neighborhoods, neighborhoodSearch]);
+
+  const handleInputChange = (event: any) => {
+    const { name, value } = event.target;
 
     let nextValue = value;
 
@@ -289,13 +421,13 @@ export default function CheckoutPage() {
     setNeighborhoodSearch("");
   };
 
-  const handleSaveAddressModal = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const handleSaveAddressModal = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
 
-    const validationError = validateAddressForm(addressData, isGuest);
+    const validationError = validateAddressForm(addressData);
 
     if (validationError) {
-      alert(validationError);
+      showNotice(validationError, "error");
       return;
     }
 
@@ -333,7 +465,7 @@ export default function CheckoutPage() {
           setSelectedAddressId(inserted.id);
         }
       } else {
-        const dummyId = Math.floor(Math.random() * 1000000);
+        const dummyId = Date.now();
 
         const newGuestAddr: AddressRow = {
           id: dummyId,
@@ -346,41 +478,38 @@ export default function CheckoutPage() {
       }
 
       setIsAddressModalOpen(false);
+      showNotice("Adres kaydedildi.", "success");
     } catch (err: any) {
-      alert("Hata: " + err.message);
+      showNotice("Adres kaydedilemedi: " + (err?.message || "Bilinmeyen hata"), "error");
     } finally {
       setIsSavingAddress(false);
     }
   };
 
-  const selectedAddress = useMemo(() => {
-    if (!selectedAddressId) return null;
-
-    return (
-      savedAddresses.find((address) => address.id === selectedAddressId) || null
-    );
-  }, [savedAddresses, selectedAddressId]);
-
-  const canProceedPaymentStep = useMemo(() => {
-    if (isGuest && !isValidEmail(addressData.email)) return false;
-    return !!selectedAddress;
-  }, [isGuest, addressData.email, selectedAddress]);
-
   const validateBeforePay = () => {
+    if (!checkoutMode) return "Devam etmek için giriş yapın veya üye olmadan devam edin.";
     if (!cartItems || cartItems.length === 0) return "Sepet boş.";
-    if (!canProceedPaymentStep) return "Lütfen teslimat adresi seçin/ekleyin.";
 
-    const email = addressData.email || user?.email || "";
+    const email = normalizeEmail(addressData.email || user?.email || "");
 
-    if (!isValidEmail(email)) return "Lütfen geçerli bir e-posta adresi giriniz.";
+    if (!isValidEmail(email)) {
+      return "Lütfen geçerli bir e-posta adresi giriniz.";
+    }
 
-    if (!selectedAddress) return "Lütfen teslimat adresi seçin/ekleyin.";
+    if (!selectedAddress) {
+      return "Lütfen teslimat adresi seçin/ekleyin.";
+    }
 
     if (!isValidTurkishPhone(selectedAddress.phone)) {
       return "Seçili adresteki telefon numarası geçerli değil. Lütfen adresi güncelleyin.";
     }
 
-    if (!selectedAddress.city || !selectedAddress.district || !selectedAddress.neighborhood || !selectedAddress.full_address) {
+    if (
+      !selectedAddress.city ||
+      !selectedAddress.district ||
+      !selectedAddress.neighborhood ||
+      !selectedAddress.full_address
+    ) {
       return "Seçili teslimat adresi eksik. Lütfen yeni adres ekleyin.";
     }
 
@@ -393,7 +522,11 @@ export default function CheckoutPage() {
 
   const handleCompleteOrder = async () => {
     const err = validateBeforePay();
-    if (err) return alert(err);
+
+    if (err) {
+      showNotice(err, "error");
+      return;
+    }
 
     setIsProcessing(true);
 
@@ -407,7 +540,7 @@ export default function CheckoutPage() {
           .limit(1);
 
         if (existingUserOrder && existingUserOrder.length > 0) {
-          alert("❌ Bu e-posta ile kayıtlı bir hesap var. Lütfen giriş yapınız.");
+          showNotice("Bu e-posta ile kayıtlı bir hesap var. Lütfen giriş yapınız.", "error");
           router.push("/login");
           return;
         }
@@ -431,10 +564,12 @@ export default function CheckoutPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          userId: user?.id || null,
+          userId: isMember ? user?.id || null : null,
           userEmail: normalizeEmail(addressData.email || user?.email || ""),
           items: cartItems,
           shippingAddress: shippingAddressObject,
+          checkoutMode,
+          couponCode: isMember ? normalizeText(couponCode) : "",
         }),
       });
 
@@ -446,13 +581,9 @@ export default function CheckoutPage() {
 
       setPaytrIframeUrl(result.iframe_url);
       setPaytrMerchantOid(result.merchant_oid || "");
-
-      window.scrollTo({
-        top: 0,
-        behavior: "smooth",
-      });
-    } catch (e: any) {
-      alert(e?.message || "Ödeme başlatılamadı.");
+      setIsPaymentModalOpen(true);
+    } catch (error: any) {
+      showNotice(error?.message || "Ödeme başlatılamadı.", "error");
     } finally {
       setIsProcessing(false);
     }
@@ -467,31 +598,31 @@ export default function CheckoutPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#fcfcfc] py-12 px-4 font-sans text-black pb-20">
-      <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-10">
-        <div className="flex-1 space-y-6">
-          <section className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
+    <div className="min-h-screen bg-[#fcfcfc] py-6 md:py-12 px-4 font-sans text-black pb-28 md:pb-20">
+      {notice && <NoticeToast notice={notice} />}
+
+      <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-6 lg:gap-10">
+        <div className="flex-1 space-y-5 md:space-y-6">
+          <section className="bg-white p-5 md:p-6 rounded-3xl border border-gray-100 shadow-sm">
             <button
               type="button"
               onClick={() => setIsCartOpen(!isCartOpen)}
               className="w-full flex items-center justify-between cursor-pointer group text-left"
             >
-              <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3 md:gap-4">
                 <span className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center font-black text-sm">
                   1
                 </span>
 
-                <h2 className="text-lg font-black uppercase tracking-tighter text-black">
+                <h2 className="text-base md:text-lg font-black uppercase tracking-tighter text-black">
                   Sepetimdeki Ürünler ({cartItems.length})
                 </h2>
               </div>
 
-              <div className="flex items-center gap-4">
-                {!isCartOpen && (
-                  <span className="text-[11px] font-black text-gray-400 uppercase tracking-widest hidden sm:block">
-                    {cartTotal.toLocaleString("tr-TR")} ₺
-                  </span>
-                )}
+              <div className="flex items-center gap-3">
+                <span className="hidden sm:block text-[11px] font-black text-gray-400 uppercase tracking-widest">
+                  {cartTotal.toLocaleString("tr-TR")} ₺
+                </span>
 
                 <div
                   className={`w-8 h-8 rounded-full bg-gray-50 border border-gray-100 flex items-center justify-center text-gray-400 group-hover:bg-gray-100 transition-all duration-300 ${
@@ -504,238 +635,220 @@ export default function CheckoutPage() {
             </button>
 
             {isCartOpen && (
-              <div className="mt-6 animate-in fade-in slide-in-from-top-2 duration-300 border-t border-gray-50 pt-6">
-                <div className="space-y-4">
-                  {cartItems.map((item: any, index: number) => {
-                    const displayImage =
-                      item.images?.[0] || item.image || "/logo.jpeg";
+              <div className="mt-6 border-t border-gray-50 pt-6 space-y-4">
+                {cartItems.map((item: any, index: number) => {
+                  const displayImage = item.images?.[0] || item.image || "/logo.jpeg";
+                  const itemPrice =
+                    Number(item.discount_price) > 0
+                      ? Number(item.discount_price)
+                      : Number(item.price || 0);
 
-                    const itemPrice =
-                      Number(item.discount_price) > 0
-                        ? Number(item.discount_price)
-                        : Number(item.price || 0);
+                  return (
+                    <div key={`${item.id}-${index}`} className="flex gap-4 items-center">
+                      <div className="w-14 h-14 bg-gray-50 rounded-xl border border-gray-100 overflow-hidden flex-shrink-0">
+                        <img
+                          src={displayImage}
+                          className="w-full h-full object-cover mix-blend-multiply"
+                          alt={item.name || "Ürün"}
+                        />
+                      </div>
 
-                    return (
-                      <div
-                        key={`${item.id}-${index}`}
-                        className="flex gap-4 items-center"
-                      >
-                        <div className="w-14 h-14 bg-gray-50 rounded-xl border border-gray-100 overflow-hidden flex-shrink-0">
-                          <img
-                            src={displayImage}
-                            className="w-full h-full object-cover mix-blend-multiply"
-                            alt={item.name || "Ürün"}
-                          />
-                        </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] font-black uppercase leading-tight line-clamp-2">
+                          {item.name}
+                        </p>
 
-                        <div className="flex-1">
-                          <p className="text-[10px] font-black uppercase leading-tight line-clamp-2">
-                            {item.name}
-                          </p>
-
-                          <p className="text-[10px] font-bold text-gray-400 mt-1">
-                            {item.quantity || 1} Adet
-                          </p>
-                        </div>
-
-                        <p className="text-xs font-black">
-                          {(itemPrice * (item.quantity || 1)).toLocaleString(
-                            "tr-TR"
-                          )}{" "}
-                          ₺
+                        <p className="text-[10px] font-bold text-gray-400 mt-1">
+                          {item.quantity || 1} Adet
                         </p>
                       </div>
+
+                      <p className="text-xs font-black">
+                        {(itemPrice * (item.quantity || 1)).toLocaleString("tr-TR")} ₺
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
+          {!user && !checkoutMode && (
+            <section className="bg-white p-5 md:p-7 rounded-3xl border border-gray-100 shadow-sm">
+              <div className="flex items-center gap-4 mb-5">
+                <span className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center font-black text-sm">
+                  2
+                </span>
+
+                <h2 className="text-base md:text-lg font-black uppercase tracking-tighter text-black">
+                  Nasıl Devam Etmek İstersiniz?
+                </h2>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => router.push("/login?redirect=/checkout")}
+                  className="rounded-2xl bg-black text-white p-5 text-left active:scale-[0.98] transition-all"
+                >
+                  <p className="text-sm font-black uppercase tracking-widest">
+                    Giriş Yap / Kaydol
+                  </p>
+
+                  <p className="text-xs font-medium text-white/70 mt-2">
+                    Kuponlar, kayıtlı adresler ve sipariş takibi için önerilir.
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setCheckoutMode("guest")}
+                  className="rounded-2xl bg-gray-50 border border-gray-200 text-black p-5 text-left active:scale-[0.98] transition-all"
+                >
+                  <p className="text-sm font-black uppercase tracking-widest">
+                    Üye Olmadan Devam Et
+                  </p>
+
+                  <p className="text-xs font-medium text-gray-500 mt-2">
+                    E-posta, telefon ve teslimat adresiyle hızlıca ödeme yapın.
+                  </p>
+                </button>
+              </div>
+            </section>
+          )}
+
+          {checkoutMode && (
+            <>
+              <section className="bg-white p-5 md:p-7 rounded-3xl border border-gray-100 shadow-sm">
+                <div className="flex items-center gap-4 mb-6 pb-4 border-b border-gray-50">
+                  <span className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center font-black text-sm">
+                    {user ? 2 : 3}
+                  </span>
+
+                  <h2 className="text-base md:text-lg font-black uppercase tracking-tighter text-black">
+                    Teslimat Adresi
+                  </h2>
+                </div>
+
+                {isGuest && (
+                  <div className="mb-6">
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
+                      E-Posta Adresiniz *
+                    </label>
+
+                    <input
+                      type="email"
+                      name="email"
+                      required
+                      maxLength={MAX_EMAIL_LENGTH}
+                      value={addressData.email}
+                      onChange={handleInputChange}
+                      placeholder="Sipariş bilgilendirmesi için gerekli"
+                      className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-medium outline-none focus:border-black transition-all"
+                    />
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {savedAddresses.map((addr) => {
+                    const active = selectedAddressId === addr.id;
+
+                    return (
+                      <label
+                        key={addr.id}
+                        className={`flex gap-4 p-5 rounded-2xl border-2 cursor-pointer transition-all ${
+                          active
+                            ? "border-black bg-gray-50 shadow-md"
+                            : "border-gray-100 hover:border-gray-200"
+                        }`}
+                        onClick={() => setSelectedAddressId(addr.id)}
+                      >
+                        <input
+                          type="radio"
+                          checked={active}
+                          onChange={() => {}}
+                          className="mt-1 accent-black w-4 h-4"
+                        />
+
+                        <div className="flex-1 min-w-0">
+                          <span className="text-[10px] font-black uppercase tracking-widest bg-black text-white px-2 py-0.5 rounded">
+                            {addr.title}
+                          </span>
+
+                          <p className="text-sm font-bold mt-2">
+                            {addr.first_name} {addr.last_name}
+                          </p>
+
+                          <p className="text-xs text-gray-500 mt-2 line-clamp-2">
+                            {addr.full_address}
+                          </p>
+
+                          <p className="text-[10px] font-black text-gray-400 mt-2 uppercase">
+                            {addr.district} / {addr.city}
+                          </p>
+                        </div>
+                      </label>
                     );
                   })}
-                </div>
-              </div>
-            )}
-          </section>
 
-          <section className="bg-white p-7 rounded-3xl border border-gray-100 shadow-sm">
-            <div className="flex items-center gap-4 mb-6 pb-4 border-b border-gray-50">
-              <span className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center font-black text-sm">
-                2
-              </span>
-
-              <h2 className="text-lg font-black uppercase tracking-tighter text-black">
-                Teslimat Adresi
-              </h2>
-            </div>
-
-            {isGuest && (
-              <div className="mb-6">
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
-                  E-Posta Adresiniz *
-                </label>
-
-                <input
-                  type="email"
-                  name="email"
-                  required
-                  maxLength={MAX_EMAIL_LENGTH}
-                  value={addressData.email}
-                  onChange={handleInputChange}
-                  placeholder="Sipariş onayı için gerekli"
-                  className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-medium outline-none focus:border-black transition-all"
-                />
-              </div>
-            )}
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {savedAddresses.map((addr) => {
-                const active = selectedAddressId === addr.id;
-
-                return (
-                  <label
-                    key={addr.id}
-                    className={`flex gap-4 p-5 rounded-2xl border-2 cursor-pointer transition-all ${
-                      active
-                        ? "border-black bg-gray-50 shadow-md"
-                        : "border-gray-100 hover:border-gray-200"
-                    }`}
-                    onClick={() => setSelectedAddressId(addr.id)}
+                  <button
+                    type="button"
+                    onClick={() => setIsAddressModalOpen(true)}
+                    className="flex items-center justify-center gap-3 p-5 rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50/50 text-gray-500 hover:border-black hover:text-black transition-all min-h-[120px]"
                   >
+                    <span className="text-2xl font-light leading-none mb-1">+</span>
+
+                    <span className="text-[11px] font-black uppercase tracking-widest">
+                      Yeni Adres Ekle
+                    </span>
+                  </button>
+                </div>
+              </section>
+
+              {isMember && (
+                <section className="bg-white p-5 md:p-7 rounded-3xl border border-gray-100 shadow-sm">
+                  <div className="flex items-center justify-between gap-4 mb-4">
+                    <h2 className="text-base md:text-lg font-black uppercase tracking-tighter text-black">
+                      Kuponlarım
+                    </h2>
+
+                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                      Üyelere Özel
+                    </span>
+                  </div>
+
+                  <div className="rounded-2xl bg-gray-50 border border-gray-100 p-4 mb-3">
+                    <p className="text-xs font-bold text-gray-500">
+                      Şu an kullanılabilir kayıtlı kupon bulunmuyor.
+                    </p>
+                  </div>
+
+                  <div className="flex gap-2">
                     <input
-                      type="radio"
-                      checked={active}
-                      onChange={() => {}}
-                      className="mt-1 accent-black w-4 h-4"
+                      value={couponCode}
+                      onChange={(event) => setCouponCode(event.target.value.toUpperCase())}
+                      placeholder="Kupon kodu ekle"
+                      className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold uppercase outline-none focus:border-black"
                     />
 
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-[10px] font-black uppercase tracking-widest bg-black text-white px-2 py-0.5 rounded">
-                          {addr.title}
-                        </span>
-
-                        {addr.is_default && (
-                          <span className="text-[9px] font-black text-green-600 uppercase bg-green-50 px-2 py-0.5 rounded">
-                            Varsayılan
-                          </span>
-                        )}
-                      </div>
-
-                      <p className="text-sm font-bold">
-                        {addr.first_name} {addr.last_name}
-                      </p>
-
-                      <p className="text-xs text-gray-500 mt-2 line-clamp-2">
-                        {addr.full_address}
-                      </p>
-
-                      <p className="text-[10px] font-black text-gray-400 mt-2 uppercase">
-                        {addr.district} / {addr.city}
-                      </p>
-                    </div>
-                  </label>
-                );
-              })}
-
-              <button
-                type="button"
-                onClick={() => setIsAddressModalOpen(true)}
-                className="flex items-center justify-center gap-3 p-5 rounded-2xl border-2 border-dashed border-gray-300 bg-gray-50/50 text-gray-500 hover:border-black hover:text-black transition-all min-h-[120px]"
-              >
-                <span className="text-2xl font-light leading-none mb-1">+</span>
-                <span className="text-[11px] font-black uppercase tracking-widest">
-                  Yeni Adres Ekle
-                </span>
-              </button>
-            </div>
-          </section>
-
-          <section className="bg-white p-7 rounded-3xl border border-gray-100 shadow-sm">
-            <div className="flex items-center gap-4 mb-6 pb-4 border-b border-gray-50">
-              <span className="w-8 h-8 rounded-full bg-black text-white flex items-center justify-center font-black text-sm">
-                3
-              </span>
-
-              <h2 className="text-lg font-black uppercase tracking-tighter text-black">
-                Ödeme Bilgileri
-              </h2>
-            </div>
-
-            {paytrIframeUrl ? (
-              <div className="w-full">
-                <div className="mb-4 bg-green-50 border border-green-100 text-green-700 rounded-2xl p-4">
-                  <p className="text-[10px] font-black uppercase tracking-widest mb-1">
-                    PayTR Ödeme Formu Hazır
-                  </p>
-
-                  <p className="text-xs font-bold">
-                    Sipariş No: {paytrMerchantOid}
-                  </p>
-                </div>
-
-                <iframe
-                  src={paytrIframeUrl}
-                  title="PayTR Ödeme Formu"
-                  className="w-full min-h-[760px] rounded-2xl border border-gray-100 bg-white"
-                  frameBorder="0"
-                  scrolling="yes"
-                />
-              </div>
-            ) : (
-              <div className="max-w-sm">
-                <div className="bg-gray-900 rounded-2xl p-6 text-white relative overflow-hidden shadow-2xl">
-                  <div className="absolute -right-10 -top-10 w-40 h-40 bg-white/5 rounded-full blur-3xl" />
-
-                  <p className="text-[9px] font-black uppercase tracking-[0.2em] text-gray-400 mb-8">
-                    Prestige Secure Payment
-                  </p>
-
-                  <div className="space-y-6 opacity-60 pointer-events-none">
-                    <div>
-                      <label className="text-[8px] font-black uppercase text-gray-500 block mb-1">
-                        Kart Numarası
-                      </label>
-
-                      <input
-                        disabled
-                        placeholder="**** **** **** ****"
-                        className="bg-transparent border-b border-white/20 w-full pb-1 text-sm outline-none font-mono"
-                      />
-                    </div>
-
-                    <div className="flex gap-8">
-                      <div className="flex-1">
-                        <label className="text-[8px] font-black uppercase text-gray-500 block mb-1">
-                          Son Kullanma
-                        </label>
-
-                        <input
-                          disabled
-                          placeholder="AA/YY"
-                          className="bg-transparent border-b border-white/20 w-full pb-1 text-sm outline-none font-mono"
-                        />
-                      </div>
-
-                      <div className="w-20">
-                        <label className="text-[8px] font-black uppercase text-gray-500 block mb-1">
-                          CVV
-                        </label>
-
-                        <input
-                          disabled
-                          placeholder="***"
-                          className="bg-transparent border-b border-white/20 w-full pb-1 text-sm outline-none font-mono"
-                        />
-                      </div>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        showNotice("Kupon doğrulama altyapısı sonraki adımda bağlanacak.", "info")
+                      }
+                      className="bg-black text-white px-5 rounded-xl text-xs font-black uppercase tracking-widest"
+                    >
+                      Ekle
+                    </button>
                   </div>
-                </div>
-
-                <p className="text-[9px] text-center mt-4 font-bold text-gray-400 uppercase tracking-widest">
-                  * Kredi/Banka Kartı ile güvenli ödeme yapacaksınız.
-                </p>
-              </div>
-            )}
-          </section>
+                </section>
+              )}
+            </>
+          )}
         </div>
 
         <div className="w-full lg:w-[400px]">
-          <div className="bg-white p-8 rounded-3xl border border-gray-100 shadow-sm sticky top-24">
+          <div className="bg-white p-6 md:p-8 rounded-3xl border border-gray-100 shadow-sm lg:sticky lg:top-24">
             <h3 className="text-lg font-black uppercase tracking-tighter mb-6 pb-2 border-b border-gray-50">
               Sipariş Özeti
             </h3>
@@ -762,15 +875,11 @@ export default function CheckoutPage() {
               </div>
             </div>
 
-            <div className="mb-6 flex items-center justify-center gap-2 text-[10px] font-black text-gray-400 uppercase tracking-widest">
-              <span className="text-sm">🔒</span> 256-Bit SSL ile Güvenli Ödeme
-            </div>
-
             <label className="flex items-start gap-3 cursor-pointer bg-gray-50 p-4 rounded-xl mb-6 border border-gray-100">
               <input
                 type="checkbox"
                 checked={agreeTerms}
-                onChange={(e) => setAgreeTerms(e.target.checked)}
+                onChange={(event) => setAgreeTerms(event.target.checked)}
                 className="mt-0.5 accent-black w-4 h-4 flex-shrink-0"
               />
 
@@ -778,8 +887,8 @@ export default function CheckoutPage() {
                 <b>Ön Bilgilendirme Koşulları</b>'nı ve{" "}
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.preventDefault();
+                  onClick={(event) => {
+                    event.preventDefault();
                     setIsContractModalOpen(true);
                   }}
                   className="text-black font-bold border-b border-black"
@@ -791,8 +900,9 @@ export default function CheckoutPage() {
             </label>
 
             <button
+              type="button"
               onClick={handleCompleteOrder}
-              disabled={isProcessing || !!paytrIframeUrl}
+              disabled={isProcessing || !!paytrIframeUrl || !checkoutMode}
               className="w-full bg-black text-white font-black py-5 rounded-2xl shadow-xl active:scale-95 disabled:opacity-50 uppercase tracking-widest text-sm flex items-center justify-center gap-2"
             >
               {isProcessing
@@ -805,9 +915,47 @@ export default function CheckoutPage() {
         </div>
       </div>
 
+      {isPaymentModalOpen && paytrIframeUrl && (
+        <div className="fixed inset-0 z-[1100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-0 md:p-4">
+          <div className="bg-white w-full h-full md:h-[90vh] md:max-w-3xl md:rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+            <div className="flex items-center justify-between p-4 md:p-5 border-b border-gray-100 shrink-0">
+              <div>
+                <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                  Güvenli Ödeme
+                </p>
+
+                <h2 className="text-lg font-black text-black">
+                  PayTR Ödeme Formu
+                </h2>
+
+                <p className="text-[11px] font-bold text-gray-500 mt-1">
+                  Sipariş No: {paytrMerchantOid}
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsPaymentModalOpen(false)}
+                className="w-10 h-10 bg-gray-100 rounded-full font-black hover:bg-gray-200"
+              >
+                ✕
+              </button>
+            </div>
+
+            <iframe
+              src={paytrIframeUrl}
+              title="PayTR Ödeme Formu"
+              className="w-full flex-1 bg-white"
+              frameBorder="0"
+              scrolling="yes"
+            />
+          </div>
+        </div>
+      )}
+
       {isContractModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-2xl rounded-3xl p-6 md:p-8 shadow-2xl animate-in zoom-in duration-200 max-h-[90vh] flex flex-col relative z-10">
+          <div className="bg-white w-full max-w-2xl rounded-3xl p-6 md:p-8 shadow-2xl max-h-[90vh] flex flex-col relative z-10">
             <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4 shrink-0">
               <h2 className="text-lg font-black uppercase tracking-tight">
                 Mesafeli Satış Sözleşmesi
@@ -844,7 +992,7 @@ export default function CheckoutPage() {
 
       {isAddressModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-lg rounded-3xl p-6 md:p-8 shadow-2xl animate-in zoom-in duration-200 max-h-[90vh] flex flex-col relative z-10">
+          <div className="bg-white w-full max-w-lg rounded-3xl p-6 md:p-8 shadow-2xl max-h-[90vh] flex flex-col relative z-10">
             <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4 shrink-0">
               <h2 className="text-xl font-black uppercase tracking-tight">
                 Yeni Adres Ekle
@@ -916,25 +1064,25 @@ export default function CheckoutPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
-                    Telefon *
-                  </label>
+              <div>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
+                  Telefon *
+                </label>
 
-                  <input
-                    required
-                    name="phone"
-                    value={addressData.phone}
-                    onChange={handleInputChange}
-                    type="tel"
-                    inputMode="tel"
-                    maxLength={MAX_PHONE_LENGTH}
-                    placeholder="05XXXXXXXXX"
-                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium outline-none focus:border-black transition-all"
-                  />
-                </div>
+                <input
+                  required
+                  name="phone"
+                  value={addressData.phone}
+                  onChange={handleInputChange}
+                  type="tel"
+                  inputMode="tel"
+                  maxLength={MAX_PHONE_LENGTH}
+                  placeholder="05XXXXXXXXX"
+                  className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium outline-none focus:border-black transition-all"
+                />
+              </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="relative">
                   <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
                     İl *
@@ -947,58 +1095,25 @@ export default function CheckoutPage() {
                       setShowDistrictSelect(false);
                       setShowNeighborhoodSelect(false);
                     }}
-                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium cursor-pointer flex justify-between items-center hover:border-black transition-all text-left"
+                    className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium flex justify-between items-center text-left"
                   >
-                    <span
-                      className={addressData.city ? "text-black" : "text-gray-400"}
-                    >
+                    <span className={addressData.city ? "text-black" : "text-gray-400"}>
                       {addressData.city || "İl Seçiniz"}
                     </span>
-
                     <span className="text-[10px]">▼</span>
                   </button>
 
                   {showCitySelect && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-[40]"
-                        onClick={() => setShowCitySelect(false)}
-                      />
-
-                      <div className="absolute z-[50] w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-top-2">
-                        <input
-                          type="text"
-                          placeholder="İl Ara..."
-                          value={citySearch}
-                          onChange={(e) => setCitySearch(e.target.value)}
-                          className="p-3 border-b border-gray-100 outline-none text-sm font-bold bg-gray-50 text-black"
-                          autoFocus
-                        />
-
-                        <div
-                          className="max-h-48 overflow-y-auto overscroll-contain"
-                          onWheel={(e) => e.stopPropagation()}
-                          onTouchMove={(e) => e.stopPropagation()}
-                        >
-                          {cities
-                            .filter((city) =>
-                              city.name
-                                .toLocaleLowerCase("tr-TR")
-                                .includes(citySearch.toLocaleLowerCase("tr-TR"))
-                            )
-                            .map((city) => (
-                              <button
-                                type="button"
-                                key={city.id}
-                                onClick={() => handleCitySelect(city.name)}
-                                className="w-full text-left p-3 text-sm font-medium hover:bg-gray-100 cursor-pointer border-b border-gray-50 last:border-0 transition-colors"
-                              >
-                                {city.name}
-                              </button>
-                            ))}
-                        </div>
-                      </div>
-                    </>
+                    <SelectPopover
+                      search={citySearch}
+                      setSearch={setCitySearch}
+                      onClose={() => setShowCitySelect(false)}
+                      items={filteredCities}
+                      getKey={(city: any) => city.id}
+                      getLabel={(city: any) => city.name}
+                      onPick={(city: any) => handleCitySelect(city.name)}
+                      placeholder="İl Ara..."
+                    />
                   )}
                 </div>
 
@@ -1016,64 +1131,27 @@ export default function CheckoutPage() {
                         setShowNeighborhoodSelect(false);
                       }
                     }}
-                    className={`w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium flex justify-between items-center transition-all text-left ${
-                      !addressData.city
-                        ? "opacity-50 cursor-not-allowed"
-                        : "cursor-pointer hover:border-black"
+                    className={`w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium flex justify-between items-center text-left ${
+                      !addressData.city ? "opacity-50 cursor-not-allowed" : ""
                     }`}
                   >
-                    <span
-                      className={
-                        addressData.district ? "text-black" : "text-gray-400"
-                      }
-                    >
+                    <span className={addressData.district ? "text-black" : "text-gray-400"}>
                       {addressData.district || "İlçe Seçiniz"}
                     </span>
-
                     <span className="text-[10px]">▼</span>
                   </button>
 
                   {showDistrictSelect && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-[40]"
-                        onClick={() => setShowDistrictSelect(false)}
-                      />
-
-                      <div className="absolute z-[50] w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-top-2">
-                        <input
-                          type="text"
-                          placeholder="İlçe Ara..."
-                          value={districtSearch}
-                          onChange={(e) => setDistrictSearch(e.target.value)}
-                          className="p-3 border-b border-gray-100 outline-none text-sm font-bold bg-gray-50 text-black"
-                          autoFocus
-                        />
-
-                        <div
-                          className="max-h-48 overflow-y-auto overscroll-contain"
-                          onWheel={(e) => e.stopPropagation()}
-                          onTouchMove={(e) => e.stopPropagation()}
-                        >
-                          {districts
-                            .filter((district) =>
-                              district.name
-                                .toLocaleLowerCase("tr-TR")
-                                .includes(districtSearch.toLocaleLowerCase("tr-TR"))
-                            )
-                            .map((district) => (
-                              <button
-                                type="button"
-                                key={district.id}
-                                onClick={() => handleDistrictSelect(district)}
-                                className="w-full text-left p-3 text-sm font-medium hover:bg-gray-100 cursor-pointer border-b border-gray-50 last:border-0 transition-colors"
-                              >
-                                {district.name}
-                              </button>
-                            ))}
-                        </div>
-                      </div>
-                    </>
+                    <SelectPopover
+                      search={districtSearch}
+                      setSearch={setDistrictSearch}
+                      onClose={() => setShowDistrictSelect(false)}
+                      items={filteredDistricts}
+                      getKey={(district: any) => district.id}
+                      getLabel={(district: any) => district.name}
+                      onPick={(district: any) => handleDistrictSelect(district)}
+                      placeholder="İlçe Ara..."
+                    />
                   )}
                 </div>
 
@@ -1091,10 +1169,8 @@ export default function CheckoutPage() {
                         setShowDistrictSelect(false);
                       }
                     }}
-                    className={`w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium flex justify-between items-center transition-all text-left ${
-                      !addressData.district
-                        ? "opacity-50 cursor-not-allowed"
-                        : "cursor-pointer hover:border-black"
+                    className={`w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium flex justify-between items-center text-left ${
+                      !addressData.district ? "opacity-50 cursor-not-allowed" : ""
                     }`}
                   >
                     <span
@@ -1106,61 +1182,23 @@ export default function CheckoutPage() {
                     >
                       {addressData.neighborhood || "Mahalle Seçiniz"}
                     </span>
-
-                    <span className="text-[10px] ml-2">▼</span>
+                    <span className="text-[10px]">▼</span>
                   </button>
 
                   {showNeighborhoodSelect && (
-                    <>
-                      <div
-                        className="fixed inset-0 z-[40]"
-                        onClick={() => setShowNeighborhoodSelect(false)}
-                      />
-
-                      <div className="absolute z-[50] w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-top-2">
-                        <input
-                          type="text"
-                          placeholder="Mahalle Ara..."
-                          value={neighborhoodSearch}
-                          onChange={(e) => setNeighborhoodSearch(e.target.value)}
-                          className="p-3 border-b border-gray-100 outline-none text-sm font-bold bg-gray-50 text-black"
-                          autoFocus
-                        />
-
-                        <div
-                          className="max-h-48 overflow-y-auto overscroll-contain"
-                          onWheel={(e) => e.stopPropagation()}
-                          onTouchMove={(e) => e.stopPropagation()}
-                        >
-                          {neighborhoods.length === 0 ? (
-                            <div className="p-3 text-xs font-bold text-gray-400 animate-pulse">
-                              Yükleniyor...
-                            </div>
-                          ) : (
-                            neighborhoods
-                              .filter((neighborhood) =>
-                                neighborhood.name
-                                  .toLocaleLowerCase("tr-TR")
-                                  .includes(
-                                    neighborhoodSearch.toLocaleLowerCase("tr-TR")
-                                  )
-                              )
-                              .map((neighborhood) => (
-                                <button
-                                  type="button"
-                                  key={neighborhood.id || neighborhood.name}
-                                  onClick={() =>
-                                    handleNeighborhoodSelect(neighborhood.name)
-                                  }
-                                  className="w-full text-left p-3 text-sm font-medium hover:bg-gray-100 cursor-pointer border-b border-gray-50 last:border-0 transition-colors"
-                                >
-                                  {neighborhood.name}
-                                </button>
-                              ))
-                          )}
-                        </div>
-                      </div>
-                    </>
+                    <SelectPopover
+                      search={neighborhoodSearch}
+                      setSearch={setNeighborhoodSearch}
+                      onClose={() => setShowNeighborhoodSelect(false)}
+                      items={filteredNeighborhoods}
+                      getKey={(neighborhood: any) => neighborhood.id || neighborhood.name}
+                      getLabel={(neighborhood: any) => neighborhood.name}
+                      onPick={(neighborhood: any) =>
+                        handleNeighborhoodSelect(neighborhood.name)
+                      }
+                      placeholder="Mahalle Ara..."
+                      emptyText={neighborhoods.length === 0 ? "Yükleniyor..." : "Sonuç yok"}
+                    />
                   )}
                 </div>
               </div>
