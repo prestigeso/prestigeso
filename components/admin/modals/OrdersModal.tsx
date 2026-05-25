@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -75,6 +74,58 @@ function getStatusClass(status: string) {
   if (status === "Hazırlanıyor") return "bg-blue-50 text-blue-600 border-blue-200";
   if (status === "Teslim Edildi") return "bg-green-50 text-green-600 border-green-200";
   return "bg-black text-white border-black";
+}
+
+function formatMoney(value: any) {
+  return Number(value || 0).toLocaleString("tr-TR", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  });
+}
+
+function getItemsSubtotal(items: any[]) {
+  return items.reduce((sum, item) => {
+    const quantity = Number(item.quantity || 1);
+    const price = Number(item.price || 0);
+
+    if (!Number.isFinite(quantity) || !Number.isFinite(price)) {
+      return sum;
+    }
+
+    return sum + price * quantity;
+  }, 0);
+}
+
+function getCouponInfo(address: any) {
+  if (!address || typeof address !== "object") return null;
+
+  const coupon = address.coupon;
+
+  if (!coupon || typeof coupon !== "object") return null;
+
+  const discountAmount = Number(coupon.discount_amount || 0);
+
+  if (!Number.isFinite(discountAmount) || discountAmount <= 0) return null;
+
+  return {
+    id: coupon.id || null,
+    code: String(coupon.code || "").toUpperCase(),
+    discountType: coupon.discount_type || null,
+    discountValue: Number(coupon.discount_value || 0),
+    discountAmount,
+    subtotalAmount: Number(coupon.subtotal_amount || 0),
+    totalAfterDiscount: Number(coupon.total_after_discount || 0),
+  };
+}
+
+function getCouponDiscountLabel(couponInfo: ReturnType<typeof getCouponInfo>) {
+  if (!couponInfo) return "";
+
+  if (couponInfo.discountType === "percent") {
+    return `%${formatMoney(couponInfo.discountValue)} indirim`;
+  }
+
+  return `${formatMoney(couponInfo.discountValue)} TL indirim`;
 }
 
 export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: Props) {
@@ -163,6 +214,10 @@ export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: P
             orders.map((order: any) => {
               const parsedAddress = safeParseAddress(order.shipping_address);
               const safeItems = safeParseItems(order.items);
+              const couponInfo = getCouponInfo(parsedAddress);
+              const itemsSubtotal = getItemsSubtotal(safeItems);
+              const subtotalAmount = couponInfo?.subtotalAmount || itemsSubtotal;
+              const paidAmount = Number(order.total_amount || couponInfo?.totalAfterDiscount || 0);
 
               return (
                 <div
@@ -192,6 +247,31 @@ export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: P
                         </p>
                       </div>
                     </div>
+
+                    {couponInfo && (
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                          <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">
+                            Kupon Kullanıldı
+                          </p>
+                          <p className="text-sm font-black text-black mt-1">
+                            {couponInfo.code || "Kupon"}
+                          </p>
+                          <p className="text-[10px] font-bold text-emerald-700 mt-1">
+                            {getCouponDiscountLabel(couponInfo)}
+                          </p>
+                        </div>
+
+                        <div className="bg-white border border-emerald-100 rounded-xl px-4 py-3 text-right">
+                          <p className="text-[9px] font-black text-emerald-700 uppercase tracking-widest">
+                            İndirim
+                          </p>
+                          <p className="text-base font-black text-emerald-700 mt-1">
+                            -{formatMoney(couponInfo.discountAmount)} ₺
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="flex flex-col md:flex-row gap-4">
                       <div className="flex-1 bg-gray-50 p-4 rounded-xl border border-gray-100">
@@ -352,12 +432,35 @@ export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: P
                       )}
                     </div>
 
-                    <div className="mt-4 border-t border-gray-200 pt-3 flex justify-between items-end">
-                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Ödenen Tutar</span>
+                    <div className="mt-4 border-t border-gray-200 pt-3 space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Ara Toplam</span>
+                        <span className="text-xs font-black text-gray-700">
+                          {formatMoney(subtotalAmount)} ₺
+                        </span>
+                      </div>
 
-                      <span className="text-lg font-black text-black">
-                        {Number(order.total_amount || 0).toLocaleString("tr-TR")} ₺
-                      </span>
+                      {couponInfo && (
+                        <div className="flex justify-between items-center bg-emerald-50 border border-emerald-100 rounded-xl p-2">
+                          <div>
+                            <span className="block text-[10px] font-black text-emerald-700 uppercase tracking-widest">Kupon</span>
+                            <span className="block text-[9px] font-black text-emerald-700 uppercase tracking-widest mt-0.5">
+                              {couponInfo.code}
+                            </span>
+                          </div>
+                          <span className="text-xs font-black text-emerald-700">
+                            -{formatMoney(couponInfo.discountAmount)} ₺
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="flex justify-between items-end pt-2 border-t border-gray-200">
+                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Ödenen Tutar</span>
+
+                        <span className="text-lg font-black text-black">
+                          {formatMoney(paidAmount)} ₺
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
