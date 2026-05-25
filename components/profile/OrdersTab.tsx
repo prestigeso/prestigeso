@@ -11,6 +11,69 @@ export default function OrdersTab({ orders }: { orders: any[] }) {
     }
   };
 
+  const safeParseAddress = (addr: any): any => {
+    try {
+      if (!addr) return null;
+      if (typeof addr === "string") return JSON.parse(addr);
+      if (typeof addr === "object") return addr;
+      return null;
+    } catch {
+      return addr;
+    }
+  };
+
+  const formatMoney = (value: any) => {
+    return Number(value || 0).toLocaleString("tr-TR", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    });
+  };
+
+  const getItemsSubtotal = (items: any[]) => {
+    return items.reduce((sum, item) => {
+      const quantity = Number(item.quantity || 1);
+      const price = Number(item.price || item.discount_price || 0);
+
+      if (!Number.isFinite(quantity) || !Number.isFinite(price)) {
+        return sum;
+      }
+
+      return sum + price * quantity;
+    }, 0);
+  };
+
+  const getCouponInfo = (address: any) => {
+    if (!address || typeof address !== "object") return null;
+
+    const coupon = address.coupon;
+
+    if (!coupon || typeof coupon !== "object") return null;
+
+    const discountAmount = Number(coupon.discount_amount || 0);
+
+    if (!Number.isFinite(discountAmount) || discountAmount <= 0) return null;
+
+    return {
+      id: coupon.id || null,
+      code: String(coupon.code || "").toUpperCase(),
+      discountType: coupon.discount_type || null,
+      discountValue: Number(coupon.discount_value || 0),
+      discountAmount,
+      subtotalAmount: Number(coupon.subtotal_amount || 0),
+      totalAfterDiscount: Number(coupon.total_after_discount || 0),
+    };
+  };
+
+  const getCouponDiscountLabel = (couponInfo: ReturnType<typeof getCouponInfo>) => {
+    if (!couponInfo) return "";
+
+    if (couponInfo.discountType === "percent") {
+      return `%${formatMoney(couponInfo.discountValue)} indirim`;
+    }
+
+    return `${formatMoney(couponInfo.discountValue)} TL indirim`;
+  };
+
   const formatAddress = (addr: any) => {
     if (!addr) return "Adres bilgisi yok.";
 
@@ -102,7 +165,12 @@ export default function OrdersTab({ orders }: { orders: any[] }) {
         <div className="space-y-6">
           {orders.map((order) => {
             const safeItems = safeParseItems(order.items);
+            const parsedAddress = safeParseAddress(order.shipping_address);
+            const couponInfo = getCouponInfo(parsedAddress);
             const status = order.status || "İşleniyor";
+            const itemsSubtotal = getItemsSubtotal(safeItems);
+            const subtotalAmount = couponInfo?.subtotalAmount || itemsSubtotal;
+            const paidAmount = Number(order.total_amount || couponInfo?.totalAfterDiscount || 0);
 
             return (
               <div
@@ -154,6 +222,31 @@ export default function OrdersTab({ orders }: { orders: any[] }) {
                     </span>
                   </div>
                 </div>
+
+                {couponInfo && (
+                  <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">
+                        Kupon Kullanıldı
+                      </p>
+                      <p className="text-sm font-black text-black mt-1">
+                        {couponInfo.code || "Kupon"}
+                      </p>
+                      <p className="text-[10px] font-bold text-emerald-700 mt-1">
+                        {getCouponDiscountLabel(couponInfo)}
+                      </p>
+                    </div>
+
+                    <div className="bg-white border border-emerald-100 rounded-xl px-4 py-3 text-right">
+                      <p className="text-[9px] font-black text-emerald-700 uppercase tracking-widest">
+                        Sağlanan İndirim
+                      </p>
+                      <p className="text-base font-black text-emerald-700 mt-1">
+                        -{formatMoney(couponInfo.discountAmount)} ₺
+                      </p>
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex flex-col md:flex-row gap-6">
                   <div className="flex-1 space-y-3">
@@ -235,17 +328,41 @@ export default function OrdersTab({ orders }: { orders: any[] }) {
                       </div>
                     )}
 
-                    <div className="mt-4 pt-4 border-t border-gray-200">
-                      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
-                        Toplam Ödenen
-                      </p>
+                    <div className="mt-4 pt-4 border-t border-gray-200 space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                          Ara Toplam
+                        </p>
+                        <p className="text-xs font-black text-gray-700">
+                          {formatMoney(subtotalAmount)} ₺
+                        </p>
+                      </div>
 
-                      <p className="text-2xl font-black text-black">
-                        {Number(order.total_amount || 0).toLocaleString(
-                          "tr-TR"
-                        )}{" "}
-                        ₺
-                      </p>
+                      {couponInfo && (
+                        <div className="flex items-center justify-between gap-3 bg-emerald-50 border border-emerald-100 rounded-xl p-2">
+                          <div>
+                            <p className="text-[10px] font-black text-emerald-700 uppercase tracking-widest">
+                              Kupon
+                            </p>
+                            <p className="text-[9px] font-black text-emerald-700 uppercase tracking-widest mt-0.5">
+                              {couponInfo.code}
+                            </p>
+                          </div>
+                          <p className="text-xs font-black text-emerald-700">
+                            -{formatMoney(couponInfo.discountAmount)} ₺
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="pt-2 border-t border-gray-200">
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
+                          Toplam Ödenen
+                        </p>
+
+                        <p className="text-2xl font-black text-black">
+                          {formatMoney(paidAmount)} ₺
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
