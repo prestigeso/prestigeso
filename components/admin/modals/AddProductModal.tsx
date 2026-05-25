@@ -1,6 +1,7 @@
 "use client";
 
 import type { ChangeEvent, FormEvent } from "react";
+import { useAppAlert } from "@/context/AppAlertContext";
 import { revokeUrls } from "../utils";
 
 const MAX_IMAGE_COUNT = 8;
@@ -55,6 +56,8 @@ export default function AddProductModal({
   setPreviews,
   moveImage,
 }: Props) {
+  const { showToast } = useAppAlert();
+
   if (!open) return null;
 
   const handleClose = () => {
@@ -64,16 +67,16 @@ export default function AddProductModal({
     onClose();
   };
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const picked = Array.from(e.target.files || []);
+  const handleFileChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(event.target.files || []);
 
     if (picked.length === 0) return;
 
     const errorMessage = validateImageFiles(picked);
 
     if (errorMessage) {
-      e.currentTarget.value = "";
-      alert(errorMessage);
+      event.currentTarget.value = "";
+      showToast(errorMessage, "warning");
       return;
     }
 
@@ -125,8 +128,8 @@ export default function AddProductModal({
               type="text"
               maxLength={64}
               placeholder="Örn: YUZUK-01, PRSTG-KOLYE veya 102938"
-              onChange={(e) => {
-                e.currentTarget.value = e.currentTarget.value.toUpperCase();
+              onChange={(event) => {
+                event.currentTarget.value = event.currentTarget.value.toUpperCase();
               }}
               className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium font-mono tracking-wider outline-none focus:ring-2 focus:ring-black transition-all"
             />
@@ -228,26 +231,26 @@ export default function AddProductModal({
 
             {previews.length > 0 && (
               <div className="mt-3 grid grid-cols-3 gap-2">
-                {previews.map((url, i) => (
+                {previews.map((url, index) => (
                   <div
-                    key={i}
+                    key={index}
                     className="w-full h-20 rounded-lg overflow-hidden border border-gray-200 bg-white relative group"
                   >
                     <span className="absolute top-1 left-1 bg-black text-white text-[10px] px-1.5 py-0.5 rounded-md z-10">
-                      {i + 1} {i === 0 && "(Kapak)"}
+                      {index + 1} {index === 0 && "(Kapak)"}
                     </span>
 
                     <img
                       src={url}
                       className="w-full h-20 object-cover"
-                      alt={`Ürün görseli ${i + 1}`}
+                      alt={`Ürün görseli ${index + 1}`}
                     />
 
                     <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-between px-1">
                       <button
                         type="button"
-                        onClick={() => moveImage(i, "left")}
-                        disabled={i === 0}
+                        onClick={() => moveImage(index, "left")}
+                        disabled={index === 0}
                         className="w-6 h-6 bg-white text-black rounded-full flex items-center justify-center text-xs disabled:opacity-40"
                         title="Sola al"
                       >
@@ -256,8 +259,8 @@ export default function AddProductModal({
 
                       <button
                         type="button"
-                        onClick={() => moveImage(i, "right")}
-                        disabled={i === previews.length - 1}
+                        onClick={() => moveImage(index, "right")}
+                        disabled={index === previews.length - 1}
                         className="w-6 h-6 bg-white text-black rounded-full flex items-center justify-center text-xs disabled:opacity-40"
                         title="Sağa al"
                       >
