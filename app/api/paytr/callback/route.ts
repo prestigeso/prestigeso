@@ -14,6 +14,85 @@ function safeParseItems(items: any): any[] {
   }
 }
 
+function safeParseObject(value: any): any {
+  try {
+    if (!value) return null;
+    if (typeof value === "object") return value;
+    if (typeof value === "string") return JSON.parse(value || "null");
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+async function registerCouponUsage(order: any) {
+  const shippingAddress = safeParseObject(order?.shipping_address);
+  const coupon = shippingAddress?.coupon;
+
+  if (!coupon?.id || !coupon?.code || !order?.user_id) {
+    return;
+  }
+
+  const discountAmount = Number(coupon.discount_amount || 0);
+
+  if (!Number.isFinite(discountAmount) || discountAmount <= 0) {
+    return;
+  }
+
+  const { data: existingUsage, error: existingUsageError } = await supabaseAdmin
+    .from("coupon_usages")
+    .select("id")
+    .eq("order_id", order.id)
+    .eq("coupon_id", coupon.id)
+    .maybeSingle();
+
+  if (existingUsageError) {
+    console.error("Coupon usage lookup error:", existingUsageError);
+    return;
+  }
+
+  if (existingUsage) {
+    return;
+  }
+
+  const { error: usageInsertError } = await supabaseAdmin.from("coupon_usages").insert([
+    {
+      coupon_id: coupon.id,
+      user_id: order.user_id,
+      order_id: order.id,
+      coupon_code: String(coupon.code).toUpperCase(),
+      discount_amount: discountAmount,
+    },
+  ]);
+
+  if (usageInsertError) {
+    console.error("Coupon usage insert error:", usageInsertError);
+    return;
+  }
+
+  const { data: couponRow, error: couponLookupError } = await supabaseAdmin
+    .from("coupons")
+    .select("used_count")
+    .eq("id", coupon.id)
+    .maybeSingle();
+
+  if (couponLookupError || !couponRow) {
+    console.error("Coupon used_count lookup error:", couponLookupError);
+    return;
+  }
+
+  const nextUsedCount = Number(couponRow.used_count || 0) + 1;
+
+  const { error: couponUpdateError } = await supabaseAdmin
+    .from("coupons")
+    .update({ used_count: nextUsedCount })
+    .eq("id", coupon.id);
+
+  if (couponUpdateError) {
+    console.error("Coupon used_count update error:", couponUpdateError);
+  }
+}
+
 export async function POST(req: NextRequest) {
   try {
     const merchantKey = process.env.PAYTR_MERCHANT_KEY;
@@ -44,7 +123,7 @@ export async function POST(req: NextRequest) {
 
     const { data: order, error: orderError } = await supabaseAdmin
       .from("orders")
-      .select("id, payment_status, items")
+      .select("id, user_id, payment_status, items, shipping_address")
       .eq("merchant_oid", merchantOid)
       .maybeSingle();
 
@@ -72,7 +151,7 @@ export async function POST(req: NextRequest) {
         })
         .eq("merchant_oid", merchantOid)
         .neq("payment_status", "paid")
-        .select("id, items")
+        .select("id, user_id, items, shipping_address")
         .maybeSingle();
 
       if (updateError) {
@@ -116,6 +195,8 @@ export async function POST(req: NextRequest) {
           console.error("PayTR stock update error:", stockUpdateError);
         }
       }
+
+      await registerCouponUsage(updatedOrder);
 
       return new NextResponse("OK");
     }
