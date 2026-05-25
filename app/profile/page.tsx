@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState, type FormEvent } from "react";
@@ -25,6 +26,18 @@ const VALID_PROFILE_TABS = [
   "messages",
   "settings",
 ];
+
+function getDisplayName(user: any) {
+  const metadata = user?.user_metadata || {};
+  const fullName = [metadata.firstName, metadata.lastName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+  if (fullName) return fullName;
+
+  return user?.email?.split("@")[0] || "Müşteri";
+}
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -257,14 +270,14 @@ export default function ProfilePage() {
 
   if (!user) return null;
 
-  const profileCompletion = 85;
+  const displayName = getDisplayName(user);
 
   return (
     <div className="min-h-screen bg-[#fcfcfc] py-10 px-4 mt-16 font-sans">
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row gap-6">
         <div className="w-full md:w-1/4 flex flex-col gap-4">
           <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm relative overflow-hidden">
-            <div className="flex items-center gap-4 mb-4">
+            <div className="flex items-center gap-4">
               <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-xl">
                 👤
               </div>
@@ -275,21 +288,14 @@ export default function ProfilePage() {
                 </p>
 
                 <h2 className="font-black text-sm uppercase truncate text-black">
-                  {user.email?.split("@")[0]}
+                  {displayName}
                 </h2>
+
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1 truncate">
+                  Müşteri
+                </p>
               </div>
             </div>
-
-            <div className="w-full bg-gray-100 rounded-full h-1.5 mb-2">
-              <div
-                className="bg-black h-1.5 rounded-full"
-                style={{ width: `${profileCompletion}%` }}
-              />
-            </div>
-
-            <p className="text-[9px] font-bold text-gray-400 uppercase tracking-widest text-right">
-              Profilinin %{profileCompletion}&apos;i Tamamlandı
-            </p>
           </div>
 
           <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden shadow-sm flex flex-col">
@@ -440,7 +446,7 @@ export default function ProfilePage() {
 
             {activeTab === "coupons" && <CouponsTab />}
 
-            {activeTab === "settings" && <SettingsTab user={user} />}
+            {activeTab === "settings" && <SettingsTab user={user} setUser={setUser} />}
           </div>
 
           {recentlyViewed.length > 0 && (
