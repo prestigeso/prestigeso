@@ -1,8 +1,10 @@
+
 "use client";
 
 import { useState } from "react";
 import type { OrderRow } from "../types";
 import { supabase } from "@/lib/supabase";
+import { useAppAlert } from "@/context/AppAlertContext";
 
 type Props = {
   open: boolean;
@@ -34,7 +36,6 @@ function safeParseAddress(address: any): any {
 
 function getAddressLine(address: any): string {
   if (!address) return "Adres bilgisi yok.";
-
   if (typeof address === "string") return address;
 
   if (typeof address === "object") {
@@ -54,9 +55,7 @@ function getAddressLine(address: any): string {
 function getCustomerName(address: any): string {
   if (!address || typeof address !== "object") return "Belirtilmedi";
 
-  const fullName = [address.firstName, address.lastName]
-    .filter(Boolean)
-    .join(" ");
+  const fullName = [address.firstName, address.lastName].filter(Boolean).join(" ");
 
   return fullName || "Belirtilmedi";
 }
@@ -72,30 +71,16 @@ function getLocationLine(address: any): string {
 }
 
 function getStatusClass(status: string) {
-  if (status === "Bekliyor") {
-    return "bg-orange-50 text-orange-600 border-orange-200";
-  }
-
-  if (status === "Hazırlanıyor") {
-    return "bg-blue-50 text-blue-600 border-blue-200";
-  }
-
-  if (status === "Teslim Edildi") {
-    return "bg-green-50 text-green-600 border-green-200";
-  }
-
+  if (status === "Bekliyor") return "bg-orange-50 text-orange-600 border-orange-200";
+  if (status === "Hazırlanıyor") return "bg-blue-50 text-blue-600 border-blue-200";
+  if (status === "Teslim Edildi") return "bg-green-50 text-green-600 border-green-200";
   return "bg-black text-white border-black";
 }
 
-export default function OrdersModal({
-  open,
-  onClose,
-  orders,
-  onUpdateStatus,
-}: Props) {
-  const [editingShippingId, setEditingShippingId] = useState<number | null>(
-    null
-  );
+export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: Props) {
+  const { showToast } = useAppAlert();
+
+  const [editingShippingId, setEditingShippingId] = useState<number | null>(null);
   const [carrier, setCarrier] = useState("");
   const [trackingNo, setTrackingNo] = useState("");
   const [isSaving, setIsSaving] = useState(false);
@@ -114,13 +99,16 @@ export default function OrdersModal({
   };
 
   const handleSaveShipping = async (orderId: number) => {
-    if (!carrier.trim()) {
-      alert("Lütfen kargo firmasını giriniz.");
+    const cleanCarrier = carrier.trim();
+    const cleanTrackingNo = trackingNo.trim();
+
+    if (!cleanCarrier) {
+      showToast("Lütfen kargo firmasını giriniz.", "warning");
       return;
     }
 
-    if (!trackingNo.trim()) {
-      alert("Lütfen takip numarasını giriniz.");
+    if (!cleanTrackingNo) {
+      showToast("Lütfen takip numarasını giriniz.", "warning");
       return;
     }
 
@@ -130,20 +118,19 @@ export default function OrdersModal({
       const { error } = await supabase
         .from("orders")
         .update({
-          shipping_carrier: carrier.trim(),
-          tracking_number: trackingNo.trim(),
+          shipping_carrier: cleanCarrier,
+          tracking_number: cleanTrackingNo,
           status: "Kargolandı",
         })
         .eq("id", orderId);
 
       if (error) throw error;
 
-      alert("Kargo bilgileri başarıyla kaydedildi! 🚚");
-
+      showToast("Kargo bilgileri başarıyla kaydedildi.", "success");
       onUpdateStatus(orderId, "Kargolandı");
       resetShippingForm();
     } catch (err: any) {
-      alert("Hata oluştu: " + (err?.message || "Bilinmeyen hata"));
+      showToast("Hata oluştu: " + (err?.message || "Bilinmeyen hata"), "error");
     } finally {
       setIsSaving(false);
     }
@@ -182,44 +169,31 @@ export default function OrdersModal({
                   key={order.id}
                   className="p-6 rounded-2xl border border-gray-100 shadow-sm flex flex-col md:flex-row gap-6 bg-white transition-all hover:border-black"
                 >
-                  {/* SOL ALAN */}
                   <div className="flex-1 space-y-4">
                     <div className="flex flex-col md:flex-row justify-between items-start border-b border-gray-50 pb-3 gap-4">
                       <div>
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
-                          Sipariş No
-                        </p>
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Sipariş No</p>
                         <p className="font-mono font-bold text-sm bg-gray-100 px-2 py-0.5 rounded text-black w-max">
                           {order.order_no || `PRS-ESKI-${order.id}`}
                         </p>
                       </div>
 
                       <div>
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
-                          Müşteri
-                        </p>
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Müşteri</p>
                         <p className="font-bold text-sm text-black break-all">
                           {order.user_email || "Bilinmeyen müşteri"}
                         </p>
                       </div>
 
                       <div className="md:text-right">
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
-                          Tarih
-                        </p>
-                        <p
-                          suppressHydrationWarning
-                          className="text-xs font-bold text-gray-600"
-                        >
-                          {order.created_at
-                            ? new Date(order.created_at).toLocaleString("tr-TR")
-                            : "Bilinmiyor"}
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Tarih</p>
+                        <p suppressHydrationWarning className="text-xs font-bold text-gray-600">
+                          {order.created_at ? new Date(order.created_at).toLocaleString("tr-TR") : "Bilinmiyor"}
                         </p>
                       </div>
                     </div>
 
                     <div className="flex flex-col md:flex-row gap-4">
-                      {/* TESLİMAT DETAYLARI */}
                       <div className="flex-1 bg-gray-50 p-4 rounded-xl border border-gray-100">
                         <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 border-b border-gray-200 pb-2">
                           Teslimat Detayları
@@ -228,81 +202,50 @@ export default function OrdersModal({
                         {parsedAddress && typeof parsedAddress === "object" ? (
                           <div className="grid grid-cols-2 gap-y-3 gap-x-4">
                             <div>
-                              <p className="text-[9px] font-bold text-gray-400 uppercase">
-                                Alıcı Kişi
-                              </p>
-                              <p className="text-xs font-black text-black">
-                                {getCustomerName(parsedAddress)}
-                              </p>
+                              <p className="text-[9px] font-bold text-gray-400 uppercase">Alıcı Kişi</p>
+                              <p className="text-xs font-black text-black">{getCustomerName(parsedAddress)}</p>
                             </div>
 
                             <div>
-                              <p className="text-[9px] font-bold text-gray-400 uppercase">
-                                Telefon
-                              </p>
-                              <p className="text-xs font-black text-blue-600">
-                                {parsedAddress.phone || "Belirtilmedi"}
-                              </p>
+                              <p className="text-[9px] font-bold text-gray-400 uppercase">Telefon</p>
+                              <p className="text-xs font-black text-blue-600">{parsedAddress.phone || "Belirtilmedi"}</p>
                             </div>
 
                             <div className="col-span-2 bg-white p-2 rounded-lg border border-gray-200">
-                              <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">
-                                Açık Adres
-                              </p>
-                              <p className="text-xs font-medium text-gray-700 leading-relaxed">
-                                {getAddressLine(parsedAddress)}
-                              </p>
+                              <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">Açık Adres</p>
+                              <p className="text-xs font-medium text-gray-700 leading-relaxed">{getAddressLine(parsedAddress)}</p>
                             </div>
 
                             <div className="col-span-2">
-                              <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">
-                                Bölge
-                              </p>
-                              <p className="text-xs font-black text-gray-700">
-                                {getLocationLine(parsedAddress)}
-                              </p>
+                              <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">Bölge</p>
+                              <p className="text-xs font-black text-gray-700">{getLocationLine(parsedAddress)}</p>
                             </div>
 
                             {parsedAddress.email && (
                               <div className="col-span-2">
-                                <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">
-                                  E-posta
-                                </p>
-                                <p className="text-xs font-bold text-gray-600 break-all">
-                                  {parsedAddress.email}
-                                </p>
+                                <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">E-posta</p>
+                                <p className="text-xs font-bold text-gray-600 break-all">{parsedAddress.email}</p>
                               </div>
                             )}
                           </div>
                         ) : (
-                          <p className="text-sm font-medium text-black leading-relaxed">
-                            {getAddressLine(parsedAddress)}
-                          </p>
+                          <p className="text-sm font-medium text-black leading-relaxed">{getAddressLine(parsedAddress)}</p>
                         )}
                       </div>
 
-                      {/* DURUM VE KARGO */}
                       <div className="w-full md:w-1/2 flex flex-col gap-3">
                         <div className="bg-white border border-gray-200 p-3 rounded-xl flex items-center justify-between">
-                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                            Durum:
-                          </p>
+                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Durum:</p>
 
                           <select
                             value={order.status || "Bekliyor"}
-                            onChange={(e) =>
-                              onUpdateStatus(order.id, e.target.value)
-                            }
-                            className={`text-xs font-black uppercase tracking-widest px-3 py-1.5 rounded-lg border outline-none cursor-pointer transition-colors ${getStatusClass(
-                              order.status
-                            )}`}
+                            onChange={(e) => onUpdateStatus(order.id, e.target.value)}
+                            className={`text-xs font-black uppercase tracking-widest px-3 py-1.5 rounded-lg border outline-none cursor-pointer transition-colors ${getStatusClass(order.status)}`}
                           >
                             <option value="Bekliyor">⏳ Bekliyor</option>
                             <option value="Hazırlanıyor">📦 Hazırlanıyor</option>
                             <option value="Kargolandı">🚀 Kargolandı</option>
-                            <option value="Teslim Edildi">
-                              ✅ Teslim Edildi
-                            </option>
+                            <option value="Teslim Edildi">✅ Teslim Edildi</option>
                           </select>
                         </div>
 
@@ -346,9 +289,7 @@ export default function OrdersModal({
                         ) : (
                           <div className="bg-gray-50 border border-gray-200 p-3 rounded-xl flex flex-col gap-2">
                             <div className="flex justify-between items-center">
-                              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
-                                Kargo Bilgisi
-                              </p>
+                              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Kargo Bilgisi</p>
 
                               <button
                                 type="button"
@@ -359,26 +300,17 @@ export default function OrdersModal({
                                 }}
                                 className="text-[10px] font-bold text-blue-600 hover:underline"
                               >
-                                {order.tracking_number
-                                  ? "Düzenle"
-                                  : "+ Kargo Gir"}
+                                {order.tracking_number ? "Düzenle" : "+ Kargo Gir"}
                               </button>
                             </div>
 
                             {order.tracking_number ? (
                               <div>
-                                <p className="text-xs font-bold text-black">
-                                  {order.shipping_carrier ||
-                                    "Kargo firması belirtilmedi"}
-                                </p>
-                                <p className="text-[10px] font-mono text-gray-500 break-all">
-                                  {order.tracking_number}
-                                </p>
+                                <p className="text-xs font-bold text-black">{order.shipping_carrier || "Kargo firması belirtilmedi"}</p>
+                                <p className="text-[10px] font-mono text-gray-500 break-all">{order.tracking_number}</p>
                               </div>
                             ) : (
-                              <p className="text-[10px] text-gray-400 font-medium italic">
-                                Kargo bilgisi girilmedi.
-                              </p>
+                              <p className="text-[10px] text-gray-400 font-medium italic">Kargo bilgisi girilmedi.</p>
                             )}
                           </div>
                         )}
@@ -386,7 +318,6 @@ export default function OrdersModal({
                     </div>
                   </div>
 
-                  {/* SAĞ ALAN: SİPARİŞ ÖZETİ */}
                   <div className="w-full md:w-1/3 bg-gray-50 p-4 rounded-xl border border-gray-100 flex flex-col">
                     <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 border-b border-gray-200 pb-2">
                       Sipariş Özeti
@@ -394,14 +325,10 @@ export default function OrdersModal({
 
                     <div className="flex-1 overflow-y-auto space-y-3 pr-1 max-h-48 scrollbar-hide">
                       {safeItems.length === 0 ? (
-                        <p className="text-xs font-bold text-gray-400 text-center py-6">
-                          Ürün bilgisi bulunamadı.
-                        </p>
+                        <p className="text-xs font-bold text-gray-400 text-center py-6">Ürün bilgisi bulunamadı.</p>
                       ) : (
                         safeItems.map((item: any, idx: number) => {
-                          const displayImage =
-                            item.images?.[0] || item.image || "/logo.jpeg";
-
+                          const displayImage = item.images?.[0] || item.image || "/logo.jpeg";
                           const quantity = item.quantity || 1;
                           const price = Number(item.price || 0);
 
@@ -414,13 +341,9 @@ export default function OrdersModal({
                               />
 
                               <div className="flex-1 overflow-hidden">
-                                <p className="text-[9px] font-bold uppercase truncate text-black">
-                                  {item.name || "Bilinmeyen Ürün"}
-                                </p>
-
+                                <p className="text-[9px] font-bold uppercase truncate text-black">{item.name || "Bilinmeyen Ürün"}</p>
                                 <p className="text-[9px] font-black text-gray-500 mt-0.5">
-                                  {quantity} Adet x{" "}
-                                  {price.toLocaleString("tr-TR")} ₺
+                                  {quantity} Adet x {price.toLocaleString("tr-TR")} ₺
                                 </p>
                               </div>
                             </div>
@@ -430,15 +353,10 @@ export default function OrdersModal({
                     </div>
 
                     <div className="mt-4 border-t border-gray-200 pt-3 flex justify-between items-end">
-                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                        Ödenen Tutar
-                      </span>
+                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Ödenen Tutar</span>
 
                       <span className="text-lg font-black text-black">
-                        {Number(order.total_amount || 0).toLocaleString(
-                          "tr-TR"
-                        )}{" "}
-                        ₺
+                        {Number(order.total_amount || 0).toLocaleString("tr-TR")} ₺
                       </span>
                     </div>
                   </div>
