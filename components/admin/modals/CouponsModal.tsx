@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabase";
 import { useAppAlert } from "@/context/AppAlertContext";
 
 type CouponRow = {
@@ -104,16 +103,6 @@ function inputDateToIso(value: string, endOfDay = false) {
   return date.toISOString();
 }
 
-function isoToInputDate(value?: string | null) {
-  if (!value) return "";
-
-  try {
-    return new Date(value).toISOString().slice(0, 10);
-  } catch {
-    return "";
-  }
-}
-
 function getDiscountLabel(coupon: CouponRow) {
   if (coupon.discount_type === "fixed") {
     return `${formatMoney(coupon.discount_value)} TL`;
@@ -132,40 +121,36 @@ function validateCouponForm(form: CouponForm) {
   const usageLimitPerUser = Number(form.usageLimitPerUser || 1);
 
   if (!code) return "Kupon kodu zorunludur.";
-  if (code.length > MAX_CODE_LENGTH) return `Kupon kodu en fazla ${MAX_CODE_LENGTH} karakter olabilir.`;
-
   if (!name) return "Kupon adı zorunludur.";
   if (name.length > MAX_NAME_LENGTH) return `Kupon adı en fazla ${MAX_NAME_LENGTH} karakter olabilir.`;
-
-  if (!Number.isFinite(discountValue) || discountValue <= 0) {
-    return "İndirim değeri 0'dan büyük olmalıdır.";
-  }
-
-  if (form.discountType === "percent" && discountValue > 89) {
-    return "Yüzde indirim 1-89 arası olmalıdır.";
-  }
-
-  if (!Number.isFinite(minOrderAmount) || minOrderAmount < 0) {
-    return "Minimum sepet tutarı 0 veya daha büyük olmalıdır.";
-  }
-
-  if (maxDiscountAmount !== null && (!Number.isFinite(maxDiscountAmount) || maxDiscountAmount < 0)) {
-    return "Maksimum indirim tutarı 0 veya daha büyük olmalıdır.";
-  }
-
-  if (usageLimitTotal !== null && (!Number.isFinite(usageLimitTotal) || usageLimitTotal < 0)) {
-    return "Toplam kullanım limiti 0 veya daha büyük olmalıdır.";
-  }
-
-  if (!Number.isFinite(usageLimitPerUser) || usageLimitPerUser < 1) {
-    return "Kullanıcı başı kullanım limiti en az 1 olmalıdır.";
-  }
-
-  if (form.startsAt && form.endsAt && form.endsAt < form.startsAt) {
-    return "Bitiş tarihi başlangıç tarihinden önce olamaz.";
-  }
+  if (form.description.length > MAX_DESCRIPTION_LENGTH) return `Açıklama en fazla ${MAX_DESCRIPTION_LENGTH} karakter olabilir.`;
+  if (!Number.isFinite(discountValue) || discountValue <= 0) return "İndirim değeri 0'dan büyük olmalıdır.";
+  if (form.discountType === "percent" && discountValue > 89) return "Yüzde indirim 1-89 arası olmalıdır.";
+  if (!Number.isFinite(minOrderAmount) || minOrderAmount < 0) return "Minimum sepet tutarı 0 veya daha büyük olmalıdır.";
+  if (maxDiscountAmount !== null && (!Number.isFinite(maxDiscountAmount) || maxDiscountAmount < 0)) return "Maksimum indirim tutarı 0 veya daha büyük olmalıdır.";
+  if (usageLimitTotal !== null && (!Number.isFinite(usageLimitTotal) || usageLimitTotal < 0)) return "Toplam kullanım limiti 0 veya daha büyük olmalıdır.";
+  if (!Number.isFinite(usageLimitPerUser) || usageLimitPerUser < 1) return "Kullanıcı başı kullanım limiti en az 1 olmalıdır.";
+  if (form.startsAt && form.endsAt && form.endsAt < form.startsAt) return "Bitiş tarihi başlangıç tarihinden önce olamaz.";
 
   return null;
+}
+
+function buildPayload(form: CouponForm) {
+  return {
+    code: normalizeCouponCode(form.code),
+    name: form.name.trim(),
+    description: form.description.trim() || null,
+    discount_type: form.discountType,
+    discount_value: Number(form.discountValue),
+    min_order_amount: Number(form.minOrderAmount || 0),
+    max_discount_amount: form.maxDiscountAmount ? Number(form.maxDiscountAmount) : null,
+    starts_at: inputDateToIso(form.startsAt),
+    ends_at: inputDateToIso(form.endsAt, true),
+    usage_limit_total: form.usageLimitTotal ? Number(form.usageLimitTotal) : null,
+    usage_limit_per_user: Number(form.usageLimitPerUser || 1),
+    is_active: form.isActive,
+    is_member_only: form.isMemberOnly,
+  };
 }
 
 export default function CouponsModal({ open, onClose }: Props) {
@@ -180,19 +165,24 @@ export default function CouponsModal({ open, onClose }: Props) {
   const loadCoupons = async () => {
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from("coupons")
-      .select("*")
-      .order("created_at", { ascending: false });
+    try {
+      const response = await fetch("/api/admin/coupons", {
+        method: "GET",
+        credentials: "include",
+      });
 
-    if (error) {
-      showToast("Kuponlar yüklenemedi: " + error.message, "error");
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result?.error || "Kuponlar yüklenemedi.");
+      }
+
+      setCoupons((result?.coupons || []) as CouponRow[]);
+    } catch (error: any) {
+      showToast(error?.message || "Kuponlar yüklenemedi.", "error");
+    } finally {
       setLoading(false);
-      return;
     }
-
-    setCoupons((data || []) as CouponRow[]);
-    setLoading(false);
   };
 
   useEffect(() => {
@@ -236,54 +226,53 @@ export default function CouponsModal({ open, onClose }: Props) {
 
     setSaving(true);
 
-    const payload = {
-      code: normalizeCouponCode(form.code),
-      name: form.name.trim(),
-      description: form.description.trim() || null,
-      discount_type: form.discountType,
-      discount_value: Number(form.discountValue),
-      min_order_amount: Number(form.minOrderAmount || 0),
-      max_discount_amount: form.maxDiscountAmount ? Number(form.maxDiscountAmount) : null,
-      starts_at: inputDateToIso(form.startsAt),
-      ends_at: inputDateToIso(form.endsAt, true),
-      usage_limit_total: form.usageLimitTotal ? Number(form.usageLimitTotal) : null,
-      usage_limit_per_user: Number(form.usageLimitPerUser || 1),
-      is_active: form.isActive,
-      is_member_only: form.isMemberOnly,
-    };
+    try {
+      const response = await fetch("/api/admin/coupons", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(buildPayload(form)),
+      });
 
-    const { error } = await supabase.from("coupons").insert([payload]);
+      const result = await response.json();
 
-    setSaving(false);
+      if (!response.ok) {
+        throw new Error(result?.error || "Kupon oluşturulamadı.");
+      }
 
-    if (error) {
-      showToast("Kupon oluşturulamadı: " + error.message, "error");
-      return;
+      showToast("Kupon oluşturuldu.", "success");
+      resetForm();
+      await loadCoupons();
+    } catch (error: any) {
+      showToast(error?.message || "Kupon oluşturulamadı.", "error");
+    } finally {
+      setSaving(false);
     }
-
-    showToast("Kupon oluşturuldu.", "success");
-    resetForm();
-    loadCoupons();
   };
 
   const handleToggleCoupon = async (coupon: CouponRow) => {
-    const nextStatus = !coupon.is_active;
+    try {
+      const response = await fetch("/api/admin/coupons", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: coupon.id, action: "toggle" }),
+      });
 
-    const { error } = await supabase
-      .from("coupons")
-      .update({ is_active: nextStatus })
-      .eq("id", coupon.id);
+      const result = await response.json();
 
-    if (error) {
-      showToast("Kupon durumu güncellenemedi: " + error.message, "error");
-      return;
+      if (!response.ok) {
+        throw new Error(result?.error || "Kupon durumu güncellenemedi.");
+      }
+
+      setCoupons((prev) =>
+        prev.map((item) => (item.id === coupon.id ? (result.coupon as CouponRow) : item))
+      );
+
+      showToast(result.coupon?.is_active ? "Kupon aktif edildi." : "Kupon pasif edildi.", "success");
+    } catch (error: any) {
+      showToast(error?.message || "Kupon durumu güncellenemedi.", "error");
     }
-
-    setCoupons((prev) =>
-      prev.map((item) => (item.id === coupon.id ? { ...item, is_active: nextStatus } : item))
-    );
-
-    showToast(nextStatus ? "Kupon aktif edildi." : "Kupon pasif edildi.", "success");
   };
 
   const handleDeleteCoupon = async (coupon: CouponRow) => {
@@ -297,15 +286,25 @@ export default function CouponsModal({ open, onClose }: Props) {
 
     if (!ok) return;
 
-    const { error } = await supabase.from("coupons").delete().eq("id", coupon.id);
+    try {
+      const response = await fetch("/api/admin/coupons", {
+        method: "DELETE",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: coupon.id }),
+      });
 
-    if (error) {
-      showToast("Kupon silinemedi: " + error.message, "error");
-      return;
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result?.error || "Kupon silinemedi.");
+      }
+
+      setCoupons((prev) => prev.filter((item) => item.id !== coupon.id));
+      showToast("Kupon silindi.", "success");
+    } catch (error: any) {
+      showToast(error?.message || "Kupon silinemedi.", "error");
     }
-
-    setCoupons((prev) => prev.filter((item) => item.id !== coupon.id));
-    showToast("Kupon silindi.", "success");
   };
 
   const fillExampleCoupon = () => {
