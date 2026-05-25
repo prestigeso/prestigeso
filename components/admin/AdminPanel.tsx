@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { useAppAlert } from "@/context/AppAlertContext";
 
 import type { Slide } from "./types";
 import { uploadToStorageAndGetPublicUrl, revokeUrls } from "./utils";
@@ -28,6 +29,8 @@ function normalizeSku(input: any) {
 }
 
 export default function AdminPanel() {
+  const { showToast, showConfirm } = useAppAlert();
+
   const activeMonth = new Date()
     .toLocaleString("tr-TR", { month: "long" })
     .toUpperCase();
@@ -285,7 +288,7 @@ export default function AdminPanel() {
     setEditLoading(false);
 
     if (error) {
-      alert("Ürün detayı çekilemedi: " + error.message);
+      showToast("Ürün detayı çekilemedi: " + error.message, "error");
       return;
     }
 
@@ -305,7 +308,7 @@ export default function AdminPanel() {
     if (!editingProduct) return;
 
     if (editAddFiles.length === 0) {
-      alert("Eklemek için en az 1 fotoğraf seç!");
+      showToast("Eklemek için en az 1 fotoğraf seçin.", "warning");
       return;
     }
 
@@ -335,9 +338,9 @@ export default function AdminPanel() {
       setEditAddFiles([]);
       setEditAddPreviews([]);
 
-      alert("Fotoğraflar eklendi ✅ (Sonra Kaydet'e bas)");
+      showToast("Fotoğraflar eklendi. Kaydet butonuna basmayı unutmayın.", "success");
     } catch (err: any) {
-      alert("Fotoğraf eklenemedi: " + (err?.message || "Bilinmeyen hata"));
+      showToast("Fotoğraf eklenemedi: " + (err?.message || "Bilinmeyen hata"), "error");
     } finally {
       setEditAddUploading(false);
     }
@@ -351,7 +354,7 @@ export default function AdminPanel() {
     const sku = normalizeSku(editingProduct?.["SKU"]);
 
     if (!sku) {
-      alert("SKU zorunludur!");
+      showToast("SKU zorunludur.", "warning");
       return;
     }
 
@@ -382,27 +385,34 @@ export default function AdminPanel() {
     setSaving(false);
 
     if (error) {
-      alert("KAYDET HATASI: " + error.message);
+      showToast("Kaydetme hatası: " + error.message, "error");
       return;
     }
 
-    alert("Kaydedildi ✅");
+    showToast("Ürün kaydedildi.", "success");
     setEditingProduct(null);
     loadAllData();
   };
 
   const handleDeleteProduct = async (id: number) => {
-    if (!window.confirm("Bu ürünü KALICI olarak silmek istiyor musun?")) {
-      return;
-    }
+    const ok = await showConfirm({
+      title: "Ürün silinsin mi?",
+      message: "Bu ürünü kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.",
+      confirmText: "Sil",
+      cancelText: "Vazgeç",
+      tone: "danger",
+    });
+
+    if (!ok) return;
 
     const { error } = await supabase.from("products").delete().eq("id", id);
 
     if (error) {
-      alert("Silinemedi: " + error.message);
+      showToast("Silinemedi: " + error.message, "error");
       return;
     }
 
+    showToast("Ürün silindi.", "success");
     setEditingProduct(null);
     loadAllData();
   };
@@ -418,7 +428,7 @@ export default function AdminPanel() {
     );
 
     if (!sku) {
-      alert("SKU zorunludur!");
+      showToast("SKU zorunludur.", "warning");
       return;
     }
 
@@ -446,7 +456,7 @@ export default function AdminPanel() {
     ).checked;
 
     if (newProductFiles.length === 0) {
-      alert("Lütfen en az bir ürün görseli seçin!");
+      showToast("Lütfen en az bir ürün görseli seçin.", "warning");
       return;
     }
 
@@ -483,10 +493,10 @@ export default function AdminPanel() {
       setNewProductPreviews([]);
       setIsAddProductOpen(false);
 
-      alert("Ürün eklendi ✅");
+      showToast("Ürün eklendi.", "success");
       loadAllData();
     } catch (err: any) {
-      alert("Ürün eklenemedi: " + (err?.message || "Bilinmeyen hata"));
+      showToast("Ürün eklenemedi: " + (err?.message || "Bilinmeyen hata"), "error");
     } finally {
       setCreating(false);
     }
@@ -494,7 +504,7 @@ export default function AdminPanel() {
 
   const handleSendMessageReply = async (messageId: number) => {
     if (!replyText.trim()) {
-      alert("Lütfen bir cevap yazın!");
+      showToast("Lütfen bir cevap yazın.", "warning");
       return;
     }
 
@@ -506,11 +516,11 @@ export default function AdminPanel() {
       .eq("id", messageId);
 
     if (error) {
-      alert("Cevap gönderilemedi: " + error.message);
+      showToast("Cevap gönderilemedi: " + error.message, "error");
       return;
     }
 
-    alert("Cevap müşteriye asilce iletildi! ✅");
+    showToast("Cevap müşteriye iletildi.", "success");
 
     setDbMessages((prev: any) =>
       prev.map((m: any) =>
@@ -524,7 +534,7 @@ export default function AdminPanel() {
 
   const handleSendQuestionReply = async (questionId: number) => {
     if (!qReplyText.trim()) {
-      alert("Lütfen bir cevap yazın!");
+      showToast("Lütfen bir cevap yazın.", "warning");
       return;
     }
 
@@ -539,11 +549,11 @@ export default function AdminPanel() {
       .eq("id", questionId);
 
     if (error) {
-      alert("Cevap gönderilemedi: " + error.message);
+      showToast("Cevap gönderilemedi: " + error.message, "error");
       return;
     }
 
-    alert("Ürün sorusu asilce cevaplandı! ✅");
+    showToast("Ürün sorusu cevaplandı.", "success");
 
     setDbQuestions((prev: any) =>
       prev.map((q: any) =>
@@ -569,7 +579,7 @@ export default function AdminPanel() {
       .eq("id", questionId);
 
     if (error) {
-      alert("Durum güncellenemedi: " + error.message);
+      showToast("Durum güncellenemedi: " + error.message, "error");
       return;
     }
 
@@ -578,6 +588,8 @@ export default function AdminPanel() {
         q.id === questionId ? { ...q, is_approved: newStatus } : q
       )
     );
+
+    showToast(newStatus ? "Soru yayına alındı." : "Soru yayından kaldırıldı.", "success");
   };
 
   const handleUpdateOrderStatus = async (orderId: number, newStatus: string) => {
@@ -587,11 +599,11 @@ export default function AdminPanel() {
       .eq("id", orderId);
 
     if (error) {
-      alert("Hata: " + error.message);
+      showToast("Hata: " + error.message, "error");
       return;
     }
 
-    alert(`Sipariş durumu "${newStatus}" olarak güncellendi! 📦`);
+    showToast(`Sipariş durumu "${newStatus}" olarak güncellendi.`, "success");
 
     setDbOrders((prev: any) =>
       prev.map((o: any) => (o.id === orderId ? { ...o, status: newStatus } : o))
@@ -605,11 +617,11 @@ export default function AdminPanel() {
       .eq("id", reviewId);
 
     if (error) {
-      alert("Hata: " + error.message);
+      showToast("Hata: " + error.message, "error");
       return;
     }
 
-    alert("Yorum asilce yayına alındı! ✅");
+    showToast("Yorum yayına alındı.", "success");
 
     setDbReviews((prev: any) =>
       prev.map((r: any) =>
@@ -619,38 +631,45 @@ export default function AdminPanel() {
   };
 
   const handleDeleteReview = async (reviewId: string) => {
-    if (!window.confirm("Bu yorumu tamamen silmek istediğinize emin misiniz?")) {
-      return;
-    }
+    const ok = await showConfirm({
+      title: "Yorum silinsin mi?",
+      message: "Bu yorumu tamamen silmek istediğinize emin misiniz? Bu işlem geri alınamaz.",
+      confirmText: "Sil",
+      cancelText: "Vazgeç",
+      tone: "danger",
+    });
+
+    if (!ok) return;
 
     const { error } = await supabase.from("reviews").delete().eq("id", reviewId);
 
     if (error) {
-      alert("Hata: " + error.message);
+      showToast("Hata: " + error.message, "error");
       return;
     }
 
+    showToast("Yorum silindi.", "success");
     setDbReviews((prev: any) => prev.filter((r: any) => r.id !== reviewId));
   };
 
   const handleCreateCampaign = async () => {
     if (!campaignName.trim()) {
-      alert("Lütfen kampanya için bir isim girin!");
+      showToast("Lütfen kampanya için bir isim girin.", "warning");
       return;
     }
 
     if (selectedCampaignProducts.length === 0) {
-      alert("Kampanyaya dahil edilecek ürünleri seçin!");
+      showToast("Kampanyaya dahil edilecek ürünleri seçin.", "warning");
       return;
     }
 
     if (!campaignDates.start || !campaignDates.end) {
-      alert("Lütfen kampanya başlangıç ve bitiş tarihlerini seçin!");
+      showToast("Lütfen kampanya başlangıç ve bitiş tarihlerini seçin.", "warning");
       return;
     }
 
     if (discountPercent <= 0 || discountPercent >= 90) {
-      alert("İndirim yüzdesi 1-89 arası olmalıdır.");
+      showToast("İndirim yüzdesi 1-89 arası olmalıdır.", "warning");
       return;
     }
 
@@ -668,11 +687,11 @@ export default function AdminPanel() {
     ]);
 
     if (error) {
-      alert("Kampanya oluşturulamadı: " + error.message);
+      showToast("Kampanya oluşturulamadı: " + error.message, "error");
       return;
     }
 
-    alert("Yeni Kampanya Başarıyla Kuruldu! 🚀");
+    showToast("Yeni kampanya başarıyla kuruldu.", "success");
 
     setSelectedCampaignProducts([]);
     setCampaignDates({ start: "", end: "" });
@@ -683,29 +702,25 @@ export default function AdminPanel() {
   };
 
   const handleDeleteCampaign = async (id: number) => {
-    if (!window.confirm("Bu kampanyayı tamamen silmek istediğine emin misin?")) {
-      return;
-    }
-
     const { error } = await supabase.from("campaigns").delete().eq("id", id);
 
     if (error) {
-      alert("Kampanya silinemedi: " + error.message);
+      showToast("Kampanya silinemedi: " + error.message, "error");
       return;
     }
 
-    alert("Kampanya silindi! ✅");
+    showToast("Kampanya silindi.", "success");
     loadAllData();
   };
 
   const handleSaveMarquee = () => {
     localStorage.setItem("prestigeso_campaign", marquee);
-    alert("Kayan yazı kaydedildi ✅");
+    showToast("Kayan yazı kaydedildi.", "success");
   };
 
   const handleAddSlide = async () => {
     if (newSlideFiles.length === 0) {
-      alert("Lütfen en az bir görsel seçin!");
+      showToast("Lütfen en az bir görsel seçin.", "warning");
       return;
     }
 
@@ -724,7 +739,7 @@ export default function AdminPanel() {
 
       if (error) throw error;
 
-      alert("Slide'lar eklendi ✅");
+      showToast("Slide'lar eklendi.", "success");
 
       revokeUrls(newSlidePreviews);
       setNewSlideFiles([]);
@@ -733,20 +748,29 @@ export default function AdminPanel() {
 
       loadAllData();
     } catch (err: any) {
-      alert("Slide eklenemedi: " + (err?.message || "Bilinmeyen hata"));
+      showToast("Slide eklenemedi: " + (err?.message || "Bilinmeyen hata"), "error");
     }
   };
 
   const handleDeleteSlide = async (id: number) => {
-    if (!window.confirm("Bu slide'ı silmek istediğine emin misin?")) return;
+    const ok = await showConfirm({
+      title: "Slide silinsin mi?",
+      message: "Bu slide'ı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.",
+      confirmText: "Sil",
+      cancelText: "Vazgeç",
+      tone: "danger",
+    });
+
+    if (!ok) return;
 
     const { error } = await supabase.from("hero_slides").delete().eq("id", id);
 
     if (error) {
-      alert("Slide silinemedi: " + error.message);
+      showToast("Slide silinemedi: " + error.message, "error");
       return;
     }
 
+    showToast("Slide silindi.", "success");
     loadAllData();
   };
 
@@ -761,11 +785,11 @@ export default function AdminPanel() {
       .eq("id", slide.id);
 
     if (error) {
-      alert("Slide güncellenemedi: " + error.message);
+      showToast("Slide güncellenemedi: " + error.message, "error");
       return;
     }
 
-    alert("Slide kaydedildi ✅");
+    showToast("Slide kaydedildi.", "success");
     loadAllData();
   };
 
