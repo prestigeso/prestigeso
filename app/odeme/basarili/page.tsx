@@ -1,4 +1,3 @@
-import Link from "next/link";
 import ClearCartOnSuccess from "@/components/payment/ClearCartOnSuccess";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -89,10 +88,10 @@ export default async function PaymentSuccessPage({
   const couponInfo = orderSummary?.couponInfo || null;
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center px-4 py-16 font-sans">
+    <div className="min-h-screen bg-white flex items-center justify-center px-4 py-16 font-sans relative z-0">
       <ClearCartOnSuccess />
 
-      <div className="max-w-md w-full text-center bg-gray-50 border border-gray-100 rounded-3xl p-8 shadow-sm">
+      <div className="max-w-md w-full text-center bg-gray-50 border border-gray-100 rounded-3xl p-8 shadow-sm relative z-10">
         <div className="text-5xl mb-4">✅</div>
 
         <h1 className="text-2xl font-black uppercase tracking-tight text-black mb-3">
@@ -151,19 +150,19 @@ export default async function PaymentSuccessPage({
         )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Link
+          <a
             href="/profile"
-            className="inline-flex items-center justify-center bg-black text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-800 transition-all"
+            className="inline-flex items-center justify-center bg-black text-white px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-800 transition-all relative z-20"
           >
             Siparişlerime Git
-          </Link>
+          </a>
 
-          <Link
+          <a
             href="/"
-            className="inline-flex items-center justify-center bg-white text-black border border-gray-200 px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-100 transition-all"
+            className="inline-flex items-center justify-center bg-white text-black border border-gray-200 px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-100 transition-all relative z-20"
           >
             Ana Sayfa
-          </Link>
+          </a>
         </div>
       </div>
     </div>

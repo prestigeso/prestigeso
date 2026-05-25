@@ -1,26 +1,60 @@
+
 "use client";
 
 import { useCart } from "@/context/CartContext";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabase";
 
 export default function CartSidebar() {
   const { isCartOpen, toggleCart, items, removeFromCart, updateQuantity, cartTotal } =
     useCart();
+
   const [mounted, setMounted] = useState(false);
+  const [authOptionsOpen, setAuthOptionsOpen] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(false);
   const router = useRouter();
 
   useEffect(() => setMounted(true), []);
 
-  const handleGoToCheckout = () => {
+  useEffect(() => {
+    if (!isCartOpen) {
+      setAuthOptionsOpen(false);
+      setCheckingSession(false);
+    }
+  }, [isCartOpen]);
+
+  const closeCartAndGo = (href: string) => {
+    setAuthOptionsOpen(false);
     toggleCart();
-    router.push("/checkout");
+    router.push(href);
+  };
+
+  const handleGoToCheckout = async () => {
+    if (checkingSession) return;
+
+    setCheckingSession(true);
+
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (session) {
+        closeCartAndGo("/checkout");
+        return;
+      }
+
+      setAuthOptionsOpen(true);
+    } finally {
+      setCheckingSession(false);
+    }
   };
 
   if (!mounted || !isCartOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden">
+    <div className="fixed inset-0 z-[999] overflow-hidden">
       <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={toggleCart}
@@ -33,8 +67,10 @@ export default function CartSidebar() {
               Alışveriş Sepeti ({items.length})
             </h2>
             <button
+              type="button"
               onClick={toggleCart}
               className="p-2 -mr-2 text-gray-400 hover:text-black rounded-full hover:bg-gray-100 transition-colors"
+              aria-label="Sepeti kapat"
             >
               ✕
             </button>
@@ -50,6 +86,7 @@ export default function CartSidebar() {
                   Sepetiniz şimdilik boş.
                 </p>
                 <button
+                  type="button"
                   onClick={toggleCart}
                   className="mt-4 bg-black text-white px-8 py-3 rounded-xl font-bold text-[11px] uppercase tracking-widest hover:bg-gray-800 transition-all shadow-md"
                 >
@@ -84,6 +121,7 @@ export default function CartSidebar() {
                       <div className="flex items-center justify-between mt-auto pt-2">
                         <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-gray-50 shadow-sm">
                           <button
+                            type="button"
                             onClick={() => updateQuantity(item.id, -1)}
                             className="w-8 h-8 flex items-center justify-center text-gray-600 hover:bg-black hover:text-white transition-colors font-black text-lg"
                           >
@@ -93,6 +131,7 @@ export default function CartSidebar() {
                             {item.quantity}
                           </span>
                           <button
+                            type="button"
                             onClick={() => updateQuantity(item.id, 1)}
                             className="w-8 h-8 flex items-center justify-center text-gray-600 hover:bg-black hover:text-white transition-colors font-black text-lg"
                           >
@@ -101,8 +140,8 @@ export default function CartSidebar() {
                         </div>
 
                         <button
-                          onClick={() => removeFromCart(item.id)}
                           type="button"
+                          onClick={() => removeFromCart(item.id)}
                           className="font-black text-[10px] text-gray-400 hover:text-red-600 uppercase tracking-widest underline underline-offset-4 transition-colors"
                         >
                           Sil
@@ -126,11 +165,52 @@ export default function CartSidebar() {
                 </p>
               </div>
 
+              {authOptionsOpen && (
+                <div className="mb-4 bg-gray-50 border border-gray-200 rounded-2xl p-4 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                  <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">
+                    Devam Etmek İçin Seçim Yapın
+                  </p>
+
+                  <p className="text-xs font-bold text-gray-600 leading-relaxed mb-4">
+                    Ödeme işlemine geçmeden önce üye olabilir, giriş yapabilir veya
+                    misafir olarak devam edebilirsiniz.
+                  </p>
+
+                  <div className="grid grid-cols-1 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => closeCartAndGo("/login?mode=register&redirect=/checkout")}
+                      className="w-full bg-black text-white py-3 rounded-xl font-black text-[10px] uppercase tracking-widest active:scale-95 transition-all"
+                    >
+                      Üye Ol
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => closeCartAndGo("/login?redirect=/checkout")}
+                      className="w-full bg-white text-black border border-gray-200 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-100 active:scale-95 transition-all"
+                    >
+                      Giriş Yap
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => closeCartAndGo("/checkout?guest=1")}
+                      className="w-full bg-white text-gray-600 border border-gray-200 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-gray-100 active:scale-95 transition-all"
+                    >
+                      Giriş Yapmadan Devam Et
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <button
+                type="button"
                 onClick={handleGoToCheckout}
-                className="w-full flex items-center justify-center gap-2 rounded-xl bg-black px-6 py-4 font-black text-white text-[11px] uppercase tracking-widest shadow-lg hover:bg-gray-800 active:scale-95 transition-all"
+                disabled={checkingSession}
+                className="w-full flex items-center justify-center gap-2 rounded-xl bg-black px-6 py-4 font-black text-white text-[11px] uppercase tracking-widest shadow-lg hover:bg-gray-800 active:scale-95 transition-all disabled:opacity-60 disabled:active:scale-100"
               >
-                Ödemeye Geç 🚀
+                {checkingSession ? "Kontrol Ediliyor..." : "Ödemeye Geç 🚀"}
               </button>
             </div>
           )}

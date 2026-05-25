@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useState } from "react";
@@ -31,7 +32,17 @@ export default function Navbar() {
     0
   );
 
+  const goHome = () => {
+    setSearchQuery("");
+    setSelectedCategory("Tümü");
+    setIsMobileMenuOpen(false);
+    setIsCartOpen(false);
+    router.push("/");
+  };
+
   const handleProfileClick = async () => {
+    setIsCartOpen(false);
+
     const {
       data: { session },
     } = await supabase.auth.getSession();
@@ -45,12 +56,14 @@ export default function Navbar() {
 
   const handleCategorySelect = (category: string) => {
     setSelectedCategory(category);
+    setSearchQuery("");
     setIsMobileMenuOpen(false);
     router.push("/");
   };
 
   const handleDesktopCategorySelect = (category: string) => {
     setSelectedCategory(category);
+    setSearchQuery("");
     router.push("/");
   };
 
@@ -58,6 +71,7 @@ export default function Navbar() {
     setSearchQuery(value);
 
     if (value.trim() !== "") {
+      setSelectedCategory("Tümü");
       router.push("/");
     }
   };
@@ -66,6 +80,7 @@ export default function Navbar() {
     e.preventDefault();
 
     if (searchQuery.trim() !== "") {
+      setSelectedCategory("Tümü");
       router.push("/");
     }
   };
@@ -75,7 +90,6 @@ export default function Navbar() {
       <nav className="bg-white shadow-sm border-b border-gray-100 sticky top-0 z-50">
         {/* MOBİL TASARIM */}
         <div className="md:hidden flex items-center justify-between p-4 relative h-16">
-          {/* SOL: Hamburger Menü Butonu */}
           <button
             type="button"
             onClick={() => setIsMobileMenuOpen(true)}
@@ -97,20 +111,22 @@ export default function Navbar() {
             </svg>
           </button>
 
-          {/* ORTA: Logo */}
           <Link
             href="/"
-            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 font-black text-2xl tracking-widest cursor-pointer"
+            onClick={(event) => {
+              event.preventDefault();
+              goHome();
+            }}
+            className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 font-black text-2xl tracking-widest cursor-pointer z-10"
             aria-label="Ana sayfa"
           >
             <img
               src="/logo.jpeg"
               alt="PrestigeSO"
-              className="h-8 object-contain"
+              className="h-8 object-contain pointer-events-none"
             />
           </Link>
 
-          {/* SAĞ: Profil */}
           <button
             type="button"
             onClick={handleProfileClick}
@@ -123,20 +139,22 @@ export default function Navbar() {
 
         {/* MASAÜSTÜ TASARIM */}
         <div className="hidden md:flex p-4 items-center justify-between gap-4">
-          {/* Logo */}
           <Link
             href="/"
-            className="font-black text-2xl tracking-widest cursor-pointer flex-shrink-0"
+            onClick={(event) => {
+              event.preventDefault();
+              goHome();
+            }}
+            className="font-black text-2xl tracking-widest cursor-pointer flex-shrink-0 relative z-10"
             aria-label="Ana sayfa"
           >
             <img
               src="/logo.jpeg"
               alt="PrestigeSO"
-              className="h-10 object-contain"
+              className="h-10 object-contain pointer-events-none"
             />
           </Link>
 
-          {/* Arama Çubuğu */}
           <form
             onSubmit={handleSearchSubmit}
             className="relative w-full max-w-md"
@@ -150,7 +168,7 @@ export default function Navbar() {
             />
 
             <svg
-              className="w-5 h-5 absolute left-4 top-3 text-gray-400"
+              className="w-5 h-5 absolute left-4 top-3 text-gray-400 pointer-events-none"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -164,7 +182,6 @@ export default function Navbar() {
             </svg>
           </form>
 
-          {/* Kategoriler ve Sağ İkonlar */}
           <div className="flex items-center gap-4">
             <div className="flex gap-4 mr-4">
               {categories.map((category) => (
@@ -186,7 +203,7 @@ export default function Navbar() {
             <button
               type="button"
               onClick={handleProfileClick}
-              className="p-2 text-gray-800 hover:text-black hover:bg-gray-100 rounded-full transition-colors"
+              className="p-2 text-gray-800 hover:text-black hover:bg-gray-100 rounded-full transition-colors relative z-10"
               title="Profil"
               aria-label="Profil"
             >
@@ -196,7 +213,7 @@ export default function Navbar() {
             <button
               type="button"
               onClick={() => setIsCartOpen(true)}
-              className="relative p-2 text-gray-800 hover:text-black hover:bg-gray-100 rounded-full transition-colors"
+              className="relative p-2 text-gray-800 hover:text-black hover:bg-gray-100 rounded-full transition-colors z-10"
               title="Sepet"
               aria-label="Sepet"
             >
@@ -212,16 +229,13 @@ export default function Navbar() {
         </div>
       </nav>
 
-      {/* MOBİL: SOLDAN KAYAR MENÜ */}
       {isMobileMenuOpen && (
         <div className="md:hidden fixed inset-0 z-[9999] flex">
-          {/* Overlay */}
           <div
             className="fixed inset-0 bg-black/60 transition-opacity backdrop-blur-sm"
             onClick={() => setIsMobileMenuOpen(false)}
           />
 
-          {/* Panel */}
           <div className="relative w-[75%] max-w-sm bg-white h-full shadow-2xl flex flex-col animate-in slide-in-from-left duration-300">
             <div className="p-5 border-b border-gray-100 flex justify-between items-center bg-gray-50">
               <span className="font-black text-lg tracking-widest uppercase">
