@@ -4,13 +4,35 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 
+type CouponRow = {
+  id: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  discount_type: "percent" | "fixed";
+  discount_value: number | string;
+  min_order_amount: number | string;
+  max_discount_amount?: number | string | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  usage_limit_total?: number | null;
+  usage_limit_per_user?: number | null;
+  used_count?: number | null;
+  is_active: boolean;
+  is_member_only: boolean;
+};
+
 function safeParseIds(ids: unknown): number[] {
-  if (Array.isArray(ids)) return ids.map((x) => Number(x)).filter((x) => Number.isFinite(x));
+  if (Array.isArray(ids)) {
+    return ids.map((x) => Number(x)).filter((x) => Number.isFinite(x));
+  }
 
   if (typeof ids === "string") {
     try {
       const parsed = JSON.parse(ids);
-      if (Array.isArray(parsed)) return parsed.map((x) => Number(x)).filter((x) => Number.isFinite(x));
+      if (Array.isArray(parsed)) {
+        return parsed.map((x) => Number(x)).filter((x) => Number.isFinite(x));
+      }
     } catch {
       return [];
     }
@@ -56,6 +78,146 @@ function isValidTurkishPhone(value: string) {
   return /^(05\d{9}|5\d{9}|90\d{10})$/.test(digits);
 }
 
+function normalizeCouponCode(value: unknown) {
+  return String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9_-]/g, "")
+    .slice(0, 40);
+}
+
+function roundMoney(value: number) {
+  return Math.round(Number(value || 0) * 100) / 100;
+}
+
+function calculateCouponDiscount(coupon: CouponRow, subtotal: number) {
+  const safeSubtotal = Number(subtotal || 0);
+  if (!Number.isFinite(safeSubtotal) || safeSubtotal <= 0) return 0;
+
+  const minOrderAmount = Number(coupon.min_order_amount || 0);
+  if (safeSubtotal < minOrderAmount) return 0;
+
+  let discount = 0;
+
+  if (coupon.discount_type === "fixed") {
+    discount = Number(coupon.discount_value || 0);
+  } else {
+    discount = safeSubtotal * (Number(coupon.discount_value || 0) / 100);
+  }
+
+  const maxDiscount = coupon.max_discount_amount;
+  if (maxDiscount !== null && maxDiscount !== undefined && Number(maxDiscount) > 0) {
+    discount = Math.min(discount, Number(maxDiscount));
+  }
+
+  discount = Math.min(discount, safeSubtotal);
+  return roundMoney(Math.max(0, discount));
+}
+
+function isCouponInDateRange(coupon: CouponRow) {
+  const now = Date.now();
+
+  if (coupon.starts_at && new Date(coupon.starts_at).getTime() > now) {
+    return false;
+  }
+
+  if (coupon.ends_at && new Date(coupon.ends_at).getTime() < now) {
+    return false;
+  }
+
+  return true;
+}
+
+async function validateCouponOnServer({
+  couponCode,
+  checkoutMode,
+  userId,
+  subtotal,
+}: {
+  couponCode: string;
+  checkoutMode: "member" | "guest";
+  userId: string | null;
+  subtotal: number;
+}) {
+  const code = normalizeCouponCode(couponCode);
+
+  if (!code) {
+    return {
+      coupon: null as CouponRow | null,
+      discountAmount: 0,
+    };
+  }
+
+  if (checkoutMode !== "member" || !userId) {
+    throw new Error("Kupon kullanmak için üye girişi yapmalısınız.");
+  }
+
+  const { data: coupon, error: couponError } = await supabaseAdmin
+    .from("coupons")
+    .select("*")
+    .eq("code", code)
+    .single();
+
+  if (couponError || !coupon) {
+    throw new Error("Kupon bulunamadı veya aktif değil.");
+  }
+
+  const typedCoupon = coupon as CouponRow;
+
+  if (!typedCoupon.is_active) {
+    throw new Error("Bu kupon aktif değil.");
+  }
+
+  if (typedCoupon.is_member_only && checkoutMode !== "member") {
+    throw new Error("Bu kupon sadece üyeler için geçerlidir.");
+  }
+
+  if (!isCouponInDateRange(typedCoupon)) {
+    throw new Error("Bu kuponun geçerlilik süresi uygun değil.");
+  }
+
+  const minOrderAmount = Number(typedCoupon.min_order_amount || 0);
+  if (subtotal < minOrderAmount) {
+    throw new Error(
+      `Bu kupon için sepet tutarı en az ${minOrderAmount.toLocaleString("tr-TR")} TL olmalıdır.`
+    );
+  }
+
+  if (
+    typedCoupon.usage_limit_total !== null &&
+    typedCoupon.usage_limit_total !== undefined &&
+    Number(typedCoupon.used_count || 0) >= Number(typedCoupon.usage_limit_total)
+  ) {
+    throw new Error("Bu kuponun toplam kullanım hakkı dolmuştur.");
+  }
+
+  const { count: userUsageCount, error: usageError } = await supabaseAdmin
+    .from("coupon_usages")
+    .select("id", { count: "exact", head: true })
+    .eq("coupon_id", typedCoupon.id)
+    .eq("user_id", userId);
+
+  if (usageError) {
+    throw new Error("Kupon kullanım geçmişi kontrol edilemedi.");
+  }
+
+  const perUserLimit = Number(typedCoupon.usage_limit_per_user || 1);
+  if (Number(userUsageCount || 0) >= perUserLimit) {
+    throw new Error("Bu kuponu daha önce kullandınız.");
+  }
+
+  const discountAmount = calculateCouponDiscount(typedCoupon, subtotal);
+
+  if (discountAmount <= 0) {
+    throw new Error("Bu kupon mevcut sepet için indirim oluşturmuyor.");
+  }
+
+  return {
+    coupon: typedCoupon,
+    discountAmount,
+  };
+}
+
 export async function POST(req: NextRequest) {
   try {
     const merchantId = process.env.PAYTR_MERCHANT_ID;
@@ -72,6 +234,7 @@ export async function POST(req: NextRequest) {
     const userId = body.userId || null;
     const checkoutMode = body.checkoutMode === "member" ? "member" : "guest";
     const requestedEmail = normalizeEmail(body.userEmail);
+    const requestedCouponCode = normalizeCouponCode(body.couponCode);
     const items = Array.isArray(body.items) ? body.items : [];
     const shippingAddress = body.shippingAddress || null;
 
@@ -93,7 +256,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Geçerli bir telefon numarası zorunludur." }, { status: 400 });
     }
 
-    if (!shippingAddress.firstName || !shippingAddress.lastName || !shippingAddress.city || !shippingAddress.district || !shippingAddress.neighborhood || !shippingAddress.fullAddress) {
+    if (
+      !shippingAddress.firstName ||
+      !shippingAddress.lastName ||
+      !shippingAddress.city ||
+      !shippingAddress.district ||
+      !shippingAddress.neighborhood ||
+      !shippingAddress.fullAddress
+    ) {
       return NextResponse.json({ error: "Teslimat adresi eksik." }, { status: 400 });
     }
 
@@ -101,7 +271,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Sepet boş." }, { status: 400 });
     }
 
-    const productIds = items.map((item: any) => Number(item.id)).filter((id: number) => Number.isFinite(id));
+    const productIds = items
+      .map((item: any) => Number(item.id))
+      .filter((id: number) => Number.isFinite(id));
 
     if (productIds.length === 0) {
       return NextResponse.json({ error: "Sepet ürünleri geçersiz." }, { status: 400 });
@@ -124,12 +296,21 @@ export async function POST(req: NextRequest) {
       if (!product) throw new Error(`${cartItem.name || "Ürün"} bulunamadı.`);
 
       const quantity = Number(cartItem.quantity || 1);
-      if (!Number.isFinite(quantity) || quantity <= 0) throw new Error(`${product.name} miktarı geçersiz.`);
-      if (Number(product.stock || 0) < quantity) throw new Error(`${product.name} stokta yetersiz.`);
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        throw new Error(`${product.name} miktarı geçersiz.`);
+      }
+
+      if (Number(product.stock || 0) < quantity) {
+        throw new Error(`${product.name} stokta yetersiz.`);
+      }
 
       const activeCampaign = campaigns?.find((campaign: any) => {
         const ids = safeParseIds(campaign.product_ids);
-        return ids.includes(Number(product.id)) && nowIso >= campaign.start_date && nowIso <= campaign.end_date;
+        return (
+          ids.includes(Number(product.id)) &&
+          nowIso >= campaign.start_date &&
+          nowIso <= campaign.end_date
+        );
       });
 
       const activePrice = activeCampaign
@@ -139,14 +320,35 @@ export async function POST(req: NextRequest) {
       return {
         id: product.id,
         name: product.name,
-        price: activePrice,
+        price: roundMoney(activePrice),
         quantity,
         image: product.images?.[0] || product.image || "/logo.jpeg",
         images: product.images || [],
       };
     });
 
-    const totalAmount = checkedItems.reduce((sum: number, item: any) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0);
+    const subtotalAmount = roundMoney(
+      checkedItems.reduce(
+        (sum: number, item: any) =>
+          sum + Number(item.price || 0) * Number(item.quantity || 1),
+        0
+      )
+    );
+
+    if (!Number.isFinite(subtotalAmount) || subtotalAmount <= 0) {
+      return NextResponse.json({ error: "Geçersiz ödeme tutarı." }, { status: 400 });
+    }
+
+    const couponValidation = await validateCouponOnServer({
+      couponCode: requestedCouponCode,
+      checkoutMode,
+      userId,
+      subtotal: subtotalAmount,
+    });
+
+    const appliedCoupon = couponValidation.coupon;
+    const couponDiscountAmount = couponValidation.discountAmount;
+    const totalAmount = roundMoney(Math.max(0, subtotalAmount - couponDiscountAmount));
 
     if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
       return NextResponse.json({ error: "Geçersiz ödeme tutarı." }, { status: 400 });
@@ -160,9 +362,21 @@ export async function POST(req: NextRequest) {
     const userAddress = shippingAddress.fullAddress || shippingAddress.full_address || shippingAddress.address || "Adres belirtilmedi";
     const paymentAmount = Math.round(totalAmount * 100);
 
-    const userBasket = Buffer.from(
-      JSON.stringify(checkedItems.map((item: any) => [item.name, Number(item.price || 0).toFixed(2), Number(item.quantity || 1)]))
-    ).toString("base64");
+    const basketItems = checkedItems.map((item: any) => [
+      item.name,
+      Number(item.price || 0).toFixed(2),
+      Number(item.quantity || 1),
+    ]);
+
+    if (appliedCoupon && couponDiscountAmount > 0) {
+      basketItems.push([
+        `Kupon İndirimi (${appliedCoupon.code})`,
+        `-${couponDiscountAmount.toFixed(2)}`,
+        1,
+      ]);
+    }
+
+    const userBasket = Buffer.from(JSON.stringify(basketItems)).toString("base64");
 
     const noInstallment = "0";
     const maxInstallment = "12";
@@ -172,8 +386,38 @@ export async function POST(req: NextRequest) {
     const merchantOkUrl = `${siteUrl}/odeme/basarili?oid=${merchantOid}`;
     const merchantFailUrl = `${siteUrl}/odeme/basarisiz?oid=${merchantOid}`;
 
-    const hashStr = merchantId + userIp + merchantOid + effectiveEmail + paymentAmount + userBasket + noInstallment + maxInstallment + currency + testMode;
-    const paytrToken = crypto.createHmac("sha256", merchantKey).update(hashStr + merchantSalt).digest("base64");
+    const hashStr =
+      merchantId +
+      userIp +
+      merchantOid +
+      effectiveEmail +
+      paymentAmount +
+      userBasket +
+      noInstallment +
+      maxInstallment +
+      currency +
+      testMode;
+
+    const paytrToken = crypto
+      .createHmac("sha256", merchantKey)
+      .update(hashStr + merchantSalt)
+      .digest("base64");
+
+    const shippingAddressForOrder = {
+      ...shippingAddress,
+      email: requestedEmail || "",
+      coupon: appliedCoupon
+        ? {
+            id: appliedCoupon.id,
+            code: appliedCoupon.code,
+            discount_type: appliedCoupon.discount_type,
+            discount_value: Number(appliedCoupon.discount_value || 0),
+            discount_amount: couponDiscountAmount,
+            subtotal_amount: subtotalAmount,
+            total_after_discount: totalAmount,
+          }
+        : null,
+    };
 
     const { error: orderError } = await supabaseAdmin.from("orders").insert([
       {
@@ -183,7 +427,7 @@ export async function POST(req: NextRequest) {
         user_email: effectiveEmail,
         items: checkedItems,
         total_amount: totalAmount,
-        shipping_address: JSON.stringify({ ...shippingAddress, email: requestedEmail || "" }),
+        shipping_address: JSON.stringify(shippingAddressForOrder),
         status: "Ödeme Bekleniyor",
         payment_provider: "paytr",
         payment_status: "pending",
@@ -192,7 +436,10 @@ export async function POST(req: NextRequest) {
     ]);
 
     if (orderError) {
-      return NextResponse.json({ error: "Sipariş oluşturulamadı: " + orderError.message }, { status: 500 });
+      return NextResponse.json(
+        { error: "Sipariş oluşturulamadı: " + orderError.message },
+        { status: 500 }
+      );
     }
 
     const params = new URLSearchParams();
@@ -226,18 +473,36 @@ export async function POST(req: NextRequest) {
     if (paytrResult.status !== "success") {
       await supabaseAdmin
         .from("orders")
-        .update({ payment_status: "failed", status: "Ödeme Başlatılamadı", failed_reason: paytrResult.reason || "PayTR token alınamadı." })
+        .update({
+          payment_status: "failed",
+          status: "Ödeme Başlatılamadı",
+          failed_reason: paytrResult.reason || "PayTR token alınamadı.",
+        })
         .eq("merchant_oid", merchantOid);
 
-      return NextResponse.json({ error: paytrResult.reason || "PayTR token alınamadı." }, { status: 400 });
+      return NextResponse.json(
+        { error: paytrResult.reason || "PayTR token alınamadı." },
+        { status: 400 }
+      );
     }
 
     return NextResponse.json({
       token: paytrResult.token,
       merchant_oid: merchantOid,
       iframe_url: `https://www.paytr.com/odeme/guvenli/${paytrResult.token}`,
+      coupon: appliedCoupon
+        ? {
+            code: appliedCoupon.code,
+            discount_amount: couponDiscountAmount,
+          }
+        : null,
+      subtotal_amount: subtotalAmount,
+      total_amount: totalAmount,
     });
   } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "PayTR token oluşturulamadı." }, { status: 500 });
+    return NextResponse.json(
+      { error: err?.message || "PayTR token oluşturulamadı." },
+      { status: 500 }
+    );
   }
 }
