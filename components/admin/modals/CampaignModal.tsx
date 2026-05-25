@@ -3,6 +3,7 @@
 import { useMemo, useState, useEffect } from "react";
 import type { ProductRow, CampaignRow } from "../types";
 import { safeParseIds } from "../utils";
+import { useAppAlert } from "@/context/AppAlertContext";
 
 type Props = {
   open: boolean;
@@ -77,6 +78,8 @@ export default function CampaignModal({
   onCreateCampaign,
   onDeleteCampaign,
 }: Props) {
+  const { showToast, showConfirm } = useAppAlert();
+
   const [productSearch, setProductSearch] = useState("");
   const [isMounted, setIsMounted] = useState(false);
 
@@ -141,7 +144,14 @@ export default function CampaignModal({
     }
 
     return "";
-  }, [campaignDates.end, campaignDates.start, campaignName, discountPercent, minDate, selectedCampaignProducts.length]);
+  }, [
+    campaignDates.end,
+    campaignDates.start,
+    campaignName,
+    discountPercent,
+    minDate,
+    selectedCampaignProducts.length,
+  ]);
 
   const clearSelection = () => setSelectedCampaignProducts([]);
 
@@ -163,17 +173,21 @@ export default function CampaignModal({
 
   const handleCreateCampaign = () => {
     if (validationMessage) {
-      alert(validationMessage);
+      showToast(validationMessage, "warning");
       return;
     }
 
     onCreateCampaign();
   };
 
-  const handleDeleteCampaign = (id: number, name?: string) => {
-    const ok = window.confirm(
-      `${name || "Bu kampanya"} silinsin mi? Bu işlem geri alınamaz.`
-    );
+  const handleDeleteCampaign = async (id: number, name?: string) => {
+    const ok = await showConfirm({
+      title: "Kampanya silinsin mi?",
+      message: `${name || "Bu kampanya"} silinsin mi? Bu işlem geri alınamaz.`,
+      confirmText: "Sil",
+      cancelText: "Vazgeç",
+      tone: "danger",
+    });
 
     if (!ok) return;
 
