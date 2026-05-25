@@ -1,6 +1,7 @@
 "use client";
 
 import type { ChangeEvent, FormEvent } from "react";
+import { useAppAlert } from "@/context/AppAlertContext";
 import { revokeUrls } from "../utils";
 
 const MAX_ADDED_IMAGE_COUNT = 8;
@@ -65,6 +66,8 @@ export default function EditProductModal({
   addUploading,
   onAddMoreImages,
 }: Props) {
+  const { showToast } = useAppAlert();
+
   if (!open) return null;
 
   const handleClose = () => {
@@ -75,16 +78,16 @@ export default function EditProductModal({
     onClose();
   };
 
-  const handleAddFilesChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
+  const handleAddFilesChange = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
 
     if (files.length === 0) return;
 
     const errorMessage = validateImageFiles(files);
 
     if (errorMessage) {
-      e.currentTarget.value = "";
-      alert(errorMessage);
+      event.currentTarget.value = "";
+      showToast(errorMessage, "warning");
       return;
     }
 
@@ -95,11 +98,15 @@ export default function EditProductModal({
 
   const copyText = async (text: string) => {
     const value = (text || "").toString();
-    if (!value) return;
+
+    if (!value) {
+      showToast("Kopyalanacak değer bulunamadı.", "warning");
+      return;
+    }
 
     try {
       await navigator.clipboard.writeText(value);
-      alert("Kopyalandı ✅");
+      showToast("Kopyalandı.", "success");
     } catch {
       try {
         const el = document.createElement("textarea");
@@ -111,9 +118,9 @@ export default function EditProductModal({
         el.select();
         document.execCommand("copy");
         document.body.removeChild(el);
-        alert("Kopyalandı ✅");
+        showToast("Kopyalandı.", "success");
       } catch {
-        alert("Kopyalama başarısız ❌");
+        showToast("Kopyalama başarısız.", "error");
       }
     }
   };
@@ -164,10 +171,10 @@ export default function EditProductModal({
                 type="text"
                 value={skuValue}
                 maxLength={64}
-                onChange={(e) =>
+                onChange={(event) =>
                   setEditingProduct({
                     ...editingProduct,
-                    ["SKU"]: e.target.value.toUpperCase(),
+                    ["SKU"]: event.target.value.toUpperCase(),
                   })
                 }
                 placeholder="Örn: YUZUK-01, PRSTG-KOLYE veya 102938"
@@ -180,19 +187,14 @@ export default function EditProductModal({
                 📸 Fotoğrafları Sırala
               </p>
 
-              {Array.isArray(editingProduct.images) &&
-              editingProduct.images.length > 0 ? (
+              {Array.isArray(editingProduct.images) && editingProduct.images.length > 0 ? (
                 <div className="grid grid-cols-3 gap-2">
                   {editingProduct.images.map((url: string, idx: number) => (
                     <div
                       key={idx}
                       className="relative border border-gray-200 rounded-xl overflow-hidden bg-gray-50 group"
                     >
-                      <img
-                        src={url}
-                        className="w-full h-20 object-cover"
-                        alt=""
-                      />
+                      <img src={url} className="w-full h-20 object-cover" alt="" />
 
                       {idx === 0 && (
                         <span className="absolute top-1 left-1 bg-black text-white text-[10px] px-2 py-0.5 rounded z-10">
@@ -254,10 +256,10 @@ export default function EditProductModal({
 
               {addPreviews.length > 0 && (
                 <div className="flex gap-2 overflow-x-auto mt-3 pb-2">
-                  {addPreviews.map((u, i) => (
+                  {addPreviews.map((url, index) => (
                     <img
-                      key={i}
-                      src={u}
+                      key={index}
+                      src={url}
                       className="w-16 h-16 object-cover rounded-lg border border-gray-200"
                       alt=""
                     />
@@ -285,8 +287,8 @@ export default function EditProductModal({
                   type="text"
                   maxLength={140}
                   value={editingProduct.name || ""}
-                  onChange={(e) =>
-                    setEditingProduct({ ...editingProduct, name: e.target.value })
+                  onChange={(event) =>
+                    setEditingProduct({ ...editingProduct, name: event.target.value })
                   }
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium"
                 />
@@ -303,8 +305,8 @@ export default function EditProductModal({
                   max="9999999"
                   step="0.01"
                   value={editingProduct.price ?? ""}
-                  onChange={(e) =>
-                    setEditingProduct({ ...editingProduct, price: e.target.value })
+                  onChange={(event) =>
+                    setEditingProduct({ ...editingProduct, price: event.target.value })
                   }
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium"
                 />
@@ -318,10 +320,9 @@ export default function EditProductModal({
                   <button
                     type="button"
                     onClick={() => copyText(barcodeValue)}
-                    className="text-[10px] font-black uppercase tracking-widest bg-gray-900 text-white px-3 py-1.5 rounded-lg active:scale-95"
+                    className="text-[10px] font-black uppercase tracking-widest bg-gray-900 text-white px-3 py-1.5 rounded-lg active:scale-95 disabled:opacity-40"
                     title="Barkod kopyala"
                     disabled={!barcodeValue}
-                    style={{ opacity: barcodeValue ? 1 : 0.4 }}
                   >
                     Kopyala
                   </button>
@@ -331,8 +332,8 @@ export default function EditProductModal({
                   type="text"
                   maxLength={80}
                   value={barcodeValue}
-                  onChange={(e) =>
-                    setEditingProduct({ ...editingProduct, barcode: e.target.value })
+                  onChange={(event) =>
+                    setEditingProduct({ ...editingProduct, barcode: event.target.value })
                   }
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium font-mono text-blue-600"
                 />
@@ -344,8 +345,8 @@ export default function EditProductModal({
                 </label>
                 <select
                   value={editingProduct.category || "Kolyeler"}
-                  onChange={(e) =>
-                    setEditingProduct({ ...editingProduct, category: e.target.value })
+                  onChange={(event) =>
+                    setEditingProduct({ ...editingProduct, category: event.target.value })
                   }
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium text-black focus:ring-2 focus:ring-black outline-none transition-all"
                 >
@@ -368,10 +369,10 @@ export default function EditProductModal({
                   max="999999"
                   step="1"
                   value={editingProduct.stock ?? 0}
-                  onChange={(e) =>
+                  onChange={(event) =>
                     setEditingProduct({
                       ...editingProduct,
-                      stock: Number(e.target.value),
+                      stock: Number(event.target.value),
                     })
                   }
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium"
@@ -386,10 +387,10 @@ export default function EditProductModal({
                   rows={3}
                   maxLength={5000}
                   value={editingProduct.description ?? ""}
-                  onChange={(e) =>
+                  onChange={(event) =>
                     setEditingProduct({
                       ...editingProduct,
-                      description: e.target.value,
+                      description: event.target.value,
                     })
                   }
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium resize-none"
@@ -400,10 +401,10 @@ export default function EditProductModal({
                 <input
                   type="checkbox"
                   checked={!!editingProduct.is_bestseller}
-                  onChange={(e) =>
+                  onChange={(event) =>
                     setEditingProduct({
                       ...editingProduct,
-                      is_bestseller: e.target.checked,
+                      is_bestseller: event.target.checked,
                     })
                   }
                   className="w-5 h-5 rounded border-gray-300 text-black focus:ring-black"
