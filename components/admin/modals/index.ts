@@ -1,6 +1,7 @@
 export { default as AddProductModal } from "./AddProductModal";
 export { default as EditProductModal } from "./EditProductModal";
 export { default as CampaignModal } from "./CampaignModal";
+export { default as CouponsModal } from "./CouponsModal";
 export { default as SettingsModal } from "./SettingsModal";
 export { default as MessagesModal } from "./MessagesModal";
 export { default as QuestionsModal } from "./QuestionsModal";

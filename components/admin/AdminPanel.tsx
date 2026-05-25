@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -15,6 +16,7 @@ import {
   AddProductModal,
   EditProductModal,
   CampaignModal,
+  CouponsModal,
   SettingsModal,
   MessagesModal,
   QuestionsModal,
@@ -75,6 +77,7 @@ export default function AdminPanel() {
 
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [isCampaignOpen, setIsCampaignOpen] = useState(false);
+  const [isCouponsOpen, setIsCouponsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const [isMessagesOpen, setIsMessagesOpen] = useState(false);
@@ -932,6 +935,16 @@ export default function AdminPanel() {
           >
             <span>🏷️</span> Kampanya / İndirim
           </button>
+
+          <button
+            onClick={() => {
+              setIsFabOpen(false);
+              setIsCouponsOpen(true);
+            }}
+            className="bg-emerald-600 text-white shadow-lg px-4 py-3 rounded-2xl font-bold text-sm flex items-center gap-3 hover:bg-emerald-700 w-max"
+          >
+            <span>🎟️</span> Kupon Yönetimi
+          </button>
         </div>
 
         <button
@@ -992,6 +1005,11 @@ export default function AdminPanel() {
         dbCampaigns={dbCampaigns as any}
         onCreateCampaign={handleCreateCampaign}
         onDeleteCampaign={handleDeleteCampaign}
+      />
+
+      <CouponsModal
+        open={isCouponsOpen}
+        onClose={() => setIsCouponsOpen(false)}
       />
 
       <SettingsModal
