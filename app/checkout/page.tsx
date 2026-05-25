@@ -1,4 +1,5 @@
-﻿"use client";
+﻿
+"use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
@@ -36,6 +37,33 @@ type AddressForm = {
   addressTitle: string;
 };
 
+type CouponRow = {
+  id: string;
+  code: string;
+  name: string;
+  description?: string | null;
+  discount_type: "percent" | "fixed";
+  discount_value: number;
+  min_order_amount: number;
+  max_discount_amount?: number | null;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  usage_limit_total?: number | null;
+  usage_limit_per_user: number;
+  used_count: number;
+  is_active: boolean;
+  is_member_only: boolean;
+};
+
+type CouponUsageRow = {
+  id: string;
+  coupon_id: string;
+  user_id: string;
+  coupon_code: string;
+  discount_amount: number;
+  created_at?: string;
+};
+
 type SelectPopoverProps<T> = {
   search: string;
   setSearch: (value: string) => void;
@@ -64,6 +92,10 @@ function normalizeEmail(value: string) {
 
 function normalizePhone(value: string) {
   return String(value || "").replace(/[^0-9+]/g, "").slice(0, MAX_PHONE_LENGTH);
+}
+
+function normalizeCouponCode(value: string) {
+  return normalizeText(value).toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 40);
 }
 
 function isValidEmail(value: string) {
@@ -128,6 +160,37 @@ function validateAddressForm(data: AddressForm) {
   return null;
 }
 
+function calculateCouponDiscount(coupon: CouponRow | null, subtotal: number) {
+  if (!coupon || subtotal <= 0) return 0;
+
+  const minOrderAmount = Number(coupon.min_order_amount || 0);
+  if (subtotal < minOrderAmount) return 0;
+
+  let discount = 0;
+
+  if (coupon.discount_type === "fixed") {
+    discount = Number(coupon.discount_value || 0);
+  } else {
+    discount = subtotal * (Number(coupon.discount_value || 0) / 100);
+  }
+
+  const maxDiscount = coupon.max_discount_amount;
+  if (maxDiscount !== null && maxDiscount !== undefined && Number(maxDiscount) > 0) {
+    discount = Math.min(discount, Number(maxDiscount));
+  }
+
+  discount = Math.min(discount, subtotal);
+  return Math.max(0, Math.round(discount * 100) / 100);
+}
+
+function getCouponLabel(coupon: CouponRow) {
+  if (coupon.discount_type === "fixed") {
+    return `${Number(coupon.discount_value || 0).toLocaleString("tr-TR")} TL indirim`;
+  }
+
+  return `%${Number(coupon.discount_value || 0).toLocaleString("tr-TR")} indirim`;
+}
+
 function NoticeToast({ notice }: { notice: { type: NoticeType; message: string } }) {
   const tone =
     notice.type === "success"
@@ -141,7 +204,7 @@ function NoticeToast({ notice }: { notice: { type: NoticeType; message: string }
       ? "bg-white text-green-700"
       : "bg-white text-black";
 
-  const icon = notice.type === "success" ? "âœ“" : "!";
+  const icon = notice.type === "success" ? "✓" : "!";
 
   return (
     <div
@@ -161,6 +224,7 @@ function NoticeToast({ notice }: { notice: { type: NoticeType; message: string }
     </div>
   );
 }
+
 function SelectPopover<T>({
   search,
   setSearch,
@@ -236,6 +300,10 @@ export default function CheckoutPage() {
   const [isContractModalOpen, setIsContractModalOpen] = useState(false);
 
   const [couponCode, setCouponCode] = useState("");
+  const [coupons, setCoupons] = useState<CouponRow[]>([]);
+  const [couponUsages, setCouponUsages] = useState<CouponUsageRow[]>([]);
+  const [selectedCoupon, setSelectedCoupon] = useState<CouponRow | null>(null);
+  const [isCouponsLoading, setIsCouponsLoading] = useState(false);
 
   const [addressData, setAddressData] = useState<AddressForm>({
     email: "",
@@ -301,9 +369,35 @@ export default function CheckoutPage() {
           setSavedAddresses(addr as AddressRow[]);
           setSelectedAddressId((addr[0] as AddressRow).id);
         }
+
+        setIsCouponsLoading(true);
+
+        const { data: couponsData, error: couponsError } = await supabase
+          .from("coupons")
+          .select("*")
+          .order("created_at", { ascending: false });
+
+        if (!couponsError && couponsData) {
+          setCoupons(couponsData as CouponRow[]);
+        }
+
+        const { data: usageData } = await supabase
+          .from("coupon_usages")
+          .select("*")
+          .eq("user_id", session.user.id);
+
+        if (usageData) {
+          setCouponUsages(usageData as CouponUsageRow[]);
+        }
+
+        setIsCouponsLoading(false);
       } else {
         setUser(null);
         setCheckoutMode(null);
+        setCoupons([]);
+        setCouponUsages([]);
+        setSelectedCoupon(null);
+        setCouponCode("");
       }
 
       try {
@@ -334,6 +428,63 @@ export default function CheckoutPage() {
       savedAddresses.find((address) => address.id === selectedAddressId) || null
     );
   }, [savedAddresses, selectedAddressId]);
+
+  const usageCountsByCouponId = useMemo(() => {
+    return couponUsages.reduce((acc: Record<string, number>, usage) => {
+      acc[usage.coupon_id] = (acc[usage.coupon_id] || 0) + 1;
+      return acc;
+    }, {});
+  }, [couponUsages]);
+
+  const getCouponProblem = (coupon: CouponRow) => {
+    if (!isMember) return "Kuponlar sadece üyeler için geçerlidir.";
+
+    if (Number(cartTotal || 0) < Number(coupon.min_order_amount || 0)) {
+      return `Bu kupon için sepet tutarı en az ${Number(coupon.min_order_amount || 0).toLocaleString("tr-TR")} ₺ olmalıdır.`;
+    }
+
+    if (
+      coupon.usage_limit_total !== null &&
+      coupon.usage_limit_total !== undefined &&
+      Number(coupon.used_count || 0) >= Number(coupon.usage_limit_total)
+    ) {
+      return "Bu kuponun toplam kullanım hakkı dolmuştur.";
+    }
+
+    const userUsageCount = usageCountsByCouponId[coupon.id] || 0;
+    if (userUsageCount >= Number(coupon.usage_limit_per_user || 1)) {
+      return "Bu kuponu daha önce kullandınız.";
+    }
+
+    return null;
+  };
+
+  const availableCoupons = useMemo(() => {
+    return coupons.filter((coupon) => !getCouponProblem(coupon));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coupons, cartTotal, isMember, usageCountsByCouponId]);
+
+  const couponDiscount = useMemo(() => {
+    const problem = selectedCoupon ? getCouponProblem(selectedCoupon) : null;
+    if (problem) return 0;
+    return calculateCouponDiscount(selectedCoupon, Number(cartTotal || 0));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCoupon, cartTotal, isMember, usageCountsByCouponId]);
+
+  const finalTotal = useMemo(() => {
+    return Math.max(0, Number(cartTotal || 0) - couponDiscount);
+  }, [cartTotal, couponDiscount]);
+
+  useEffect(() => {
+    if (!selectedCoupon) return;
+
+    const problem = getCouponProblem(selectedCoupon);
+    if (problem) {
+      setSelectedCoupon(null);
+      showNotice(problem, "error");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cartTotal]);
 
   const filteredCities = useMemo(() => {
     const query = citySearch.toLocaleLowerCase("tr-TR");
@@ -435,6 +586,54 @@ export default function CheckoutPage() {
 
     setShowNeighborhoodSelect(false);
     setNeighborhoodSearch("");
+  };
+
+  const applyCoupon = (coupon: CouponRow) => {
+    const problem = getCouponProblem(coupon);
+
+    if (problem) {
+      showNotice(problem, "error");
+      return;
+    }
+
+    const discount = calculateCouponDiscount(coupon, Number(cartTotal || 0));
+    if (discount <= 0) {
+      showNotice("Bu kupon mevcut sepet için indirim oluşturmuyor.", "error");
+      return;
+    }
+
+    setSelectedCoupon(coupon);
+    setCouponCode(coupon.code);
+    showNotice(`${coupon.code} kuponu uygulandı.`, "success");
+  };
+
+  const handleApplyCouponCode = () => {
+    const code = normalizeCouponCode(couponCode);
+
+    if (!isMember) {
+      showNotice("Kupon kullanmak için giriş yapmalısınız.", "error");
+      return;
+    }
+
+    if (!code) {
+      showNotice("Lütfen kupon kodu girin.", "error");
+      return;
+    }
+
+    const foundCoupon = coupons.find((coupon) => coupon.code === code);
+
+    if (!foundCoupon) {
+      showNotice("Kupon bulunamadı veya aktif değil.", "error");
+      return;
+    }
+
+    applyCoupon(foundCoupon);
+  };
+
+  const removeCoupon = () => {
+    setSelectedCoupon(null);
+    setCouponCode("");
+    showNotice("Kupon kaldırıldı.", "info");
   };
 
   const handleSaveAddressModal = async (event: FormEvent<HTMLFormElement>) => {
@@ -574,6 +773,8 @@ export default function CheckoutPage() {
         addressTitle: selectedAddress?.title,
       };
 
+      const activeCouponCode = isMember && selectedCoupon && couponDiscount > 0 ? selectedCoupon.code : "";
+
       const response = await fetch("/api/paytr/create-token", {
         method: "POST",
         headers: {
@@ -585,7 +786,10 @@ export default function CheckoutPage() {
           items: cartItems,
           shippingAddress: shippingAddressObject,
           checkoutMode,
-          couponCode: isMember ? normalizeText(couponCode) : "",
+          couponCode: activeCouponCode,
+          couponDiscountPreview: couponDiscount,
+          cartSubtotal: Number(cartTotal || 0),
+          cartTotalAfterCoupon: finalTotal,
         }),
       });
 
@@ -824,37 +1028,114 @@ export default function CheckoutPage() {
               {isMember && (
                 <section className="bg-white p-5 md:p-7 rounded-3xl border border-gray-100 shadow-sm">
                   <div className="flex items-center justify-between gap-4 mb-4">
-                    <h2 className="text-base md:text-lg font-black uppercase tracking-tighter text-black">
-                      Kuponlarım
-                    </h2>
+                    <div>
+                      <h2 className="text-base md:text-lg font-black uppercase tracking-tighter text-black">
+                        Kuponlarım
+                      </h2>
+                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">
+                        Sadece üyelere özel
+                      </p>
+                    </div>
 
-                    <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
-                      Üyelere Özel
-                    </span>
+                    {selectedCoupon && (
+                      <button
+                        type="button"
+                        onClick={removeCoupon}
+                        className="text-[10px] font-black uppercase tracking-widest text-red-500 bg-red-50 border border-red-100 px-3 py-2 rounded-xl"
+                      >
+                        Kuponu Kaldır
+                      </button>
+                    )}
                   </div>
 
-                  <div className="rounded-2xl bg-gray-50 border border-gray-100 p-4 mb-3">
-                    <p className="text-xs font-bold text-gray-500">
-                      Şu an kullanılabilir kayıtlı kupon bulunmuyor.
-                    </p>
-                  </div>
+                  {isCouponsLoading ? (
+                    <div className="rounded-2xl bg-gray-50 border border-gray-100 p-4 mb-3">
+                      <p className="text-xs font-bold text-gray-400 animate-pulse">
+                        Kuponlar yükleniyor...
+                      </p>
+                    </div>
+                  ) : coupons.length === 0 ? (
+                    <div className="rounded-2xl bg-gray-50 border border-gray-100 p-4 mb-3">
+                      <p className="text-xs font-bold text-gray-500">
+                        Şu an kullanılabilir kayıtlı kupon bulunmuyor.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+                      {coupons.map((coupon) => {
+                        const problem = getCouponProblem(coupon);
+                        const active = selectedCoupon?.id === coupon.id;
+                        const discount = calculateCouponDiscount(coupon, Number(cartTotal || 0));
+
+                        return (
+                          <button
+                            type="button"
+                            key={coupon.id}
+                            onClick={() => applyCoupon(coupon)}
+                            className={`text-left rounded-2xl border-2 p-4 transition-all active:scale-[0.98] ${
+                              active
+                                ? "border-black bg-black text-white shadow-lg"
+                                : problem
+                                ? "border-gray-100 bg-gray-50 text-gray-400"
+                                : "border-gray-200 bg-white text-black hover:border-black"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-[10px] font-black uppercase tracking-widest opacity-70">
+                                  {coupon.code}
+                                </p>
+                                <p className="text-sm font-black mt-1">
+                                  {coupon.name}
+                                </p>
+                              </div>
+
+                              <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-lg ${active ? "bg-white text-black" : "bg-black text-white"}`}>
+                                {getCouponLabel(coupon)}
+                              </span>
+                            </div>
+
+                            {coupon.description && (
+                              <p className={`text-[11px] font-medium mt-2 leading-relaxed ${active ? "text-white/70" : "text-gray-500"}`}>
+                                {coupon.description}
+                              </p>
+                            )}
+
+                            <div className="flex items-center justify-between gap-2 mt-3 pt-3 border-t border-current/10">
+                              <p className="text-[10px] font-bold uppercase tracking-widest opacity-70">
+                                Min. {Number(coupon.min_order_amount || 0).toLocaleString("tr-TR")} ₺
+                              </p>
+
+                              {problem ? (
+                                <p className="text-[10px] font-black text-right">
+                                  Uygun değil
+                                </p>
+                              ) : (
+                                <p className="text-[10px] font-black text-right">
+                                  -{discount.toLocaleString("tr-TR")} ₺
+                                </p>
+                              )}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
 
                   <div className="flex gap-2">
                     <input
                       value={couponCode}
-                      onChange={(event) => setCouponCode(event.target.value.toUpperCase())}
+                      onChange={(event) => setCouponCode(normalizeCouponCode(event.target.value))}
                       placeholder="Kupon kodu ekle"
                       className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl text-sm font-bold uppercase outline-none focus:border-black"
                     />
 
                     <button
                       type="button"
-                      onClick={() =>
-                        showNotice("Kupon doğrulama altyapısı sonraki adımda bağlanacak.", "info")
-                      }
+                      onClick={handleApplyCouponCode}
                       className="bg-black text-white px-5 rounded-xl text-xs font-black uppercase tracking-widest"
                     >
-                      Ekle
+                      Uygula
                     </button>
                   </div>
                 </section>
@@ -875,6 +1156,18 @@ export default function CheckoutPage() {
                 <span>{cartTotal.toLocaleString("tr-TR")} ₺</span>
               </div>
 
+              {couponDiscount > 0 && selectedCoupon && (
+                <div className="flex justify-between items-start text-xs font-bold text-red-600 bg-red-50 border border-red-100 rounded-xl p-3">
+                  <div>
+                    <span className="block">Kupon İndirimi</span>
+                    <span className="block text-[10px] font-black uppercase tracking-widest mt-1">
+                      {selectedCoupon.code}
+                    </span>
+                  </div>
+                  <span>-{couponDiscount.toLocaleString("tr-TR")} ₺</span>
+                </div>
+              )}
+
               <div className="flex justify-between text-xs font-bold text-green-600">
                 <span>Kargo</span>
                 <span>ÜCRETSİZ</span>
@@ -886,7 +1179,7 @@ export default function CheckoutPage() {
                 </span>
 
                 <span className="text-3xl font-black">
-                  {cartTotal.toLocaleString("tr-TR")} ₺
+                  {finalTotal.toLocaleString("tr-TR")} ₺
                 </span>
               </div>
             </div>
@@ -1250,4 +1543,3 @@ export default function CheckoutPage() {
     </div>
   );
 }
-
