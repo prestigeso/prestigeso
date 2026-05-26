@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import type { Slide } from "../types";
 import { revokeUrls } from "../utils";
 
@@ -7,16 +8,13 @@ type Props = {
   open: boolean;
   onClose: () => void;
 
-  // marquee
   marquee: string;
   setMarquee: (v: string) => void;
   onSaveMarquee: () => void;
 
-  // slides
   dbSlides: Slide[];
   setDbSlides: (updater: (prev: Slide[]) => Slide[]) => void;
 
-  // add slide state
   newSlideFiles: File[];
   setNewSlideFiles: (files: File[]) => void;
 
@@ -26,11 +24,19 @@ type Props = {
   newSlide: { title: string; subtitle: string };
   setNewSlide: (v: { title: string; subtitle: string }) => void;
 
-  // actions
   onAddSlide: () => void;
   onUpdateSlide: (slide: Slide) => void;
   onDeleteSlide: (id: number) => void;
 };
+
+function toMoneyInput(value: unknown) {
+  const numberValue = Number(value || 0);
+  return Number.isFinite(numberValue) && numberValue > 0 ? String(numberValue) : "";
+}
+
+function sanitizeMoneyInput(value: string) {
+  return value.replace(/[^0-9.,]/g, "").replace(",", ".").slice(0, 12);
+}
 
 export default function SettingsModal({
   open,
@@ -56,14 +62,89 @@ export default function SettingsModal({
   onUpdateSlide,
   onDeleteSlide,
 }: Props) {
+  const [shippingFee, setShippingFee] = useState("");
+  const [freeShippingThreshold, setFreeShippingThreshold] = useState("");
+  const [shippingEnabled, setShippingEnabled] = useState(true);
+  const [shippingSaving, setShippingSaving] = useState(false);
+  const [shippingStatus, setShippingStatus] = useState("");
+
+  useEffect(() => {
+    if (!open) return;
+
+    const loadShippingSettings = async () => {
+      try {
+        const response = await fetch("/api/site-settings", {
+          method: "GET",
+          credentials: "include",
+        });
+
+        const result = await response.json();
+        const shipping = result?.shipping || {};
+
+        setShippingFee(toMoneyInput(shipping.shipping_fee));
+        setFreeShippingThreshold(toMoneyInput(shipping.free_shipping_threshold));
+        setShippingEnabled(shipping.shipping_enabled !== false);
+      } catch {
+        setShippingStatus("Kargo ayarları yüklenemedi.");
+      }
+    };
+
+    loadShippingSettings();
+  }, [open]);
+
   if (!open) return null;
 
   const handleClose = () => {
-    // preview cleanup
     revokeUrls(newSlidePreviews);
     setNewSlidePreviews([]);
     setNewSlideFiles([]);
+    setShippingStatus("");
     onClose();
+  };
+
+  const handleSaveShipping = async () => {
+    const shippingFeeValue = Number(shippingFee || 0);
+    const freeShippingThresholdValue = Number(freeShippingThreshold || 0);
+
+    if (!Number.isFinite(shippingFeeValue) || shippingFeeValue < 0) {
+      setShippingStatus("Kargo ücreti geçerli değil.");
+      return;
+    }
+
+    if (!Number.isFinite(freeShippingThresholdValue) || freeShippingThresholdValue < 0) {
+      setShippingStatus("Ücretsiz kargo alt limiti geçerli değil.");
+      return;
+    }
+
+    setShippingSaving(true);
+    setShippingStatus("");
+
+    try {
+      const response = await fetch("/api/admin/site-settings", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shipping: {
+            shipping_fee: shippingFeeValue,
+            free_shipping_threshold: freeShippingThresholdValue,
+            shipping_enabled: shippingEnabled,
+          },
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result?.error || "Kargo ayarları kaydedilemedi.");
+      }
+
+      setShippingStatus("Kargo ayarları kaydedildi.");
+    } catch (error: any) {
+      setShippingStatus(error?.message || "Kargo ayarları kaydedilemedi.");
+    } finally {
+      setShippingSaving(false);
+    }
   };
 
   return (
@@ -81,7 +162,6 @@ export default function SettingsModal({
           </button>
         </div>
 
-        {/* MARQUEE */}
         <div className="space-y-2">
           <label className="text-xs font-bold text-gray-500 uppercase block">
             Kayan Yazı
@@ -102,11 +182,70 @@ export default function SettingsModal({
           </button>
         </div>
 
-        {/* SLIDER */}
+        <div className="pt-6 border-t border-gray-100 mt-6">
+          <h3 className="text-sm font-black mb-3">🚚 Kargo Ayarları</h3>
+
+          <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 space-y-4 mb-5">
+            <label className="flex items-center justify-between gap-3 bg-white border border-gray-100 rounded-xl p-3 cursor-pointer">
+              <span className="text-xs font-black uppercase tracking-widest text-gray-600">
+                Kargo Sistemi Aktif
+              </span>
+              <input
+                type="checkbox"
+                checked={shippingEnabled}
+                onChange={(event) => setShippingEnabled(event.target.checked)}
+                className="w-4 h-4 accent-black"
+              />
+            </label>
+
+            <div>
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
+                Kargo Ücreti
+              </label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={shippingFee}
+                onChange={(event) => setShippingFee(sanitizeMoneyInput(event.target.value))}
+                placeholder="Örn: 69.90"
+                className="w-full p-3 bg-white border border-gray-200 rounded-xl font-bold outline-none focus:border-black"
+              />
+            </div>
+
+            <div>
+              <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
+                Ücretsiz Kargo Alt Limiti
+              </label>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={freeShippingThreshold}
+                onChange={(event) => setFreeShippingThreshold(sanitizeMoneyInput(event.target.value))}
+                placeholder="Örn: 750"
+                className="w-full p-3 bg-white border border-gray-200 rounded-xl font-bold outline-none focus:border-black"
+              />
+            </div>
+
+            {shippingStatus && (
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">
+                {shippingStatus}
+              </p>
+            )}
+
+            <button
+              type="button"
+              onClick={handleSaveShipping}
+              disabled={shippingSaving}
+              className="w-full bg-black text-white py-3 rounded-xl font-bold text-xs uppercase tracking-widest disabled:opacity-50 shadow-md"
+            >
+              {shippingSaving ? "Kaydediliyor..." : "Kargo Ayarlarını Kaydet"}
+            </button>
+          </div>
+        </div>
+
         <div className="pt-6 border-t border-gray-100 mt-6">
           <h3 className="text-sm font-black mb-3">🖼️ Slider Yönetimi</h3>
 
-          {/* ADD SLIDE */}
           <div className="bg-gray-50 border border-gray-200 rounded-2xl p-4 mb-5">
             <input
               type="file"
@@ -159,7 +298,6 @@ export default function SettingsModal({
             </button>
           </div>
 
-          {/* LIST SLIDES */}
           <div className="space-y-3">
             {dbSlides.map((s) => (
               <div
@@ -230,7 +368,6 @@ export default function SettingsModal({
             )}
           </div>
 
-          {/* FOOT */}
           <button
             type="button"
             onClick={handleClose}

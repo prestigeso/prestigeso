@@ -22,32 +22,36 @@ type CouponRow = {
   is_member_only: boolean;
 };
 
-function safeParseIds(ids: unknown): number[] {
-  if (Array.isArray(ids)) {
-    return ids.map((x) => Number(x)).filter((x) => Number.isFinite(x));
-  }
+type ShippingSettings = {
+  shipping_fee: number;
+  free_shipping_threshold: number;
+  shipping_enabled: boolean;
+};
 
+const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
+  shipping_fee: 0,
+  free_shipping_threshold: 0,
+  shipping_enabled: true,
+};
+
+function safeParseIds(ids: unknown): number[] {
+  if (Array.isArray(ids)) return ids.map((x) => Number(x)).filter((x) => Number.isFinite(x));
   if (typeof ids === "string") {
     try {
       const parsed = JSON.parse(ids);
-      if (Array.isArray(parsed)) {
-        return parsed.map((x) => Number(x)).filter((x) => Number.isFinite(x));
-      }
+      if (Array.isArray(parsed)) return parsed.map((x) => Number(x)).filter((x) => Number.isFinite(x));
     } catch {
       return [];
     }
   }
-
   return [];
 }
 
 function getClientIp(req: NextRequest) {
   const forwarded = req.headers.get("x-forwarded-for");
   if (forwarded) return forwarded.split(",")[0].trim();
-
   const realIp = req.headers.get("x-real-ip");
   if (realIp) return realIp;
-
   return "127.0.0.1";
 }
 
@@ -57,7 +61,6 @@ function makeMerchantOid() {
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
   const random = Math.random().toString(36).slice(2, 10).toUpperCase();
-
   return `PRS${year}${month}${day}${random}`;
 }
 
@@ -79,11 +82,7 @@ function isValidTurkishPhone(value: string) {
 }
 
 function normalizeCouponCode(value: unknown) {
-  return String(value || "")
-    .trim()
-    .toUpperCase()
-    .replace(/[^A-Z0-9_-]/g, "")
-    .slice(0, 40);
+  return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 40);
 }
 
 function roundMoney(value: number) {
@@ -98,7 +97,6 @@ function calculateCouponDiscount(coupon: CouponRow, subtotal: number) {
   if (safeSubtotal < minOrderAmount) return 0;
 
   let discount = 0;
-
   if (coupon.discount_type === "fixed") {
     discount = Number(coupon.discount_value || 0);
   } else {
@@ -116,16 +114,43 @@ function calculateCouponDiscount(coupon: CouponRow, subtotal: number) {
 
 function isCouponInDateRange(coupon: CouponRow) {
   const now = Date.now();
-
-  if (coupon.starts_at && new Date(coupon.starts_at).getTime() > now) {
-    return false;
-  }
-
-  if (coupon.ends_at && new Date(coupon.ends_at).getTime() < now) {
-    return false;
-  }
-
+  if (coupon.starts_at && new Date(coupon.starts_at).getTime() > now) return false;
+  if (coupon.ends_at && new Date(coupon.ends_at).getTime() < now) return false;
   return true;
+}
+
+function normalizeShippingSettings(value: any): ShippingSettings {
+  const source = value && typeof value === "object" ? value : {};
+  const shippingFee = Number(source.shipping_fee || 0);
+  const freeShippingThreshold = Number(source.free_shipping_threshold || 0);
+
+  return {
+    shipping_fee: Number.isFinite(shippingFee) && shippingFee > 0 ? shippingFee : 0,
+    free_shipping_threshold:
+      Number.isFinite(freeShippingThreshold) && freeShippingThreshold > 0
+        ? freeShippingThreshold
+        : 0,
+    shipping_enabled: source.shipping_enabled !== false,
+  };
+}
+
+async function getShippingSettings(): Promise<ShippingSettings> {
+  const { data, error } = await supabaseAdmin
+    .from("site_settings")
+    .select("value")
+    .eq("key", "shipping")
+    .maybeSingle();
+
+  if (error || !data) return DEFAULT_SHIPPING_SETTINGS;
+  return normalizeShippingSettings(data.value);
+}
+
+function calculateShippingFee(settings: ShippingSettings, subtotalAfterCoupon: number) {
+  if (!settings.shipping_enabled) return 0;
+  const threshold = Number(settings.free_shipping_threshold || 0);
+  const fee = Number(settings.shipping_fee || 0);
+  if (threshold > 0 && subtotalAfterCoupon >= threshold) return 0;
+  return fee > 0 ? roundMoney(fee) : 0;
 }
 
 async function validateCouponOnServer({
@@ -140,13 +165,7 @@ async function validateCouponOnServer({
   subtotal: number;
 }) {
   const code = normalizeCouponCode(couponCode);
-
-  if (!code) {
-    return {
-      coupon: null as CouponRow | null,
-      discountAmount: 0,
-    };
-  }
+  if (!code) return { coupon: null as CouponRow | null, discountAmount: 0 };
 
   if (checkoutMode !== "member" || !userId) {
     throw new Error("Kupon kullanmak için üye girişi yapmalısınız.");
@@ -158,29 +177,16 @@ async function validateCouponOnServer({
     .eq("code", code)
     .single();
 
-  if (couponError || !coupon) {
-    throw new Error("Kupon bulunamadı veya aktif değil.");
-  }
+  if (couponError || !coupon) throw new Error("Kupon bulunamadı veya aktif değil.");
 
   const typedCoupon = coupon as CouponRow;
-
-  if (!typedCoupon.is_active) {
-    throw new Error("Bu kupon aktif değil.");
-  }
-
-  if (typedCoupon.is_member_only && checkoutMode !== "member") {
-    throw new Error("Bu kupon sadece üyeler için geçerlidir.");
-  }
-
-  if (!isCouponInDateRange(typedCoupon)) {
-    throw new Error("Bu kuponun geçerlilik süresi uygun değil.");
-  }
+  if (!typedCoupon.is_active) throw new Error("Bu kupon aktif değil.");
+  if (typedCoupon.is_member_only && checkoutMode !== "member") throw new Error("Bu kupon sadece üyeler için geçerlidir.");
+  if (!isCouponInDateRange(typedCoupon)) throw new Error("Bu kuponun geçerlilik süresi uygun değil.");
 
   const minOrderAmount = Number(typedCoupon.min_order_amount || 0);
   if (subtotal < minOrderAmount) {
-    throw new Error(
-      `Bu kupon için sepet tutarı en az ${minOrderAmount.toLocaleString("tr-TR")} TL olmalıdır.`
-    );
+    throw new Error(`Bu kupon için sepet tutarı en az ${minOrderAmount.toLocaleString("tr-TR")} TL olmalıdır.`);
   }
 
   if (
@@ -197,25 +203,15 @@ async function validateCouponOnServer({
     .eq("coupon_id", typedCoupon.id)
     .eq("user_id", userId);
 
-  if (usageError) {
-    throw new Error("Kupon kullanım geçmişi kontrol edilemedi.");
-  }
+  if (usageError) throw new Error("Kupon kullanım geçmişi kontrol edilemedi.");
 
   const perUserLimit = Number(typedCoupon.usage_limit_per_user || 1);
-  if (Number(userUsageCount || 0) >= perUserLimit) {
-    throw new Error("Bu kuponu daha önce kullandınız.");
-  }
+  if (Number(userUsageCount || 0) >= perUserLimit) throw new Error("Bu kuponu daha önce kullandınız.");
 
   const discountAmount = calculateCouponDiscount(typedCoupon, subtotal);
+  if (discountAmount <= 0) throw new Error("Bu kupon mevcut sepet için indirim oluşturmuyor.");
 
-  if (discountAmount <= 0) {
-    throw new Error("Bu kupon mevcut sepet için indirim oluşturmuyor.");
-  }
-
-  return {
-    coupon: typedCoupon,
-    discountAmount,
-  };
+  return { coupon: typedCoupon, discountAmount };
 }
 
 export async function POST(req: NextRequest) {
@@ -238,55 +234,28 @@ export async function POST(req: NextRequest) {
     const items = Array.isArray(body.items) ? body.items : [];
     const shippingAddress = body.shippingAddress || null;
 
-    if (requestedEmail && !isValidEmail(requestedEmail)) {
-      return NextResponse.json({ error: "Geçersiz e-posta adresi." }, { status: 400 });
-    }
-
-    if (checkoutMode === "member" && (!userId || !requestedEmail)) {
-      return NextResponse.json({ error: "Üye siparişi için giriş yapmanız gerekiyor." }, { status: 401 });
-    }
-
-    if (!shippingAddress) {
-      return NextResponse.json({ error: "Teslimat adresi zorunludur." }, { status: 400 });
-    }
+    if (requestedEmail && !isValidEmail(requestedEmail)) return NextResponse.json({ error: "Geçersiz e-posta adresi." }, { status: 400 });
+    if (checkoutMode === "member" && (!userId || !requestedEmail)) return NextResponse.json({ error: "Üye siparişi için giriş yapmanız gerekiyor." }, { status: 401 });
+    if (!shippingAddress) return NextResponse.json({ error: "Teslimat adresi zorunludur." }, { status: 400 });
 
     const userPhone = normalizePhone(shippingAddress.phone);
+    if (!isValidTurkishPhone(userPhone)) return NextResponse.json({ error: "Geçerli bir telefon numarası zorunludur." }, { status: 400 });
 
-    if (!isValidTurkishPhone(userPhone)) {
-      return NextResponse.json({ error: "Geçerli bir telefon numarası zorunludur." }, { status: 400 });
-    }
-
-    if (
-      !shippingAddress.firstName ||
-      !shippingAddress.lastName ||
-      !shippingAddress.city ||
-      !shippingAddress.district ||
-      !shippingAddress.neighborhood ||
-      !shippingAddress.fullAddress
-    ) {
+    if (!shippingAddress.firstName || !shippingAddress.lastName || !shippingAddress.city || !shippingAddress.district || !shippingAddress.neighborhood || !shippingAddress.fullAddress) {
       return NextResponse.json({ error: "Teslimat adresi eksik." }, { status: 400 });
     }
 
-    if (items.length === 0) {
-      return NextResponse.json({ error: "Sepet boş." }, { status: 400 });
-    }
+    if (items.length === 0) return NextResponse.json({ error: "Sepet boş." }, { status: 400 });
 
-    const productIds = items
-      .map((item: any) => Number(item.id))
-      .filter((id: number) => Number.isFinite(id));
-
-    if (productIds.length === 0) {
-      return NextResponse.json({ error: "Sepet ürünleri geçersiz." }, { status: 400 });
-    }
+    const productIds = items.map((item: any) => Number(item.id)).filter((id: number) => Number.isFinite(id));
+    if (productIds.length === 0) return NextResponse.json({ error: "Sepet ürünleri geçersiz." }, { status: 400 });
 
     const { data: products, error: productError } = await supabaseAdmin
       .from("products")
       .select("id, name, price, stock, image, images")
       .in("id", productIds);
 
-    if (productError || !products) {
-      return NextResponse.json({ error: "Ürünler kontrol edilemedi." }, { status: 500 });
-    }
+    if (productError || !products) return NextResponse.json({ error: "Ürünler kontrol edilemedi." }, { status: 500 });
 
     const { data: campaigns } = await supabaseAdmin.from("campaigns").select("*");
     const nowIso = new Date().toISOString();
@@ -296,26 +265,15 @@ export async function POST(req: NextRequest) {
       if (!product) throw new Error(`${cartItem.name || "Ürün"} bulunamadı.`);
 
       const quantity = Number(cartItem.quantity || 1);
-      if (!Number.isFinite(quantity) || quantity <= 0) {
-        throw new Error(`${product.name} miktarı geçersiz.`);
-      }
-
-      if (Number(product.stock || 0) < quantity) {
-        throw new Error(`${product.name} stokta yetersiz.`);
-      }
+      if (!Number.isFinite(quantity) || quantity <= 0) throw new Error(`${product.name} miktarı geçersiz.`);
+      if (Number(product.stock || 0) < quantity) throw new Error(`${product.name} stokta yetersiz.`);
 
       const activeCampaign = campaigns?.find((campaign: any) => {
         const ids = safeParseIds(campaign.product_ids);
-        return (
-          ids.includes(Number(product.id)) &&
-          nowIso >= campaign.start_date &&
-          nowIso <= campaign.end_date
-        );
+        return ids.includes(Number(product.id)) && nowIso >= campaign.start_date && nowIso <= campaign.end_date;
       });
 
-      const activePrice = activeCampaign
-        ? Number(product.price) * (1 - Number(activeCampaign.discount_percent) / 100)
-        : Number(product.price);
+      const activePrice = activeCampaign ? Number(product.price) * (1 - Number(activeCampaign.discount_percent) / 100) : Number(product.price);
 
       return {
         id: product.id,
@@ -327,54 +285,33 @@ export async function POST(req: NextRequest) {
       };
     });
 
-    const subtotalAmount = roundMoney(
-      checkedItems.reduce(
-        (sum: number, item: any) =>
-          sum + Number(item.price || 0) * Number(item.quantity || 1),
-        0
-      )
-    );
+    const subtotalAmount = roundMoney(checkedItems.reduce((sum: number, item: any) => sum + Number(item.price || 0) * Number(item.quantity || 1), 0));
+    if (!Number.isFinite(subtotalAmount) || subtotalAmount <= 0) return NextResponse.json({ error: "Geçersiz ödeme tutarı." }, { status: 400 });
 
-    if (!Number.isFinite(subtotalAmount) || subtotalAmount <= 0) {
-      return NextResponse.json({ error: "Geçersiz ödeme tutarı." }, { status: 400 });
-    }
-
-    const couponValidation = await validateCouponOnServer({
-      couponCode: requestedCouponCode,
-      checkoutMode,
-      userId,
-      subtotal: subtotalAmount,
-    });
-
+    const couponValidation = await validateCouponOnServer({ couponCode: requestedCouponCode, checkoutMode, userId, subtotal: subtotalAmount });
     const appliedCoupon = couponValidation.coupon;
     const couponDiscountAmount = couponValidation.discountAmount;
-    const totalAmount = roundMoney(Math.max(0, subtotalAmount - couponDiscountAmount));
+    const subtotalAfterCoupon = roundMoney(Math.max(0, subtotalAmount - couponDiscountAmount));
+    const shippingSettings = await getShippingSettings();
+    const shippingFeeAmount = calculateShippingFee(shippingSettings, subtotalAfterCoupon);
+    const totalAmount = roundMoney(subtotalAfterCoupon + shippingFeeAmount);
 
-    if (!Number.isFinite(totalAmount) || totalAmount <= 0) {
-      return NextResponse.json({ error: "Geçersiz ödeme tutarı." }, { status: 400 });
-    }
+    if (!Number.isFinite(totalAmount) || totalAmount <= 0) return NextResponse.json({ error: "Geçersiz ödeme tutarı." }, { status: 400 });
 
     const merchantOid = makeMerchantOid();
     const effectiveEmail = requestedEmail || `guest-${merchantOid.toLowerCase()}@prestigeso.com.tr`;
     const userIp = getClientIp(req);
-
     const userName = `${shippingAddress.firstName || ""} ${shippingAddress.lastName || ""}`.trim() || effectiveEmail;
     const userAddress = shippingAddress.fullAddress || shippingAddress.full_address || shippingAddress.address || "Adres belirtilmedi";
     const paymentAmount = Math.round(totalAmount * 100);
 
-    const basketItems = checkedItems.map((item: any) => [
-      item.name,
-      Number(item.price || 0).toFixed(2),
-      Number(item.quantity || 1),
-    ]);
+    const basketItems = checkedItems.map((item: any) => [item.name, Number(item.price || 0).toFixed(2), Number(item.quantity || 1)]);
 
     if (appliedCoupon && couponDiscountAmount > 0) {
-      basketItems.push([
-        `Kupon İndirimi (${appliedCoupon.code})`,
-        `-${couponDiscountAmount.toFixed(2)}`,
-        1,
-      ]);
+      basketItems.push([`Kupon İndirimi (${appliedCoupon.code})`, `-${couponDiscountAmount.toFixed(2)}`, 1]);
     }
+
+    if (shippingFeeAmount > 0) basketItems.push(["Kargo Ücreti", shippingFeeAmount.toFixed(2), 1]);
 
     const userBasket = Buffer.from(JSON.stringify(basketItems)).toString("base64");
 
@@ -386,22 +323,8 @@ export async function POST(req: NextRequest) {
     const merchantOkUrl = `${siteUrl}/odeme/basarili?oid=${merchantOid}`;
     const merchantFailUrl = `${siteUrl}/odeme/basarisiz?oid=${merchantOid}`;
 
-    const hashStr =
-      merchantId +
-      userIp +
-      merchantOid +
-      effectiveEmail +
-      paymentAmount +
-      userBasket +
-      noInstallment +
-      maxInstallment +
-      currency +
-      testMode;
-
-    const paytrToken = crypto
-      .createHmac("sha256", merchantKey)
-      .update(hashStr + merchantSalt)
-      .digest("base64");
+    const hashStr = merchantId + userIp + merchantOid + effectiveEmail + paymentAmount + userBasket + noInstallment + maxInstallment + currency + testMode;
+    const paytrToken = crypto.createHmac("sha256", merchantKey).update(hashStr + merchantSalt).digest("base64");
 
     const shippingAddressForOrder = {
       ...shippingAddress,
@@ -414,9 +337,17 @@ export async function POST(req: NextRequest) {
             discount_value: Number(appliedCoupon.discount_value || 0),
             discount_amount: couponDiscountAmount,
             subtotal_amount: subtotalAmount,
-            total_after_discount: totalAmount,
+            total_after_discount: subtotalAfterCoupon,
           }
         : null,
+      shipping: {
+        shipping_fee: shippingFeeAmount,
+        free_shipping_threshold: shippingSettings.free_shipping_threshold,
+        shipping_enabled: shippingSettings.shipping_enabled,
+        is_free_shipping: shippingFeeAmount <= 0,
+        subtotal_after_coupon: subtotalAfterCoupon,
+        final_total: totalAmount,
+      },
     };
 
     const { error: orderError } = await supabaseAdmin.from("orders").insert([
@@ -435,12 +366,7 @@ export async function POST(req: NextRequest) {
       },
     ]);
 
-    if (orderError) {
-      return NextResponse.json(
-        { error: "Sipariş oluşturulamadı: " + orderError.message },
-        { status: 500 }
-      );
-    }
+    if (orderError) return NextResponse.json({ error: "Sipariş oluşturulamadı: " + orderError.message }, { status: 500 });
 
     const params = new URLSearchParams();
     params.append("merchant_id", merchantId);
@@ -469,40 +395,27 @@ export async function POST(req: NextRequest) {
     });
 
     const paytrResult = await paytrResponse.json();
-
     if (paytrResult.status !== "success") {
       await supabaseAdmin
         .from("orders")
-        .update({
-          payment_status: "failed",
-          status: "Ödeme Başlatılamadı",
-          failed_reason: paytrResult.reason || "PayTR token alınamadı.",
-        })
+        .update({ payment_status: "failed", status: "Ödeme Başlatılamadı", failed_reason: paytrResult.reason || "PayTR token alınamadı." })
         .eq("merchant_oid", merchantOid);
 
-      return NextResponse.json(
-        { error: paytrResult.reason || "PayTR token alınamadı." },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: paytrResult.reason || "PayTR token alınamadı." }, { status: 400 });
     }
 
     return NextResponse.json({
       token: paytrResult.token,
       merchant_oid: merchantOid,
       iframe_url: `https://www.paytr.com/odeme/guvenli/${paytrResult.token}`,
-      coupon: appliedCoupon
-        ? {
-            code: appliedCoupon.code,
-            discount_amount: couponDiscountAmount,
-          }
-        : null,
+      coupon: appliedCoupon ? { code: appliedCoupon.code, discount_amount: couponDiscountAmount } : null,
       subtotal_amount: subtotalAmount,
+      total_after_coupon: subtotalAfterCoupon,
+      shipping_fee: shippingFeeAmount,
+      free_shipping_threshold: shippingSettings.free_shipping_threshold,
       total_amount: totalAmount,
     });
   } catch (err: any) {
-    return NextResponse.json(
-      { error: err?.message || "PayTR token oluşturulamadı." },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: err?.message || "PayTR token oluşturulamadı." }, { status: 500 });
   }
 }
