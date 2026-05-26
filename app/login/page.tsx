@@ -7,21 +7,66 @@ import { supabase } from "@/lib/supabase";
 import { useAppAlert } from "@/context/AppAlertContext";
 import DistanceSellingContract from "@/components/contracts/DistanceSellingContract";
 
+type AuthStep = "INIT" | "LOGIN" | "REGISTER";
+type ContractModalType = "terms" | "distance" | "aydinlatma" | "privacy" | null;
+type GenderValue = "" | "female" | "male" | "other" | "prefer_not_to_say";
+
+const MAX_NAME_LENGTH = 60;
+const MAX_PHONE_LENGTH = 11;
+
+function normalizePhone(value: string) {
+  return value.replace(/\D/g, "").slice(0, MAX_PHONE_LENGTH);
+}
+
+function normalizeName(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function getSafeRedirectPath() {
+  if (typeof window === "undefined") return "/profile";
+  const redirect = new URLSearchParams(window.location.search).get("redirect") || "/profile";
+  if (!redirect.startsWith("/") || redirect.startsWith("//")) return "/profile";
+  return redirect;
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const { showToast } = useAppAlert();
 
-  const [step, setStep] = useState<"INIT" | "LOGIN" | "REGISTER">("INIT");
+  const [step, setStep] = useState<AuthStep>("INIT");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [gender, setGender] = useState<GenderValue>("");
+  const [birthDate, setBirthDate] = useState("");
+
   const [agreedTerms, setAgreedTerms] = useState(false);
   const [agreedPrivacy, setAgreedPrivacy] = useState(false);
-  const [activeModal, setActiveModal] = useState<string | null>(null);
+  const [activeModal, setActiveModal] = useState<ContractModalType>(null);
 
   const normalizedEmail = email.trim().toLowerCase();
+  const cleanedFirstName = normalizeName(firstName);
+  const cleanedLastName = normalizeName(lastName);
+  const cleanedPhone = normalizePhone(phone);
+
+  const resetAuthForm = () => {
+    setPassword("");
+    setPasswordConfirm("");
+    setFirstName("");
+    setLastName("");
+    setPhone("");
+    setGender("");
+    setBirthDate("");
+    setAgreedTerms(false);
+    setAgreedPrivacy(false);
+    setErrorMsg("");
+  };
 
   const handleContinue = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -36,12 +81,8 @@ export default function LoginPage() {
         .maybeSingle();
 
       if (error) throw error;
-
-      if (data) {
-        setStep("LOGIN");
-      } else {
-        setStep("REGISTER");
-      }
+      resetAuthForm();
+      setStep(data ? "LOGIN" : "REGISTER");
     } catch (err: any) {
       console.error("Kontrol hatası:", err?.message);
       setErrorMsg("Bir hata oluştu, lütfen tekrar deneyin.");
@@ -64,35 +105,45 @@ export default function LoginPage() {
     if (error) {
       setErrorMsg("Şifre hatalı veya giriş yapılamadı.");
       showToast("Şifre hatalı veya giriş yapılamadı.", "error");
-    } else {
-      showToast("Giriş başarılı. Yönlendiriliyorsunuz.", "success");
-      router.push("/profile");
+      setLoading(false);
+      return;
     }
 
+    showToast("Giriş başarılı. Yönlendiriliyorsunuz.", "success");
+    router.push(getSafeRedirectPath());
     setLoading(false);
   };
 
   const handleRegister = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    if (!agreedTerms) {
-      showToast(
-        "Lütfen Üyelik Sözleşmesi ve Mesafeli Satış Sözleşmesi'ni onaylayınız.",
-        "warning"
-      );
+    if (!cleanedFirstName || !cleanedLastName) {
+      showToast("Lütfen ad ve soyad bilgilerinizi giriniz.", "warning");
       return;
     }
 
-    if (!agreedPrivacy) {
-      showToast(
-        "Lütfen Aydınlatma Metni ve Gizlilik Politikası'nı okuyup onaylayınız.",
-        "warning"
-      );
+    if (cleanedPhone.length !== 11 || !cleanedPhone.startsWith("05")) {
+      showToast("Lütfen 05 ile başlayan 11 haneli geçerli bir telefon giriniz.", "warning");
       return;
     }
 
     if (password.length < 8) {
       showToast("Şifreniz en az 8 karakter olmalıdır.", "warning");
+      return;
+    }
+
+    if (password !== passwordConfirm) {
+      showToast("Şifreler eşleşmiyor.", "warning");
+      return;
+    }
+
+    if (!agreedTerms) {
+      showToast("Lütfen Üyelik Sözleşmesi ve Mesafeli Satış Sözleşmesi'ni onaylayınız.", "warning");
+      return;
+    }
+
+    if (!agreedPrivacy) {
+      showToast("Lütfen Aydınlatma Metni ve Gizlilik Politikası'nı okuyup onaylayınız.", "warning");
       return;
     }
 
@@ -102,367 +153,136 @@ export default function LoginPage() {
     const { data, error } = await supabase.auth.signUp({
       email: normalizedEmail,
       password,
+      options: {
+        data: {
+          first_name: cleanedFirstName,
+          last_name: cleanedLastName,
+          full_name: `${cleanedFirstName} ${cleanedLastName}`,
+          phone: cleanedPhone,
+          gender: gender || null,
+          birth_date: birthDate || null,
+        },
+      },
     });
 
     if (error) {
       setErrorMsg(error.message);
       showToast(error.message, "error");
-    } else if (data.user) {
-      const { error: dbError } = await supabase.from("customers").insert([
-        {
-          id: data.user.id,
-          email: data.user.email,
-        },
-      ]);
+      setLoading(false);
+      return;
+    }
+
+    if (data.user) {
+      const { error: dbError } = await supabase.from("customers").upsert(
+        [
+          {
+            id: data.user.id,
+            email: data.user.email,
+            first_name: cleanedFirstName,
+            last_name: cleanedLastName,
+            full_name: `${cleanedFirstName} ${cleanedLastName}`,
+            phone: cleanedPhone,
+            gender: gender || null,
+            birth_date: birthDate || null,
+          },
+        ],
+        { onConflict: "id" }
+      );
 
       if (dbError) {
         console.error("Müşteri tabloya eklenirken hata:", dbError);
+        showToast("Üyelik oluşturuldu ancak profil bilgileri kaydedilemedi. Lütfen profilinizden kontrol edin.", "warning");
+      } else {
+        showToast("Üyelik başarılı. Şimdi giriş yapabilirsiniz.", "success");
       }
 
-      showToast("Üyelik başarılı. Şimdi giriş yapabilirsiniz.", "success");
       setStep("LOGIN");
       setPassword("");
+      setPasswordConfirm("");
     }
 
     setLoading(false);
   };
+
+  const registerDisabled =
+    loading ||
+    !agreedTerms ||
+    !agreedPrivacy ||
+    password.length < 8 ||
+    password !== passwordConfirm ||
+    !cleanedFirstName ||
+    !cleanedLastName ||
+    cleanedPhone.length !== 11 ||
+    !cleanedPhone.startsWith("05");
 
   return (
     <div className="min-h-screen bg-[#fcfcfc] flex items-center justify-center py-20 px-4 font-sans text-black">
       <div className="bg-white max-w-md w-full rounded-[2rem] p-8 md:p-12 shadow-2xl border border-gray-100 relative">
         <div className="text-center mb-10 flex flex-col items-center">
           <Link href="/" className="inline-block">
-            <h1 className="text-3xl font-black uppercase tracking-tighter text-black">
-              PRESTİGESO
-            </h1>
+            <h1 className="text-3xl font-black uppercase tracking-tighter text-black">PRESTİGESO</h1>
           </Link>
           <div className="h-1 w-8 bg-black mt-2 rounded-full" />
         </div>
 
         {step === "INIT" && (
           <form onSubmit={handleContinue} className="space-y-6 animate-in fade-in duration-300">
-            <h2 className="text-xl font-black text-center uppercase tracking-tight">
-              Giriş Yap veya Üye Ol
-            </h2>
-
-            <div className="space-y-1">
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(event) => setEmail(event.target.value)}
-                className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-medium outline-none text-sm text-black focus:border-black transition-all"
-                placeholder="E-posta adresinizi giriniz"
-              />
-            </div>
-
-            {errorMsg && (
-              <p className="text-red-500 text-[10px] font-bold uppercase text-center">
-                {errorMsg}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-black text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest shadow-xl hover:bg-gray-900 transition-all active:scale-95 disabled:opacity-50"
-            >
-              {loading ? "Kontrol Ediliyor..." : "Devam Et"}
-            </button>
+            <h2 className="text-xl font-black text-center uppercase tracking-tight">Giriş Yap veya Üye Ol</h2>
+            <input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-medium outline-none text-sm text-black focus:border-black transition-all" placeholder="E-posta adresinizi giriniz" />
+            {errorMsg && <p className="text-red-500 text-[10px] font-bold uppercase text-center">{errorMsg}</p>}
+            <button type="submit" disabled={loading} className="w-full bg-black text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest shadow-xl hover:bg-gray-900 transition-all active:scale-95 disabled:opacity-50">{loading ? "Kontrol Ediliyor..." : "Devam Et"}</button>
           </form>
         )}
 
         {step === "LOGIN" && (
           <form onSubmit={handleLogin} className="space-y-6 animate-in slide-in-from-right-4 duration-300">
             <div className="flex items-center gap-3 mb-2">
-              <button
-                onClick={() => setStep("INIT")}
-                type="button"
-                className="text-black hover:-translate-x-1 transition-transform"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  className="w-6 h-6"
-                >
-                  <path d="M19 12H5M12 19l-7-7 7-7" />
-                </svg>
-              </button>
-
+              <button onClick={() => setStep("INIT")} type="button" className="text-black hover:-translate-x-1 transition-transform"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="w-6 h-6"><path d="M19 12H5M12 19l-7-7 7-7" /></svg></button>
               <h2 className="text-xl font-black uppercase tracking-tight">Giriş Yap</h2>
             </div>
-
-            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex justify-between items-center text-sm font-bold text-gray-500">
-              <span className="truncate mr-2">{email}</span>
-              <button
-                onClick={() => setStep("INIT")}
-                type="button"
-                className="text-black font-black uppercase tracking-widest border-b-2 border-black flex-shrink-0 text-xs hover:text-gray-500 transition-colors"
-              >
-                DÜZENLE
-              </button>
-            </div>
-
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-medium outline-none text-sm text-black focus:border-black transition-all"
-              placeholder="Şifrenizi giriniz"
-            />
-
-            {errorMsg && (
-              <p className="text-red-500 text-[10px] font-bold uppercase text-center">
-                {errorMsg}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full bg-black text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest shadow-xl hover:bg-gray-900 transition-all active:scale-95 disabled:opacity-50"
-            >
-              {loading ? "Bekleniyor..." : "Giriş Yap"}
-            </button>
+            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex justify-between items-center text-sm font-bold text-gray-500"><span className="truncate mr-2">{email}</span><button onClick={() => setStep("INIT")} type="button" className="text-black font-black uppercase tracking-widest border-b-2 border-black flex-shrink-0 text-xs hover:text-gray-500 transition-colors">DÜZENLE</button></div>
+            <input type="password" required value={password} onChange={(event) => setPassword(event.target.value)} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-medium outline-none text-sm text-black focus:border-black transition-all" placeholder="Şifrenizi giriniz" />
+            {errorMsg && <p className="text-red-500 text-[10px] font-bold uppercase text-center">{errorMsg}</p>}
+            <button type="submit" disabled={loading} className="w-full bg-black text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest shadow-xl hover:bg-gray-900 transition-all active:scale-95 disabled:opacity-50">{loading ? "Bekleniyor..." : "Giriş Yap"}</button>
           </form>
         )}
 
         {step === "REGISTER" && (
-          <form onSubmit={handleRegister} className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+          <form onSubmit={handleRegister} className="space-y-5 animate-in slide-in-from-right-4 duration-300">
             <div className="flex items-center gap-3 mb-2">
-              <button
-                onClick={() => setStep("INIT")}
-                type="button"
-                className="text-black hover:-translate-x-1 transition-transform"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  className="w-6 h-6"
-                >
-                  <path d="M19 12H5M12 19l-7-7 7-7" />
-                </svg>
-              </button>
-
+              <button onClick={() => setStep("INIT")} type="button" className="text-black hover:-translate-x-1 transition-transform"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="w-6 h-6"><path d="M19 12H5M12 19l-7-7 7-7" /></svg></button>
               <h2 className="text-xl font-black uppercase tracking-tight">Hesap Oluşturun</h2>
             </div>
-
-            <p className="text-xs text-gray-400 font-medium italic -mt-2">
-              Sistemde kaydınız bulunamadı, yeni üyelik oluşturuyorsunuz.
-            </p>
-
-            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex justify-between items-center text-sm font-bold text-gray-500">
-              <span className="truncate mr-2">{email}</span>
-              <button
-                onClick={() => setStep("INIT")}
-                type="button"
-                className="text-black font-black uppercase tracking-widest border-b-2 border-black flex-shrink-0 text-xs hover:text-gray-500 transition-colors"
-              >
-                DÜZENLE
-              </button>
+            <p className="text-xs text-gray-400 font-medium italic -mt-2">Sistemde kaydınız bulunamadı, yeni üyelik oluşturuyorsunuz.</p>
+            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 flex justify-between items-center text-sm font-bold text-gray-500"><span className="truncate mr-2">{email}</span><button onClick={() => setStep("INIT")} type="button" className="text-black font-black uppercase tracking-widest border-b-2 border-black flex-shrink-0 text-xs hover:text-gray-500 transition-colors">DÜZENLE</button></div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input type="text" required maxLength={MAX_NAME_LENGTH} value={firstName} onChange={(event) => setFirstName(event.target.value)} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-medium outline-none text-sm text-black focus:border-black transition-all" placeholder="Adınız *" />
+              <input type="text" required maxLength={MAX_NAME_LENGTH} value={lastName} onChange={(event) => setLastName(event.target.value)} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-medium outline-none text-sm text-black focus:border-black transition-all" placeholder="Soyadınız *" />
             </div>
-
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-medium outline-none text-sm text-black focus:border-black transition-all"
-              placeholder="Şifre Belirleyin (Min. 8 Karakter)"
-            />
-
+            <input type="tel" required inputMode="tel" maxLength={MAX_PHONE_LENGTH} value={phone} onChange={(event) => setPhone(normalizePhone(event.target.value))} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-medium outline-none text-sm text-black focus:border-black transition-all" placeholder="Telefon numaranız * 05XXXXXXXXX" />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <select value={gender} onChange={(event) => setGender(event.target.value as GenderValue)} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-medium outline-none text-sm text-black focus:border-black transition-all">
+                <option value="">Cinsiyet / Hitap tercihi</option>
+                <option value="female">Kadın</option>
+                <option value="male">Erkek</option>
+                <option value="other">Diğer</option>
+                <option value="prefer_not_to_say">Belirtmek istemiyorum</option>
+              </select>
+              <input type="date" value={birthDate} onChange={(event) => setBirthDate(event.target.value)} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-medium outline-none text-sm text-black focus:border-black transition-all" />
+            </div>
+            <input type="password" required value={password} onChange={(event) => setPassword(event.target.value)} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-medium outline-none text-sm text-black focus:border-black transition-all" placeholder="Şifre Belirleyin (Min. 8 Karakter)" />
+            <input type="password" required value={passwordConfirm} onChange={(event) => setPasswordConfirm(event.target.value)} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-medium outline-none text-sm text-black focus:border-black transition-all" placeholder="Şifrenizi tekrar giriniz" />
             <div className="space-y-4 pt-2">
-              <label className="flex items-start gap-3 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={agreedTerms}
-                  onChange={(event) => setAgreedTerms(event.target.checked)}
-                  className="mt-0.5 accent-black w-4 h-4 rounded border-gray-300 shrink-0"
-                />
-                <span className="text-[11px] text-gray-600 font-medium leading-tight">
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      setActiveModal("terms");
-                    }}
-                    className="font-bold text-black underline underline-offset-2 hover:text-gray-500"
-                  >
-                    Üyelik Sözleşmesi
-                  </button>{" "}
-                  ve{" "}
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      setActiveModal("distance");
-                    }}
-                    className="font-bold text-black underline underline-offset-2 hover:text-gray-500"
-                  >
-                    Mesafeli Satış Sözleşmesi
-                  </button>
-                  'ni okudum, onaylıyorum.
-                </span>
-              </label>
-
-              <label className="flex items-start gap-3 cursor-pointer group">
-                <input
-                  type="checkbox"
-                  checked={agreedPrivacy}
-                  onChange={(event) => setAgreedPrivacy(event.target.checked)}
-                  className="mt-0.5 accent-black w-4 h-4 rounded border-gray-300 shrink-0"
-                />
-                <span className="text-[11px] text-gray-600 font-medium leading-tight">
-                  Kişisel verilerimin işlenmesine yönelik{" "}
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      setActiveModal("aydinlatma");
-                    }}
-                    className="font-bold text-black underline underline-offset-2 hover:text-gray-500"
-                  >
-                    Aydınlatma Metni
-                  </button>
-                  'ni ve{" "}
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      setActiveModal("privacy");
-                    }}
-                    className="font-bold text-black underline underline-offset-2 hover:text-gray-500"
-                  >
-                    Gizlilik Politikası
-                  </button>
-                  'nı okudum.
-                </span>
-              </label>
+              <label className="flex items-start gap-3 cursor-pointer group"><input type="checkbox" checked={agreedTerms} onChange={(event) => setAgreedTerms(event.target.checked)} className="mt-0.5 accent-black w-4 h-4 rounded border-gray-300 shrink-0" /><span className="text-[11px] text-gray-600 font-medium leading-tight"><button type="button" onClick={(event) => { event.preventDefault(); setActiveModal("terms"); }} className="font-bold text-black underline underline-offset-2 hover:text-gray-500">Üyelik Sözleşmesi</button>{" "}ve{" "}<button type="button" onClick={(event) => { event.preventDefault(); setActiveModal("distance"); }} className="font-bold text-black underline underline-offset-2 hover:text-gray-500">Mesafeli Satış Sözleşmesi</button>&apos;ni okudum, onaylıyorum.</span></label>
+              <label className="flex items-start gap-3 cursor-pointer group"><input type="checkbox" checked={agreedPrivacy} onChange={(event) => setAgreedPrivacy(event.target.checked)} className="mt-0.5 accent-black w-4 h-4 rounded border-gray-300 shrink-0" /><span className="text-[11px] text-gray-600 font-medium leading-tight">Kişisel verilerimin işlenmesine yönelik{" "}<button type="button" onClick={(event) => { event.preventDefault(); setActiveModal("aydinlatma"); }} className="font-bold text-black underline underline-offset-2 hover:text-gray-500">Aydınlatma Metni</button>&apos;ni ve{" "}<button type="button" onClick={(event) => { event.preventDefault(); setActiveModal("privacy"); }} className="font-bold text-black underline underline-offset-2 hover:text-gray-500">Gizlilik Politikası</button>&apos;nı okudum.</span></label>
             </div>
-
-            {errorMsg && (
-              <p className="text-red-500 text-[10px] font-bold uppercase text-center">
-                {errorMsg}
-              </p>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading || !agreedTerms || !agreedPrivacy || password.length < 8}
-              className="w-full bg-black text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest shadow-xl hover:bg-gray-900 transition-all active:scale-95 disabled:opacity-50 mt-4 flex justify-center items-center gap-2"
-            >
-              {loading ? "Hesap Açılıyor..." : "Üye Ol 🚀"}
-            </button>
+            {errorMsg && <p className="text-red-500 text-[10px] font-bold uppercase text-center">{errorMsg}</p>}
+            <button type="submit" disabled={registerDisabled} className="w-full bg-black text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest shadow-xl hover:bg-gray-900 transition-all active:scale-95 disabled:opacity-50 mt-4 flex justify-center items-center gap-2">{loading ? "Hesap Açılıyor..." : "Üye Ol 🚀"}</button>
           </form>
         )}
       </div>
-
       {activeModal && (
-        <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-2xl rounded-3xl p-6 md:p-8 shadow-2xl animate-in zoom-in duration-200 max-h-[90vh] flex flex-col relative z-10">
-            <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4 shrink-0">
-              <h2 className="text-lg font-black uppercase tracking-tight">
-                {activeModal === "terms" && "Üyelik Sözleşmesi"}
-                {activeModal === "distance" && "Mesafeli Satış Sözleşmesi"}
-                {activeModal === "aydinlatma" && "Aydınlatma Metni"}
-                {activeModal === "privacy" && "Gizlilik Politikası"}
-              </h2>
-
-              <button
-                type="button"
-                onClick={() => setActiveModal(null)}
-                className="w-8 h-8 bg-gray-100 rounded-full font-bold hover:bg-gray-200 transition-colors"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="overflow-y-auto pr-2 custom-scrollbar text-sm text-gray-600 font-medium leading-relaxed">
-              {activeModal === "distance" && <DistanceSellingContract />}
-
-              {activeModal === "terms" && (
-                <div className="space-y-4">
-                  <p>
-                    <strong className="text-black">1. Taraflar:</strong> Bu sözleşme
-                    Prestigeso.com.tr ile üye olan kullanıcı arasındadır.
-                  </p>
-                  <p>
-                    <strong className="text-black">2. Üye Hesabı:</strong> Her üye
-                    sadece bir hesaba sahip olabilir. Şifre güvenliğinden üye
-                    sorumludur.
-                  </p>
-                  <p>
-                    <strong className="text-black">3. Sorumluluk:</strong> Site içindeki
-                    materyallerin izinsiz kullanımı yasaktır.
-                  </p>
-                  <p>
-                    Daha detaylı bilgi için sitemizin en alt kısmında yer alan yasal
-                    sayfalarımızı ziyaret edebilirsiniz.
-                  </p>
-                </div>
-              )}
-
-              {activeModal === "privacy" && (
-                <div className="space-y-4">
-                  <p>
-                    <strong className="text-black">1. Topladığımız Bilgiler:</strong>{" "}
-                    Hizmet sunabilmek için kimlik, iletişim, cihaz ve çerez bilgileri
-                    toplanmaktadır.
-                  </p>
-                  <p>
-                    <strong className="text-black">2. Veri Güvenliği:</strong> Verileriniz
-                    ilgili mevzuatlara uygun şekilde güvenli sunucularda saklanmakta ve
-                    korunmaktadır.
-                  </p>
-                  <p>
-                    Haklarınızı kullanmak için{" "}
-                    <strong className="text-black">info@prestigeso.com</strong> üzerinden
-                    bizimle iletişime geçebilirsiniz.
-                  </p>
-                </div>
-              )}
-
-              {activeModal === "aydinlatma" && (
-                <div className="space-y-4">
-                  <p>
-                    6698 sayılı Kişisel Verilerin Korunması Kanunu uyarınca, kişisel
-                    verileriniz veri sorumlusu sıfatıyla firmamız tarafından işlenmektedir.
-                  </p>
-                  <p>
-                    Kayıt esnasında alınan e-posta adresi, ad-soyad gibi bilgileriniz,
-                    siparişlerinizin ulaştırılması ve size özel kampanyaların sunulması
-                    amacıyla kullanılmaktadır.
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="mt-6 pt-4 border-t border-gray-100 flex justify-end shrink-0">
-              <button
-                type="button"
-                onClick={() => {
-                  if (activeModal === "terms" || activeModal === "distance") {
-                    setAgreedTerms(true);
-                  }
-
-                  if (activeModal === "aydinlatma" || activeModal === "privacy") {
-                    setAgreedPrivacy(true);
-                  }
-
-                  setActiveModal(null);
-                }}
-                className="bg-black text-white px-8 py-3 rounded-xl font-bold text-xs uppercase tracking-widest shadow-md hover:bg-gray-900 transition-colors"
-              >
-                Okudum, Onaylıyorum
-              </button>
-            </div>
-          </div>
-        </div>
+        <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm"><div className="bg-white w-full max-w-2xl rounded-3xl p-6 md:p-8 shadow-2xl animate-in zoom-in duration-200 max-h-[90vh] flex flex-col relative z-10"><div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4 shrink-0"><h2 className="text-lg font-black uppercase tracking-tight">{activeModal === "terms" && "Üyelik Sözleşmesi"}{activeModal === "distance" && "Mesafeli Satış Sözleşmesi"}{activeModal === "aydinlatma" && "Aydınlatma Metni"}{activeModal === "privacy" && "Gizlilik Politikası"}</h2><button type="button" onClick={() => setActiveModal(null)} className="w-8 h-8 bg-gray-100 rounded-full font-bold hover:bg-gray-200 transition-colors">✕</button></div><div className="overflow-y-auto pr-2 custom-scrollbar text-sm text-gray-600 font-medium leading-relaxed">{activeModal === "distance" && <DistanceSellingContract />}{activeModal === "terms" && <div className="space-y-4"><p><strong className="text-black">1. Taraflar:</strong> Bu sözleşme Prestigeso.com.tr ile üye olan kullanıcı arasındadır.</p><p><strong className="text-black">2. Üye Hesabı:</strong> Her üye sadece bir hesaba sahip olabilir. Şifre güvenliğinden üye sorumludur.</p><p><strong className="text-black">3. Sorumluluk:</strong> Site içindeki materyallerin izinsiz kullanımı yasaktır.</p><p>Daha detaylı bilgi için sitemizin en alt kısmında yer alan yasal sayfalarımızı ziyaret edebilirsiniz.</p></div>}{activeModal === "privacy" && <div className="space-y-4"><p><strong className="text-black">1. Topladığımız Bilgiler:</strong> Hizmet sunabilmek için kimlik, iletişim, cihaz ve çerez bilgileri toplanmaktadır.</p><p><strong className="text-black">2. Veri Güvenliği:</strong> Verileriniz ilgili mevzuatlara uygun şekilde güvenli sunucularda saklanmakta ve korunmaktadır.</p><p>Haklarınızı kullanmak için <strong className="text-black">info@prestigeso.com</strong> üzerinden bizimle iletişime geçebilirsiniz.</p></div>}{activeModal === "aydinlatma" && <div className="space-y-4"><p>6698 sayılı Kişisel Verilerin Korunması Kanunu uyarınca, kişisel verileriniz veri sorumlusu sıfatıyla firmamız tarafından işlenmektedir.</p><p>Kayıt esnasında alınan e-posta adresi, ad-soyad ve telefon gibi bilgileriniz, siparişlerinizin ulaştırılması ve size özel kampanyaların sunulması amacıyla kullanılmaktadır.</p></div>}</div><div className="mt-6 pt-4 border-t border-gray-100 flex justify-end shrink-0"><button type="button" onClick={() => { if (activeModal === "terms" || activeModal === "distance") setAgreedTerms(true); if (activeModal === "aydinlatma" || activeModal === "privacy") setAgreedPrivacy(true); setActiveModal(null); }} className="bg-black text-white px-8 py-3 rounded-xl font-bold text-xs uppercase tracking-widest shadow-md hover:bg-gray-900 transition-colors">Okudum, Onaylıyorum</button></div></div></div>
       )}
     </div>
   );
