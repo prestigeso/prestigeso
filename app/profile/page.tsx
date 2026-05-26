@@ -27,14 +27,25 @@ const VALID_PROFILE_TABS = [
   "settings",
 ];
 
-function getDisplayName(user: any) {
-  const metadata = user?.user_metadata || {};
-  const fullName = [metadata.firstName, metadata.lastName]
+function getDisplayName(user: any, customerProfile?: any) {
+  const dbFullName = (customerProfile?.full_name || "").toString().trim();
+  if (dbFullName) return dbFullName;
+
+  const dbName = [customerProfile?.first_name, customerProfile?.last_name]
     .filter(Boolean)
     .join(" ")
     .trim();
+  if (dbName) return dbName;
 
-  if (fullName) return fullName;
+  const metadata = user?.user_metadata || {};
+  const metadataFullName = (metadata.full_name || "").toString().trim();
+  if (metadataFullName) return metadataFullName;
+
+  const metadataName = [metadata.first_name || metadata.firstName, metadata.last_name || metadata.lastName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  if (metadataName) return metadataName;
 
   return user?.email?.split("@")[0] || "Müşteri";
 }
@@ -44,6 +55,7 @@ export default function ProfilePage() {
   const { showToast } = useAppAlert();
 
   const [user, setUser] = useState<any>(null);
+  const [customerProfile, setCustomerProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("orders");
 
@@ -62,10 +74,7 @@ export default function ProfilePage() {
   useEffect(() => {
     try {
       const savedTab = localStorage.getItem("prestigeso_profile_tab");
-
-      if (savedTab && VALID_PROFILE_TABS.includes(savedTab)) {
-        setActiveTab(savedTab);
-      }
+      if (savedTab && VALID_PROFILE_TABS.includes(savedTab)) setActiveTab(savedTab);
     } catch {
       setActiveTab("orders");
     }
@@ -73,7 +82,6 @@ export default function ProfilePage() {
 
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
-
     try {
       localStorage.setItem("prestigeso_profile_tab", tab);
     } catch {}
@@ -94,6 +102,14 @@ export default function ProfilePage() {
 
       setUser(session.user);
 
+      const { data: customerData } = await supabase
+        .from("customers")
+        .select("id, email, first_name, last_name, full_name, phone, gender, birth_date")
+        .eq("id", session.user.id)
+        .maybeSingle();
+
+      if (customerData) setCustomerProfile(customerData);
+
       const { data: favData, error: favError } = await supabase
         .from("favorites")
         .select("product_id, products (*)")
@@ -111,24 +127,9 @@ export default function ProfilePage() {
             .eq("is_approved", true);
 
           const favsWithStats = dbFavs.map((p: any) => {
-            const pRevs =
-              productReviews?.filter(
-                (r: any) => String(r.product_id) === String(p.id)
-              ) || [];
-
-            const avg =
-              pRevs.length > 0
-                ? pRevs.reduce(
-                    (acc: number, r: any) => acc + Number(r.rating || 0),
-                    0
-                  ) / pRevs.length
-                : 0;
-
-            return {
-              ...p,
-              ratingAvg: avg,
-              reviewCount: pRevs.length,
-            };
+            const pRevs = productReviews?.filter((r: any) => String(r.product_id) === String(p.id)) || [];
+            const avg = pRevs.length > 0 ? pRevs.reduce((acc: number, r: any) => acc + Number(r.rating || 0), 0) / pRevs.length : 0;
+            return { ...p, ratingAvg: avg, reviewCount: pRevs.length };
           });
 
           setFavorites(favsWithStats);
@@ -138,10 +139,7 @@ export default function ProfilePage() {
       }
 
       try {
-        const savedViewed = JSON.parse(
-          localStorage.getItem("prestige_viewed") || "[]"
-        );
-
+        const savedViewed = JSON.parse(localStorage.getItem("prestige_viewed") || "[]");
         setRecentlyViewed(Array.isArray(savedViewed) ? savedViewed : []);
       } catch {
         setRecentlyViewed([]);
@@ -152,7 +150,6 @@ export default function ProfilePage() {
         .select("*")
         .eq("user_id", session.user.id)
         .order("created_at", { ascending: false });
-
       if (mData) setMyMessages(mData);
 
       const { data: revData } = await supabase
@@ -160,7 +157,6 @@ export default function ProfilePage() {
         .select("*, products(*)")
         .eq("user_id", session.user.id)
         .order("created_at", { ascending: false });
-
       if (revData) setMyReviews(revData);
 
       const { data: qData } = await supabase
@@ -168,7 +164,6 @@ export default function ProfilePage() {
         .select("*, products(*)")
         .eq("user_id", session.user.id)
         .order("created_at", { ascending: false });
-
       if (qData) setMyQuestions(qData);
 
       const { data: ordData } = await supabase
@@ -177,7 +172,6 @@ export default function ProfilePage() {
         .eq("user_id", session.user.id)
         .eq("payment_status", "paid")
         .order("created_at", { ascending: false });
-
       if (ordData) setMyOrders(ordData);
 
       const { data: addrData } = await supabase
@@ -186,7 +180,6 @@ export default function ProfilePage() {
         .eq("user_id", session.user.id)
         .order("is_default", { ascending: false })
         .order("created_at", { ascending: false });
-
       if (addrData) setAddresses(addrData);
 
       setLoading(false);
@@ -209,10 +202,7 @@ export default function ProfilePage() {
       return;
     }
 
-    setFavorites((prev) =>
-      prev.filter((item) => String(item.id) !== String(productId))
-    );
-
+    setFavorites((prev) => prev.filter((item) => String(item.id) !== String(productId)));
     showToast("Ürün favorilerden kaldırıldı.", "success");
   };
 
@@ -238,11 +228,7 @@ export default function ProfilePage() {
 
       if (error) throw error;
 
-      showToast(
-        "Mesajınız başarıyla iletildi. En kısa sürede dönüş sağlayacağız.",
-        "success"
-      );
-
+      showToast("Mesajınız başarıyla iletildi. En kısa sürede dönüş sağlayacağız.", "success");
       setMessageText("");
       setIsMessageModalOpen(false);
 
@@ -251,7 +237,6 @@ export default function ProfilePage() {
         .select("*")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
-
       if (mData) setMyMessages(mData);
     } catch (err: any) {
       showToast("Hata oluştu: " + (err?.message || "Bilinmeyen hata"), "error");
@@ -261,16 +246,12 @@ export default function ProfilePage() {
   };
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center font-black uppercase tracking-widest text-gray-400">
-        Yükleniyor...
-      </div>
-    );
+    return <div className="min-h-screen flex items-center justify-center font-black uppercase tracking-widest text-gray-400">Yükleniyor...</div>;
   }
 
   if (!user) return null;
 
-  const displayName = getDisplayName(user);
+  const displayName = getDisplayName(user, customerProfile);
 
   return (
     <div className="min-h-screen bg-[#fcfcfc] py-10 px-4 mt-16 font-sans">
@@ -278,234 +259,64 @@ export default function ProfilePage() {
         <div className="w-full md:w-1/4 flex flex-col gap-4">
           <div className="bg-white rounded-3xl p-6 border border-gray-100 shadow-sm relative overflow-hidden">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-xl">
-                👤
-              </div>
-
+              <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center text-xl">👤</div>
               <div className="overflow-hidden">
-                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-0.5">
-                  PRESTİGESO ÜYESİ
-                </p>
-
-                <h2 className="font-black text-sm uppercase truncate text-black">
-                  {displayName}
-                </h2>
-
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1 truncate">
-                  Müşteri
-                </p>
+                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-0.5">PRESTİGESO ÜYESİ</p>
+                <h2 className="font-black text-sm uppercase truncate text-black">{displayName}</h2>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1 truncate">{customerProfile?.email || user.email}</p>
               </div>
             </div>
           </div>
 
           <div className="bg-white rounded-3xl border border-gray-100 overflow-hidden shadow-sm flex flex-col">
-            <button
-              type="button"
-              onClick={() => handleTabChange("orders")}
-              className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${
-                activeTab === "orders"
-                  ? "bg-black text-white"
-                  : "text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              <span className="text-lg">📦</span> Siparişlerim ({myOrders.length})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleTabChange("favorites")}
-              className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${
-                activeTab === "favorites"
-                  ? "bg-black text-white"
-                  : "text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              <span className="text-lg">❤️</span> Favorilerim ({favorites.length})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleTabChange("addresses")}
-              className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${
-                activeTab === "addresses"
-                  ? "bg-black text-white"
-                  : "text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              <span className="text-lg">📍</span> Kayıtlı Adreslerim
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleTabChange("coupons")}
-              className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${
-                activeTab === "coupons"
-                  ? "bg-black text-white"
-                  : "text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              <span className="text-lg">🎟️</span> İndirim Kuponlarım
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleTabChange("reviews")}
-              className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${
-                activeTab === "reviews"
-                  ? "bg-black text-white"
-                  : "text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              <span className="text-lg">⭐</span> Değerlendirmelerim ({myReviews.length})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleTabChange("questions")}
-              className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${
-                activeTab === "questions"
-                  ? "bg-black text-white"
-                  : "text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              <span className="text-lg">💬</span> Sorularım ({myQuestions.length})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleTabChange("messages")}
-              className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${
-                activeTab === "messages"
-                  ? "bg-black text-white"
-                  : "text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              <span className="text-lg">📧</span> Mesajlarım ({myMessages.length})
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleTabChange("settings")}
-              className={`text-left p-4 font-bold text-sm transition-all flex items-center gap-3 ${
-                activeTab === "settings"
-                  ? "bg-black text-white"
-                  : "text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              <span className="text-lg">⚙️</span> Hesap Ayarlarım
-            </button>
+            <button type="button" onClick={() => handleTabChange("orders")} className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${activeTab === "orders" ? "bg-black text-white" : "text-gray-600 hover:bg-gray-50"}`}><span className="text-lg">📦</span> Siparişlerim ({myOrders.length})</button>
+            <button type="button" onClick={() => handleTabChange("favorites")} className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${activeTab === "favorites" ? "bg-black text-white" : "text-gray-600 hover:bg-gray-50"}`}><span className="text-lg">❤️</span> Favorilerim ({favorites.length})</button>
+            <button type="button" onClick={() => handleTabChange("addresses")} className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${activeTab === "addresses" ? "bg-black text-white" : "text-gray-600 hover:bg-gray-50"}`}><span className="text-lg">📍</span> Kayıtlı Adreslerim</button>
+            <button type="button" onClick={() => handleTabChange("coupons")} className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${activeTab === "coupons" ? "bg-black text-white" : "text-gray-600 hover:bg-gray-50"}`}><span className="text-lg">🎟️</span> İndirim Kuponlarım</button>
+            <button type="button" onClick={() => handleTabChange("reviews")} className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${activeTab === "reviews" ? "bg-black text-white" : "text-gray-600 hover:bg-gray-50"}`}><span className="text-lg">⭐</span> Değerlendirmelerim ({myReviews.length})</button>
+            <button type="button" onClick={() => handleTabChange("questions")} className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${activeTab === "questions" ? "bg-black text-white" : "text-gray-600 hover:bg-gray-50"}`}><span className="text-lg">💬</span> Sorularım ({myQuestions.length})</button>
+            <button type="button" onClick={() => handleTabChange("messages")} className={`text-left p-4 border-b border-gray-50 font-bold text-sm transition-all flex items-center gap-3 ${activeTab === "messages" ? "bg-black text-white" : "text-gray-600 hover:bg-gray-50"}`}><span className="text-lg">📧</span> Mesajlarım ({myMessages.length})</button>
+            <button type="button" onClick={() => handleTabChange("settings")} className={`text-left p-4 font-bold text-sm transition-all flex items-center gap-3 ${activeTab === "settings" ? "bg-black text-white" : "text-gray-600 hover:bg-gray-50"}`}><span className="text-lg">⚙️</span> Hesap Ayarlarım</button>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setIsMessageModalOpen(true)}
-            className="w-full text-center bg-white p-4 rounded-3xl border border-gray-100 font-black text-black text-xs uppercase tracking-widest hover:bg-gray-50 transition-all shadow-sm flex items-center justify-center gap-3"
-          >
-            <span>💬</span> Satıcıya Mesaj Gönder
-          </button>
-
-          <button
-            type="button"
-            onClick={() =>
-              supabase.auth.signOut().then(() => router.push("/login"))
-            }
-            className="w-full text-center bg-white p-4 rounded-3xl border border-gray-100 font-bold text-red-500 text-sm hover:bg-red-50 transition-all shadow-sm mt-2"
-          >
-            Güvenli Çıkış
-          </button>
+          <button type="button" onClick={() => setIsMessageModalOpen(true)} className="w-full text-center bg-white p-4 rounded-3xl border border-gray-100 font-black text-black text-xs uppercase tracking-widest hover:bg-gray-50 transition-all shadow-sm flex items-center justify-center gap-3"><span>💬</span> Satıcıya Mesaj Gönder</button>
+          <button type="button" onClick={() => supabase.auth.signOut().then(() => router.push("/login"))} className="w-full text-center bg-white p-4 rounded-3xl border border-gray-100 font-bold text-red-500 text-sm hover:bg-red-50 transition-all shadow-sm mt-2">Güvenli Çıkış</button>
         </div>
 
         <div className="w-full md:w-3/4 flex flex-col gap-6">
           <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 min-h-[50vh]">
             {activeTab === "orders" && <OrdersTab orders={myOrders} />}
-
-            {activeTab === "favorites" && (
-              <FavoritesTab
-                favorites={favorites}
-                removeFavorite={removeFavorite}
-              />
-            )}
-
-            {activeTab === "addresses" && (
-              <AddressesTab
-                user={user}
-                addresses={addresses}
-                setAddresses={setAddresses}
-              />
-            )}
-
+            {activeTab === "favorites" && <FavoritesTab favorites={favorites} removeFavorite={removeFavorite} />}
+            {activeTab === "addresses" && <AddressesTab user={user} addresses={addresses} setAddresses={setAddresses} />}
             {activeTab === "reviews" && <ReviewsTab reviews={myReviews} />}
-
-            {activeTab === "questions" && (
-              <QuestionsTab questions={myQuestions} />
-            )}
-
-            {activeTab === "messages" && (
-              <MessagesTab messages={myMessages} />
-            )}
-
+            {activeTab === "questions" && <QuestionsTab questions={myQuestions} />}
+            {activeTab === "messages" && <MessagesTab messages={myMessages} />}
             {activeTab === "coupons" && <CouponsTab />}
-
-            {activeTab === "settings" && <SettingsTab user={user} setUser={setUser} />}
+            {activeTab === "settings" && (
+              <SettingsTab
+                user={user}
+                setUser={setUser}
+                customerProfile={customerProfile}
+                setCustomerProfile={setCustomerProfile}
+              />
+            )}
           </div>
 
           {recentlyViewed.length > 0 && (
             <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 animate-in slide-in-from-bottom-5">
-              <h3 className="text-sm font-black uppercase tracking-tight mb-4 text-black border-l-4 border-black pl-3">
-                Son Gezdikleriniz
-              </h3>
-
+              <h3 className="text-sm font-black uppercase tracking-tight mb-4 text-black border-l-4 border-black pl-3">Son Gezdikleriniz</h3>
               <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x">
                 {recentlyViewed.map((item: any) => {
-                  const displayImage =
-                    item.images?.[0] || item.image || "/logo.jpeg";
-
-                  const activePrice =
-                    Number(item.discount_price) > 0
-                      ? Number(item.discount_price)
-                      : Number(item.price);
-
+                  const displayImage = item.images?.[0] || item.image || "/logo.jpeg";
+                  const activePrice = Number(item.discount_price) > 0 ? Number(item.discount_price) : Number(item.price);
                   const ratingCount = item.reviewCount || 0;
                   const avgRating = item.ratingAvg || 0;
-
                   return (
-                    <Link
-                      href={`/product/${item.id}`}
-                      key={item.id}
-                      className="min-w-[90px] w-[90px] md:min-w-[100px] md:w-[100px] snap-start group relative block cursor-pointer flex-shrink-0 border border-gray-100 p-1.5 rounded-xl hover:border-black transition-all bg-white"
-                    >
-                      <div className="aspect-square w-full overflow-hidden rounded-lg bg-gray-50 relative mb-2">
-                        <img
-                          src={displayImage}
-                          alt={item.name || "Ürün"}
-                          className="h-full w-full object-cover mix-blend-multiply group-hover:scale-110 transition-transform duration-500 ease-out"
-                        />
-                      </div>
-
-                      <h4 className="font-bold text-[9px] uppercase truncate text-black">
-                        {item.name}
-                      </h4>
-
-                      <div className="flex items-center gap-0.5 mt-0.5">
-                        <span
-                          className={`text-[8px] ${
-                            ratingCount > 0 ? "text-yellow-400" : "text-gray-300"
-                          }`}
-                        >
-                          {"★".repeat(Math.round(avgRating))}
-                          {"☆".repeat(5 - Math.round(avgRating))}
-                        </span>
-
-                        <span className="text-[7px] font-bold text-gray-400">
-                          ({ratingCount})
-                        </span>
-                      </div>
-
-                      <div className="flex items-end gap-1 mt-0.5">
-                        <p className="text-[10px] font-black text-black">
-                          {activePrice.toLocaleString("tr-TR")} ₺
-                        </p>
-                      </div>
+                    <Link href={`/product/${item.id}`} key={item.id} className="min-w-[90px] w-[90px] md:min-w-[100px] md:w-[100px] snap-start group relative block cursor-pointer flex-shrink-0 border border-gray-100 p-1.5 rounded-xl hover:border-black transition-all bg-white">
+                      <div className="aspect-square w-full overflow-hidden rounded-lg bg-gray-50 relative mb-2"><img src={displayImage} alt={item.name || "Ürün"} className="h-full w-full object-cover mix-blend-multiply group-hover:scale-110 transition-transform duration-500 ease-out" /></div>
+                      <h4 className="font-bold text-[9px] uppercase truncate text-black">{item.name}</h4>
+                      <div className="flex items-center gap-0.5 mt-0.5"><span className={`text-[8px] ${ratingCount > 0 ? "text-yellow-400" : "text-gray-300"}`}>{"★".repeat(Math.round(avgRating))}{"☆".repeat(5 - Math.round(avgRating))}</span><span className="text-[7px] font-bold text-gray-400">({ratingCount})</span></div>
+                      <div className="flex items-end gap-1 mt-0.5"><p className="text-[10px] font-black text-black">{activePrice.toLocaleString("tr-TR")} ₺</p></div>
                     </Link>
                   );
                 })}
@@ -518,43 +329,10 @@ export default function ProfilePage() {
       {isMessageModalOpen && (
         <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl animate-in zoom-in duration-200">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-black uppercase tracking-tight">
-                Satıcıya Mesaj Gönder
-              </h2>
-
-              <button
-                type="button"
-                onClick={() => setIsMessageModalOpen(false)}
-                className="w-8 h-8 bg-gray-100 rounded-full font-bold"
-              >
-                ✕
-              </button>
-            </div>
-
+            <div className="flex justify-between items-center mb-6"><h2 className="text-xl font-black uppercase tracking-tight">Satıcıya Mesaj Gönder</h2><button type="button" onClick={() => setIsMessageModalOpen(false)} className="w-8 h-8 bg-gray-100 rounded-full font-bold">✕</button></div>
             <form onSubmit={handleSendMessage} className="space-y-4">
-              <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
-                  Mesajınız
-                </label>
-
-                <textarea
-                  required
-                  rows={5}
-                  value={messageText}
-                  onChange={(e) => setMessageText(e.target.value)}
-                  className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-medium resize-none outline-none focus:border-black transition-all"
-                  placeholder="Ürünler veya siparişler hakkında yazabilirsiniz..."
-                />
-              </div>
-
-              <button
-                type="submit"
-                disabled={isSending}
-                className="w-full bg-black text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest disabled:opacity-50 shadow-xl active:scale-95 transition-all"
-              >
-                {isSending ? "Gönderiliyor..." : "Mesajı İlet 🚀"}
-              </button>
+              <div><label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Mesajınız</label><textarea required rows={5} value={messageText} onChange={(e) => setMessageText(e.target.value)} className="w-full p-4 bg-gray-50 border border-gray-200 rounded-2xl font-medium resize-none outline-none focus:border-black transition-all" placeholder="Ürünler veya siparişler hakkında yazabilirsiniz..." /></div>
+              <button type="submit" disabled={isSending} className="w-full bg-black text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest disabled:opacity-50 shadow-xl active:scale-95 transition-all">{isSending ? "Gönderiliyor..." : "Mesajı İlet 🚀"}</button>
             </form>
           </div>
         </div>
