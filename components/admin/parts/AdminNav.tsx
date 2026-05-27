@@ -1,4 +1,7 @@
+
 "use client";
+
+import Link from "next/link";
 
 type Props = {
   activeNavMenu: string | null;
@@ -16,14 +19,10 @@ type Props = {
   onOpenMessages: () => void;
   onOpenOrders: () => void;
 
-  // perf & analysis open actions
+  // performance open actions
   onOpenPerformanceFavorites: () => void;
   onOpenPerformanceReviews: () => void;
   onOpenPerformanceViews: () => void;
-
-  onOpenAnalysisRevenue: () => void;
-  onOpenAnalysisOrders: () => void;
-  onOpenAnalysisVisits: () => void;
 };
 
 export default function AdminNav({
@@ -43,10 +42,6 @@ export default function AdminNav({
   onOpenPerformanceFavorites,
   onOpenPerformanceReviews,
   onOpenPerformanceViews,
-
-  onOpenAnalysisRevenue,
-  onOpenAnalysisOrders,
-  onOpenAnalysisVisits,
 }: Props) {
   return (
     <nav className="bg-white shadow-sm mb-6 flex justify-center gap-10 relative z-40">
@@ -172,39 +167,43 @@ export default function AdminNav({
         onMouseEnter={() => setActiveNavMenu("analiz")}
         onMouseLeave={() => setActiveNavMenu(null)}
       >
-        <button className="py-4 text-xs font-black text-gray-500 hover:text-black uppercase tracking-widest flex items-center gap-1 transition-colors">
+        <Link
+          href="/admin/analysis"
+          className="py-4 text-xs font-black text-gray-500 hover:text-black uppercase tracking-widest flex items-center gap-1 transition-colors"
+        >
           Analiz ▾
-        </button>
+        </Link>
 
         {activeNavMenu === "analiz" && (
           <div className="absolute top-full left-1/2 -translate-x-1/2 bg-white border border-gray-100 shadow-xl rounded-xl py-2 w-60 flex flex-col z-50">
-            <button
-              onClick={() => {
-                setActiveNavMenu(null);
-                onOpenAnalysisRevenue();
-              }}
+            <Link
+              href="/admin/analysis"
+              onClick={() => setActiveNavMenu(null)}
               className="px-4 py-3 text-[11px] text-left text-gray-500 hover:bg-gray-50 hover:text-black font-black uppercase tracking-widest border-b border-gray-50"
             >
-              💰 Tüm Zamanlar Cirosu
-            </button>
-            <button
-              onClick={() => {
-                setActiveNavMenu(null);
-                onOpenAnalysisOrders();
-              }}
+              📊 Analiz Merkezi
+            </Link>
+            <Link
+              href="/admin/analysis?tab=revenue"
+              onClick={() => setActiveNavMenu(null)}
               className="px-4 py-3 text-[11px] text-left text-gray-500 hover:bg-gray-50 hover:text-black font-black uppercase tracking-widest border-b border-gray-50"
             >
-              📦 Tüm Zamanlar Siparişi
-            </button>
-            <button
-              onClick={() => {
-                setActiveNavMenu(null);
-                onOpenAnalysisVisits();
-              }}
+              💰 Ciro Analizi
+            </Link>
+            <Link
+              href="/admin/analysis?tab=orders"
+              onClick={() => setActiveNavMenu(null)}
+              className="px-4 py-3 text-[11px] text-left text-gray-500 hover:bg-gray-50 hover:text-black font-black uppercase tracking-widest border-b border-gray-50"
+            >
+              📦 Sipariş Analizi
+            </Link>
+            <Link
+              href="/admin/analysis?tab=visits"
+              onClick={() => setActiveNavMenu(null)}
               className="px-4 py-3 text-[11px] text-left text-gray-500 hover:bg-gray-50 hover:text-black font-black uppercase tracking-widest"
             >
-              👁️ Tüm Zamanlar Ziyareti
-            </button>
+              👁️ Ziyaret Analizi
+            </Link>
           </div>
         )}
       </div>

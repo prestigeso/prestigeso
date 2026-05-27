@@ -26,7 +26,6 @@ import {
   OrdersModal,
   ReviewsModal,
   PerformanceModal,
-  AnalysisModal,
 } from "./modals";
 
 function normalizeSku(input: any) {
@@ -54,9 +53,6 @@ export default function AdminPanel() {
     monthlyRevenue,
     monthlyOrders,
     monthlyVisits,
-    allTimeRevenue,
-    allTimeOrders,
-    allTimeVisits,
     loadAllData,
     setDbSlides,
     setDbMessages,
@@ -84,9 +80,6 @@ export default function AdminPanel() {
 
   const [isPerformanceOpen, setIsPerformanceOpen] = useState(false);
   const [perfTab, setPerfTab] = useState<"favorites" | "views" | "reviews">("favorites");
-
-  const [isAnalysisOpen, setIsAnalysisOpen] = useState(false);
-  const [analysisTab, setAnalysisTab] = useState<"revenue" | "orders" | "visits">("revenue");
 
   const {
     unifiedNotifications,
@@ -657,18 +650,6 @@ export default function AdminPanel() {
           setPerfTab("views");
           setIsPerformanceOpen(true);
         }}
-        onOpenAnalysisRevenue={() => {
-          setAnalysisTab("revenue");
-          setIsAnalysisOpen(true);
-        }}
-        onOpenAnalysisOrders={() => {
-          setAnalysisTab("orders");
-          setIsAnalysisOpen(true);
-        }}
-        onOpenAnalysisVisits={() => {
-          setAnalysisTab("visits");
-          setIsAnalysisOpen(true);
-        }}
       />
 
       <div className="px-6 max-w-6xl mx-auto space-y-6">
@@ -723,7 +704,6 @@ export default function AdminPanel() {
       <OrdersModal open={isOrdersOpen} onClose={() => setIsOrdersOpen(false)} orders={dbOrders as any} onUpdateStatus={handleUpdateOrderStatus} />
       <ReviewsModal open={isReviewsOpen} onClose={() => setIsReviewsOpen(false)} reviews={dbReviews as any} onApprove={handleApproveReview} onDelete={handleDeleteReview} />
       <PerformanceModal open={isPerformanceOpen} onClose={() => setIsPerformanceOpen(false)} tab={perfTab} setTab={setPerfTab} favoritesRank={favoritesRank as any} reviewsRank={reviewsRank as any} viewsRank={viewsRank as any} />
-      <AnalysisModal open={isAnalysisOpen} onClose={() => setIsAnalysisOpen(false)} tab={analysisTab} setTab={setAnalysisTab} allTimeRevenue={allTimeRevenue} allTimeOrders={allTimeOrders} allTimeVisits={allTimeVisits} />
     </div>
   );
 }
