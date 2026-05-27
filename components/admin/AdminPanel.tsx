@@ -12,6 +12,9 @@ import { useAdminData } from "./hooks/useAdminData";
 import { useAdminNotifications } from "./hooks/useAdminNotifications";
 
 import { HeaderBar, AdminNav, ProductList } from "./parts";
+import AdminDashboardSummary from "./parts/AdminDashboardSummary";
+import AdminFloatingActions from "./parts/AdminFloatingActions";
+import AdminDashboardAlerts from "./parts/AdminDashboardAlerts";
 import {
   AddProductModal,
   EditProductModal,
@@ -39,7 +42,6 @@ export default function AdminPanel() {
 
   const {
     loading,
-
     dbProducts,
     dbSlides,
     dbCampaigns,
@@ -47,20 +49,15 @@ export default function AdminPanel() {
     dbQuestions,
     dbOrders,
     dbReviews,
-
     dbAllFavorites,
     dbProductViews,
-
     monthlyRevenue,
     monthlyOrders,
     monthlyVisits,
-
     allTimeRevenue,
     allTimeOrders,
     allTimeVisits,
-
     loadAllData,
-
     setDbSlides,
     setDbMessages,
     setDbQuestions,
@@ -86,14 +83,10 @@ export default function AdminPanel() {
   const [isReviewsOpen, setIsReviewsOpen] = useState(false);
 
   const [isPerformanceOpen, setIsPerformanceOpen] = useState(false);
-  const [perfTab, setPerfTab] = useState<"favorites" | "views" | "reviews">(
-    "favorites"
-  );
+  const [perfTab, setPerfTab] = useState<"favorites" | "views" | "reviews">("favorites");
 
   const [isAnalysisOpen, setIsAnalysisOpen] = useState(false);
-  const [analysisTab, setAnalysisTab] = useState<
-    "revenue" | "orders" | "visits"
-  >("revenue");
+  const [analysisTab, setAnalysisTab] = useState<"revenue" | "orders" | "visits">("revenue");
 
   const {
     unifiedNotifications,
@@ -108,7 +101,6 @@ export default function AdminPanel() {
     dbReviews,
     dbMessages,
     dbProducts,
-
     onOpenOrders: () => {
       setIsNotificationsOpen(false);
       setIsOrdersOpen(true);
@@ -141,18 +133,12 @@ export default function AdminPanel() {
 
     if (direction === "left" && index > 0) {
       [files[index], files[index - 1]] = [files[index - 1], files[index]];
-      [previews[index], previews[index - 1]] = [
-        previews[index - 1],
-        previews[index],
-      ];
+      [previews[index], previews[index - 1]] = [previews[index - 1], previews[index]];
     }
 
     if (direction === "right" && index < files.length - 1) {
       [files[index], files[index + 1]] = [files[index + 1], files[index]];
-      [previews[index], previews[index + 1]] = [
-        previews[index + 1],
-        previews[index],
-      ];
+      [previews[index], previews[index + 1]] = [previews[index + 1], previews[index]];
     }
 
     setNewProductFiles(files);
@@ -170,9 +156,7 @@ export default function AdminPanel() {
   const moveEditImage = (index: number, direction: "left" | "right") => {
     if (!editingProduct) return;
 
-    const images: string[] = Array.isArray(editingProduct.images)
-      ? [...editingProduct.images]
-      : [];
+    const images: string[] = Array.isArray(editingProduct.images) ? [...editingProduct.images] : [];
 
     if (direction === "left" && index > 0) {
       [images[index], images[index - 1]] = [images[index - 1], images[index]];
@@ -182,42 +166,25 @@ export default function AdminPanel() {
       [images[index], images[index + 1]] = [images[index + 1], images[index]];
     }
 
-    setEditingProduct((prev: any) => ({
-      ...prev,
-      images,
-      image: images[0] || "",
-    }));
+    setEditingProduct((prev: any) => ({ ...prev, images, image: images[0] || "" }));
   };
 
   const removeImageFromGallery = (url: string) => {
     if (!editingProduct) return;
-
-    const images: string[] = Array.isArray(editingProduct.images)
-      ? editingProduct.images
-      : [];
-
+    const images: string[] = Array.isArray(editingProduct.images) ? editingProduct.images : [];
     const next = images.filter((x) => x !== url);
-
-    setEditingProduct((prev: any) => ({
-      ...prev,
-      images: next,
-      image: next[0] || "",
-    }));
+    setEditingProduct((prev: any) => ({ ...prev, images: next, image: next[0] || "" }));
   };
 
   const [replyingTo, setReplyingTo] = useState<number | null>(null);
   const [replyText, setReplyText] = useState("");
-
   const [replyingToQ, setReplyingToQ] = useState<number | null>(null);
   const [qReplyText, setQReplyText] = useState("");
 
   const [campaignName, setCampaignName] = useState("");
-  const [selectedCampaignProducts, setSelectedCampaignProducts] = useState<
-    number[]
-  >([]);
+  const [selectedCampaignProducts, setSelectedCampaignProducts] = useState<number[]>([]);
   const [campaignDates, setCampaignDates] = useState({ start: "", end: "" });
   const [discountPercent, setDiscountPercent] = useState<number>(20);
-
   const [marquee, setMarquee] = useState("");
 
   const [newSlideFiles, setNewSlideFiles] = useState<File[]>([]);
@@ -258,36 +225,22 @@ export default function AdminPanel() {
         const pRevs = (dbReviews || []).filter(
           (r: any) => String(r.product_id) === String(p.id) && r.is_approved
         );
-
         const count = pRevs.length;
-        const avg =
-          count > 0
-            ? pRevs.reduce((a: number, r: any) => a + r.rating, 0) / count
-            : 0;
-
+        const avg = count > 0 ? pRevs.reduce((a: number, r: any) => a + r.rating, 0) / count : 0;
         return { ...p, ratingCount: count, ratingAvg: avg };
       })
       .filter((p: any) => p.ratingCount > 0)
-      .sort(
-        (a: any, b: any) =>
-          b.ratingAvg - a.ratingAvg || b.ratingCount - a.ratingCount
-      );
+      .sort((a: any, b: any) => b.ratingAvg - a.ratingAvg || b.ratingCount - a.ratingCount);
   }, [dbProducts, dbReviews]);
 
   const openEditProduct = async (id: number) => {
     setEditLoading(true);
     setEditingProduct(null);
-
     revokeUrls(editAddPreviews);
     setEditAddFiles([]);
     setEditAddPreviews([]);
 
-    const { data, error } = await supabase
-      .from("products")
-      .select("*")
-      .eq("id", id)
-      .single();
-
+    const { data, error } = await supabase.from("products").select("*").eq("id", id).single();
     setEditLoading(false);
 
     if (error) {
@@ -319,28 +272,18 @@ export default function AdminPanel() {
 
     try {
       const urls: string[] = [];
-
       for (const file of editAddFiles) {
         const url = await uploadToStorageAndGetPublicUrl(file, "product_extra");
         urls.push(url);
       }
 
-      const images: string[] = Array.isArray(editingProduct.images)
-        ? editingProduct.images
-        : [];
-
+      const images: string[] = Array.isArray(editingProduct.images) ? editingProduct.images : [];
       const next = [...images, ...urls];
 
-      setEditingProduct((prev: any) => ({
-        ...prev,
-        images: next,
-        image: next[0] || "",
-      }));
-
+      setEditingProduct((prev: any) => ({ ...prev, images: next, image: next[0] || "" }));
       revokeUrls(editAddPreviews);
       setEditAddFiles([]);
       setEditAddPreviews([]);
-
       showToast("Fotoğraflar eklendi. Kaydet butonuna basmayı unutmayın.", "success");
     } catch (err: any) {
       showToast("Fotoğraf eklenemedi: " + (err?.message || "Bilinmeyen hata"), "error");
@@ -351,22 +294,16 @@ export default function AdminPanel() {
 
   const handleUpdateProduct = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-
     if (!editingProduct) return;
 
     const sku = normalizeSku(editingProduct?.["SKU"]);
-
     if (!sku) {
       showToast("SKU zorunludur.", "warning");
       return;
     }
 
     setSaving(true);
-
-    const images: string[] = Array.isArray(editingProduct.images)
-      ? editingProduct.images
-      : [];
-
+    const images: string[] = Array.isArray(editingProduct.images) ? editingProduct.images : [];
     const payload: any = {
       ["SKU"]: sku,
       name: editingProduct.name,
@@ -380,11 +317,7 @@ export default function AdminPanel() {
       barcode: (editingProduct.barcode ?? "").toString().trim() || null,
     };
 
-    const { error } = await supabase
-      .from("products")
-      .update(payload)
-      .eq("id", editingProduct.id);
-
+    const { error } = await supabase.from("products").update(payload).eq("id", editingProduct.id);
     setSaving(false);
 
     if (error) {
@@ -405,11 +338,9 @@ export default function AdminPanel() {
       cancelText: "Vazgeç",
       tone: "danger",
     });
-
     if (!ok) return;
 
     const { error } = await supabase.from("products").delete().eq("id", id);
-
     if (error) {
       showToast("Silinemedi: " + error.message, "error");
       return;
@@ -422,41 +353,21 @@ export default function AdminPanel() {
 
   const handleAddProduct = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-
     const form = e.target as HTMLFormElement;
-
     const name = (form.elements.namedItem("name") as HTMLInputElement).value;
-    const sku = normalizeSku(
-      (form.elements.namedItem("sku") as HTMLInputElement).value
-    );
+    const sku = normalizeSku((form.elements.namedItem("sku") as HTMLInputElement).value);
 
     if (!sku) {
       showToast("SKU zorunludur.", "warning");
       return;
     }
 
-    const price = Number(
-      (form.elements.namedItem("price") as HTMLInputElement).value
-    );
-
-    const category = (form.elements.namedItem("category") as HTMLSelectElement)
-      .value;
-
-    const stock = Number(
-      (form.elements.namedItem("stock") as HTMLInputElement).value
-    );
-
-    const barcode = (
-      form.elements.namedItem("barcode") as HTMLInputElement
-    ).value;
-
-    const description = (
-      form.elements.namedItem("description") as HTMLTextAreaElement
-    ).value;
-
-    const is_bestseller = (
-      form.elements.namedItem("is_bestseller") as HTMLInputElement
-    ).checked;
+    const price = Number((form.elements.namedItem("price") as HTMLInputElement).value);
+    const category = (form.elements.namedItem("category") as HTMLSelectElement).value;
+    const stock = Number((form.elements.namedItem("stock") as HTMLInputElement).value);
+    const barcode = (form.elements.namedItem("barcode") as HTMLInputElement).value;
+    const description = (form.elements.namedItem("description") as HTMLTextAreaElement).value;
+    const is_bestseller = (form.elements.namedItem("is_bestseller") as HTMLInputElement).checked;
 
     if (newProductFiles.length === 0) {
       showToast("Lütfen en az bir ürün görseli seçin.", "warning");
@@ -467,7 +378,6 @@ export default function AdminPanel() {
 
     try {
       const urls: string[] = [];
-
       for (const file of newProductFiles) {
         const url = await uploadToStorageAndGetPublicUrl(file, "product");
         urls.push(url);
@@ -490,12 +400,10 @@ export default function AdminPanel() {
       ]);
 
       if (error) throw error;
-
       revokeUrls(newProductPreviews);
       setNewProductFiles([]);
       setNewProductPreviews([]);
       setIsAddProductOpen(false);
-
       showToast("Ürün eklendi.", "success");
       loadAllData();
     } catch (err: any) {
@@ -512,25 +420,14 @@ export default function AdminPanel() {
     }
 
     const now = new Date().toISOString();
-
-    const { error } = await supabase
-      .from("messages")
-      .update({ answer: replyText, answered_at: now })
-      .eq("id", messageId);
-
+    const { error } = await supabase.from("messages").update({ answer: replyText, answered_at: now }).eq("id", messageId);
     if (error) {
       showToast("Cevap gönderilemedi: " + error.message, "error");
       return;
     }
 
     showToast("Cevap müşteriye iletildi.", "success");
-
-    setDbMessages((prev: any) =>
-      prev.map((m: any) =>
-        m.id === messageId ? { ...m, answer: replyText, answered_at: now } : m
-      )
-    );
-
+    setDbMessages((prev: any) => prev.map((m: any) => (m.id === messageId ? { ...m, answer: replyText, answered_at: now } : m)));
     setReplyingTo(null);
     setReplyText("");
   };
@@ -542,95 +439,50 @@ export default function AdminPanel() {
     }
 
     const now = new Date().toISOString();
-
-    const { error } = await supabase
-      .from("questions")
-      .update({
-        answer: qReplyText,
-        answered_at: now,
-      })
-      .eq("id", questionId);
-
+    const { error } = await supabase.from("questions").update({ answer: qReplyText, answered_at: now }).eq("id", questionId);
     if (error) {
       showToast("Cevap gönderilemedi: " + error.message, "error");
       return;
     }
 
     showToast("Ürün sorusu cevaplandı.", "success");
-
-    setDbQuestions((prev: any) =>
-      prev.map((q: any) =>
-        q.id === questionId
-          ? { ...q, answer: qReplyText, answered_at: now }
-          : q
-      )
-    );
-
+    setDbQuestions((prev: any) => prev.map((q: any) => (q.id === questionId ? { ...q, answer: qReplyText, answered_at: now } : q)));
     setReplyingToQ(null);
     setQReplyText("");
   };
 
-  const handleToggleQuestionApproval = async (
-    questionId: number,
-    currentStatus: boolean
-  ) => {
+  const handleToggleQuestionApproval = async (questionId: number, currentStatus: boolean) => {
     const newStatus = !currentStatus;
-
-    const { error } = await supabase
-      .from("questions")
-      .update({ is_approved: newStatus })
-      .eq("id", questionId);
-
+    const { error } = await supabase.from("questions").update({ is_approved: newStatus }).eq("id", questionId);
     if (error) {
       showToast("Durum güncellenemedi: " + error.message, "error");
       return;
     }
 
-    setDbQuestions((prev: any) =>
-      prev.map((q: any) =>
-        q.id === questionId ? { ...q, is_approved: newStatus } : q
-      )
-    );
-
+    setDbQuestions((prev: any) => prev.map((q: any) => (q.id === questionId ? { ...q, is_approved: newStatus } : q)));
     showToast(newStatus ? "Soru yayına alındı." : "Soru yayından kaldırıldı.", "success");
   };
 
   const handleUpdateOrderStatus = async (orderId: number, newStatus: string) => {
-    const { error } = await supabase
-      .from("orders")
-      .update({ status: newStatus })
-      .eq("id", orderId);
-
+    const { error } = await supabase.from("orders").update({ status: newStatus }).eq("id", orderId);
     if (error) {
       showToast("Hata: " + error.message, "error");
       return;
     }
 
     showToast(`Sipariş durumu "${newStatus}" olarak güncellendi.`, "success");
-
-    setDbOrders((prev: any) =>
-      prev.map((o: any) => (o.id === orderId ? { ...o, status: newStatus } : o))
-    );
+    setDbOrders((prev: any) => prev.map((o: any) => (o.id === orderId ? { ...o, status: newStatus } : o)));
   };
 
   const handleApproveReview = async (reviewId: string) => {
-    const { error } = await supabase
-      .from("reviews")
-      .update({ is_approved: true })
-      .eq("id", reviewId);
-
+    const { error } = await supabase.from("reviews").update({ is_approved: true }).eq("id", reviewId);
     if (error) {
       showToast("Hata: " + error.message, "error");
       return;
     }
 
     showToast("Yorum yayına alındı.", "success");
-
-    setDbReviews((prev: any) =>
-      prev.map((r: any) =>
-        r.id === reviewId ? { ...r, is_approved: true } : r
-      )
-    );
+    setDbReviews((prev: any) => prev.map((r: any) => (r.id === reviewId ? { ...r, is_approved: true } : r)));
   };
 
   const handleDeleteReview = async (reviewId: string) => {
@@ -641,11 +493,9 @@ export default function AdminPanel() {
       cancelText: "Vazgeç",
       tone: "danger",
     });
-
     if (!ok) return;
 
     const { error } = await supabase.from("reviews").delete().eq("id", reviewId);
-
     if (error) {
       showToast("Hata: " + error.message, "error");
       return;
@@ -695,18 +545,15 @@ export default function AdminPanel() {
     }
 
     showToast("Yeni kampanya başarıyla kuruldu.", "success");
-
     setSelectedCampaignProducts([]);
     setCampaignDates({ start: "", end: "" });
     setCampaignName("");
     setDiscountPercent(20);
-
     loadAllData();
   };
 
   const handleDeleteCampaign = async (id: number) => {
     const { error } = await supabase.from("campaigns").delete().eq("id", id);
-
     if (error) {
       showToast("Kampanya silinemedi: " + error.message, "error");
       return;
@@ -728,27 +575,16 @@ export default function AdminPanel() {
     }
 
     try {
-      const urls = await Promise.all(
-        newSlideFiles.map((file) => uploadToStorageAndGetPublicUrl(file, "hero"))
-      );
-
-      const inserts = urls.map((url) => ({
-        image_url: url,
-        title: newSlide.title.trim(),
-        subtitle: newSlide.subtitle.trim(),
-      }));
-
+      const urls = await Promise.all(newSlideFiles.map((file) => uploadToStorageAndGetPublicUrl(file, "hero")));
+      const inserts = urls.map((url) => ({ image_url: url, title: newSlide.title.trim(), subtitle: newSlide.subtitle.trim() }));
       const { error } = await supabase.from("hero_slides").insert(inserts);
-
       if (error) throw error;
 
       showToast("Slide'lar eklendi.", "success");
-
       revokeUrls(newSlidePreviews);
       setNewSlideFiles([]);
       setNewSlidePreviews([]);
       setNewSlide({ title: "", subtitle: "" });
-
       loadAllData();
     } catch (err: any) {
       showToast("Slide eklenemedi: " + (err?.message || "Bilinmeyen hata"), "error");
@@ -763,11 +599,9 @@ export default function AdminPanel() {
       cancelText: "Vazgeç",
       tone: "danger",
     });
-
     if (!ok) return;
 
     const { error } = await supabase.from("hero_slides").delete().eq("id", id);
-
     if (error) {
       showToast("Slide silinemedi: " + error.message, "error");
       return;
@@ -778,15 +612,7 @@ export default function AdminPanel() {
   };
 
   const handleUpdateSlide = async (slide: Slide) => {
-    const { error } = await supabase
-      .from("hero_slides")
-      .update({
-        image_url: slide.image_url,
-        title: slide.title,
-        subtitle: slide.subtitle,
-      })
-      .eq("id", slide.id);
-
+    const { error } = await supabase.from("hero_slides").update({ image_url: slide.image_url, title: slide.title, subtitle: slide.subtitle }).eq("id", slide.id);
     if (error) {
       showToast("Slide güncellenemedi: " + error.message, "error");
       return;
@@ -846,45 +672,24 @@ export default function AdminPanel() {
       />
 
       <div className="px-6 max-w-6xl mx-auto space-y-6">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center text-center hover:border-green-200 hover:shadow-md transition-all">
-            <span className="text-3xl mb-2">💸</span>
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">
-              {activeMonth} CİROSU
-            </p>
-            <p className="text-3xl font-black text-green-600">
-              {monthlyRevenue.toLocaleString("tr-TR")} ₺
-            </p>
-          </div>
+        <AdminDashboardSummary
+          activeMonth={activeMonth}
+          monthlyRevenue={monthlyRevenue}
+          monthlyOrders={monthlyOrders}
+          monthlyVisits={monthlyVisits}
+          totalProducts={dbProducts.length}
+        />
 
-          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center text-center hover:border-black hover:shadow-md transition-all">
-            <span className="text-3xl mb-2">📦</span>
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">
-              {activeMonth} SİPARİŞİ
-            </p>
-            <p className="text-3xl font-black text-black">{monthlyOrders}</p>
-          </div>
-
-          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center text-center hover:border-blue-200 hover:shadow-md transition-all">
-            <span className="text-3xl mb-2">👁️</span>
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">
-              {activeMonth} ZİYARETİ
-            </p>
-            <p className="text-3xl font-black text-blue-600">
-              {monthlyVisits}
-            </p>
-          </div>
-
-          <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100 flex flex-col items-center text-center hover:border-black hover:shadow-md transition-all">
-            <span className="text-3xl mb-2">🛍️</span>
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">
-              TOPLAM ÜRÜN
-            </p>
-            <p className="text-3xl font-black text-black">
-              {dbProducts.length}
-            </p>
-          </div>
-        </div>
+        <AdminDashboardAlerts
+          pendingOrdersCount={pendingOrdersCount}
+          unansweredQuestionsCount={unansweredQuestionsCount}
+          pendingReviewsCount={pendingReviewsCount}
+          unreadMessagesCount={unreadMessagesCount}
+          onOpenOrders={() => setIsOrdersOpen(true)}
+          onOpenQuestions={() => setIsQuestionsOpen(true)}
+          onOpenReviews={() => setIsReviewsOpen(true)}
+          onOpenMessages={() => setIsMessagesOpen(true)}
+        />
 
         <ProductList
           loading={loading}
@@ -899,195 +704,26 @@ export default function AdminPanel() {
         />
       </div>
 
-      <div className="fixed bottom-6 left-6 z-40">
-        <button
-          onClick={() => setIsSettingsOpen(true)}
-          className="bg-white text-black border border-gray-200 shadow-xl px-5 py-3.5 rounded-full font-bold flex items-center gap-2 hover:bg-gray-50 active:scale-95 transition-all text-sm"
-        >
-          <span>⚙️</span> Özel Panel
-        </button>
-      </div>
-
-      <div className="fixed bottom-6 right-6 z-40 flex flex-col items-end gap-3">
-        <div
-          className={`flex flex-col items-end gap-3 transition-all duration-300 origin-bottom ${
-            isFabOpen
-              ? "opacity-100 scale-100 translate-y-0"
-              : "opacity-0 scale-50 translate-y-10 pointer-events-none"
-          }`}
-        >
-          <button
-            onClick={() => {
-              setIsFabOpen(false);
-              setIsAddProductOpen(true);
-            }}
-            className="bg-white text-black border border-gray-200 shadow-lg px-4 py-3 rounded-2xl font-bold text-sm flex items-center gap-3 hover:bg-gray-50 w-max"
-          >
-            <span>📦</span> Yeni Ürün Ekle
-          </button>
-
-          <button
-            onClick={() => {
-              setIsFabOpen(false);
-              setIsCampaignOpen(true);
-            }}
-            className="bg-blue-600 text-white shadow-lg px-4 py-3 rounded-2xl font-bold text-sm flex items-center gap-3 hover:bg-blue-700 w-max"
-          >
-            <span>🏷️</span> Kampanya / İndirim
-          </button>
-
-          <button
-            onClick={() => {
-              setIsFabOpen(false);
-              setIsCouponsOpen(true);
-            }}
-            className="bg-emerald-600 text-white shadow-lg px-4 py-3 rounded-2xl font-bold text-sm flex items-center gap-3 hover:bg-emerald-700 w-max"
-          >
-            <span>🎟️</span> Kupon Yönetimi
-          </button>
-        </div>
-
-        <button
-          onClick={() => setIsFabOpen(!isFabOpen)}
-          className={`w-16 h-16 rounded-full shadow-2xl flex items-center justify-center text-3xl font-light transition-all duration-300 z-50 ${
-            isFabOpen
-              ? "bg-red-500 text-white rotate-45"
-              : "bg-black text-white rotate-0 hover:scale-105"
-          }`}
-        >
-          +
-        </button>
-      </div>
-
-      <AddProductModal
-        open={isAddProductOpen}
-        onClose={() => setIsAddProductOpen(false)}
-        onSubmit={handleAddProduct}
-        creating={creating}
-        files={newProductFiles}
-        setFiles={setNewProductFiles}
-        previews={newProductPreviews}
-        setPreviews={setNewProductPreviews}
-        moveImage={moveNewImage}
+      <AdminFloatingActions
+        isFabOpen={isFabOpen}
+        setIsFabOpen={setIsFabOpen}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenAddProduct={() => setIsAddProductOpen(true)}
+        onOpenCampaign={() => setIsCampaignOpen(true)}
+        onOpenCoupons={() => setIsCouponsOpen(true)}
       />
 
-      <EditProductModal
-        open={editLoading || !!editingProduct}
-        onClose={() => setEditingProduct(null)}
-        loading={editLoading}
-        editingProduct={editingProduct}
-        setEditingProduct={setEditingProduct}
-        onSubmit={handleUpdateProduct}
-        saving={saving}
-        onDelete={handleDeleteProduct}
-        moveImage={moveEditImage}
-        removeImage={removeImageFromGallery}
-        addFiles={editAddFiles}
-        setAddFiles={setEditAddFiles}
-        addPreviews={editAddPreviews}
-        setAddPreviews={setEditAddPreviews}
-        addUploading={editAddUploading}
-        onAddMoreImages={handleAddMoreImagesToProduct}
-      />
-
-      <CampaignModal
-        open={isCampaignOpen}
-        onClose={() => setIsCampaignOpen(false)}
-        campaignName={campaignName}
-        setCampaignName={setCampaignName}
-        discountPercent={discountPercent}
-        setDiscountPercent={setDiscountPercent}
-        campaignDates={campaignDates}
-        setCampaignDates={setCampaignDates}
-        selectedCampaignProducts={selectedCampaignProducts}
-        setSelectedCampaignProducts={setSelectedCampaignProducts}
-        dbProducts={dbProducts as any}
-        dbCampaigns={dbCampaigns as any}
-        onCreateCampaign={handleCreateCampaign}
-        onDeleteCampaign={handleDeleteCampaign}
-      />
-
-      <CouponsModal
-        open={isCouponsOpen}
-        onClose={() => setIsCouponsOpen(false)}
-      />
-
-      <SettingsModal
-        open={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        marquee={marquee}
-        setMarquee={setMarquee}
-        onSaveMarquee={handleSaveMarquee}
-        dbSlides={dbSlides as any}
-        setDbSlides={(updater) => setDbSlides(updater)}
-        newSlideFiles={newSlideFiles}
-        setNewSlideFiles={setNewSlideFiles}
-        newSlidePreviews={newSlidePreviews}
-        setNewSlidePreviews={setNewSlidePreviews}
-        newSlide={newSlide}
-        setNewSlide={setNewSlide}
-        onAddSlide={handleAddSlide}
-        onUpdateSlide={handleUpdateSlide}
-        onDeleteSlide={handleDeleteSlide}
-      />
-
-      <MessagesModal
-        open={isMessagesOpen}
-        onClose={() => setIsMessagesOpen(false)}
-        messages={dbMessages as any}
-        replyingTo={replyingTo}
-        setReplyingTo={setReplyingTo}
-        replyText={replyText}
-        setReplyText={setReplyText}
-        onSendReply={handleSendMessageReply}
-      />
-
-      <QuestionsModal
-        open={isQuestionsOpen}
-        onClose={() => setIsQuestionsOpen(false)}
-        questions={dbQuestions as any}
-        replyingToQ={replyingToQ}
-        setReplyingToQ={setReplyingToQ}
-        qReplyText={qReplyText}
-        setQReplyText={setQReplyText}
-        onSendReply={handleSendQuestionReply}
-        onToggleApproval={handleToggleQuestionApproval}
-      />
-
-      <OrdersModal
-        open={isOrdersOpen}
-        onClose={() => setIsOrdersOpen(false)}
-        orders={dbOrders as any}
-        onUpdateStatus={handleUpdateOrderStatus}
-      />
-
-      <ReviewsModal
-        open={isReviewsOpen}
-        onClose={() => setIsReviewsOpen(false)}
-        reviews={dbReviews as any}
-        onApprove={handleApproveReview}
-        onDelete={handleDeleteReview}
-      />
-
-      <PerformanceModal
-        open={isPerformanceOpen}
-        onClose={() => setIsPerformanceOpen(false)}
-        tab={perfTab}
-        setTab={setPerfTab}
-        favoritesRank={favoritesRank as any}
-        reviewsRank={reviewsRank as any}
-        viewsRank={viewsRank as any}
-      />
-
-      <AnalysisModal
-        open={isAnalysisOpen}
-        onClose={() => setIsAnalysisOpen(false)}
-        tab={analysisTab}
-        setTab={setAnalysisTab}
-        allTimeRevenue={allTimeRevenue}
-        allTimeOrders={allTimeOrders}
-        allTimeVisits={allTimeVisits}
-      />
+      <AddProductModal open={isAddProductOpen} onClose={() => setIsAddProductOpen(false)} onSubmit={handleAddProduct} creating={creating} files={newProductFiles} setFiles={setNewProductFiles} previews={newProductPreviews} setPreviews={setNewProductPreviews} moveImage={moveNewImage} />
+      <EditProductModal open={editLoading || !!editingProduct} onClose={() => setEditingProduct(null)} loading={editLoading} editingProduct={editingProduct} setEditingProduct={setEditingProduct} onSubmit={handleUpdateProduct} saving={saving} onDelete={handleDeleteProduct} moveImage={moveEditImage} removeImage={removeImageFromGallery} addFiles={editAddFiles} setAddFiles={setEditAddFiles} addPreviews={editAddPreviews} setAddPreviews={setEditAddPreviews} addUploading={editAddUploading} onAddMoreImages={handleAddMoreImagesToProduct} />
+      <CampaignModal open={isCampaignOpen} onClose={() => setIsCampaignOpen(false)} campaignName={campaignName} setCampaignName={setCampaignName} discountPercent={discountPercent} setDiscountPercent={setDiscountPercent} campaignDates={campaignDates} setCampaignDates={setCampaignDates} selectedCampaignProducts={selectedCampaignProducts} setSelectedCampaignProducts={setSelectedCampaignProducts} dbProducts={dbProducts as any} dbCampaigns={dbCampaigns as any} onCreateCampaign={handleCreateCampaign} onDeleteCampaign={handleDeleteCampaign} />
+      <CouponsModal open={isCouponsOpen} onClose={() => setIsCouponsOpen(false)} />
+      <SettingsModal open={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} marquee={marquee} setMarquee={setMarquee} onSaveMarquee={handleSaveMarquee} dbSlides={dbSlides as any} setDbSlides={(updater) => setDbSlides(updater)} newSlideFiles={newSlideFiles} setNewSlideFiles={setNewSlideFiles} newSlidePreviews={newSlidePreviews} setNewSlidePreviews={setNewSlidePreviews} newSlide={newSlide} setNewSlide={setNewSlide} onAddSlide={handleAddSlide} onUpdateSlide={handleUpdateSlide} onDeleteSlide={handleDeleteSlide} />
+      <MessagesModal open={isMessagesOpen} onClose={() => setIsMessagesOpen(false)} messages={dbMessages as any} replyingTo={replyingTo} setReplyingTo={setReplyingTo} replyText={replyText} setReplyText={setReplyText} onSendReply={handleSendMessageReply} />
+      <QuestionsModal open={isQuestionsOpen} onClose={() => setIsQuestionsOpen(false)} questions={dbQuestions as any} replyingToQ={replyingToQ} setReplyingToQ={setReplyingToQ} qReplyText={qReplyText} setQReplyText={setQReplyText} onSendReply={handleSendQuestionReply} onToggleApproval={handleToggleQuestionApproval} />
+      <OrdersModal open={isOrdersOpen} onClose={() => setIsOrdersOpen(false)} orders={dbOrders as any} onUpdateStatus={handleUpdateOrderStatus} />
+      <ReviewsModal open={isReviewsOpen} onClose={() => setIsReviewsOpen(false)} reviews={dbReviews as any} onApprove={handleApproveReview} onDelete={handleDeleteReview} />
+      <PerformanceModal open={isPerformanceOpen} onClose={() => setIsPerformanceOpen(false)} tab={perfTab} setTab={setPerfTab} favoritesRank={favoritesRank as any} reviewsRank={reviewsRank as any} viewsRank={viewsRank as any} />
+      <AnalysisModal open={isAnalysisOpen} onClose={() => setIsAnalysisOpen(false)} tab={analysisTab} setTab={setAnalysisTab} allTimeRevenue={allTimeRevenue} allTimeOrders={allTimeOrders} allTimeVisits={allTimeVisits} />
     </div>
   );
 }
