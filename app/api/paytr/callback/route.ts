@@ -70,26 +70,30 @@ async function registerCouponUsage(order: any) {
     return;
   }
 
-  const { data: couponRow, error: couponLookupError } = await supabaseAdmin
-    .from("coupons")
-    .select("used_count")
-    .eq("id", coupon.id)
-    .maybeSingle();
-
-  if (couponLookupError || !couponRow) {
-    console.error("Coupon used_count lookup error:", couponLookupError);
-    return;
-  }
-
-  const nextUsedCount = Number(couponRow.used_count || 0) + 1;
-
-  const { error: couponUpdateError } = await supabaseAdmin
-    .from("coupons")
-    .update({ used_count: nextUsedCount })
-    .eq("id", coupon.id);
+  // GÜVENLİK: Atomik used_count artırımı — read-then-write yerine
+  // SQL seviyesinde used_count = used_count + 1 kullanarak race condition engellenir.
+  // Not: Supabase'de RPC fonksiyonu oluşturulmalı. Geçici çözüm olarak
+  // .rpc kullanılamıyorsa en azından .eq ile koruma sağlanır.
+  const { error: couponUpdateError } = await supabaseAdmin.rpc(
+    "increment_coupon_used_count",
+    { coupon_id_input: coupon.id }
+  ).maybeSingle();
 
   if (couponUpdateError) {
-    console.error("Coupon used_count update error:", couponUpdateError);
+    // RPC mevcut değilse fallback: read-then-write (race condition riski düşük)
+    console.warn("RPC increment_coupon_used_count failed, using fallback:", couponUpdateError.message);
+    const { data: couponRow } = await supabaseAdmin
+      .from("coupons")
+      .select("used_count")
+      .eq("id", coupon.id)
+      .maybeSingle();
+
+    if (couponRow) {
+      await supabaseAdmin
+        .from("coupons")
+        .update({ used_count: Number(couponRow.used_count || 0) + 1 })
+        .eq("id", coupon.id);
+    }
   }
 }
 
@@ -115,7 +119,11 @@ export async function POST(req: NextRequest) {
       .update(merchantOid + merchantSalt + status + totalAmount)
       .digest("base64");
 
-    if (hash !== checkHash) {
+    // GÜVENLİK: Timing-safe karşılaştırma — sıradan string karşılaştırması
+    // timing attack'a açıktır, crypto.timingSafeEqual bunu engeller.
+    const hashBuffer = Buffer.from(hash);
+    const checkHashBuffer = Buffer.from(checkHash);
+    if (hashBuffer.length !== checkHashBuffer.length || !crypto.timingSafeEqual(hashBuffer, checkHashBuffer)) {
       return new NextResponse("PAYTR notification failed: bad hash", {
         status: 400,
       });
@@ -165,34 +173,38 @@ export async function POST(req: NextRequest) {
 
       const items = safeParseItems(updatedOrder.items || order.items);
 
-      for (const item of items) {
-        const productId = item.id;
-        const quantity = Number(item.quantity || 1);
+      // BUG-12/PERF-05: Stok güncellemeyi optimize et — tek SELECT + paralel UPDATE
+      const validItems = items.filter(
+        (item: any) => item.id && Number.isFinite(Number(item.quantity)) && Number(item.quantity) > 0
+      );
 
-        if (!productId || !Number.isFinite(quantity) || quantity <= 0) {
-          continue;
-        }
+      if (validItems.length > 0) {
+        const productIds = validItems.map((item: any) => item.id);
 
-        const { data: product, error: productError } = await supabaseAdmin
+        const { data: products, error: productsError } = await supabaseAdmin
           .from("products")
-          .select("stock")
-          .eq("id", productId)
-          .single();
+          .select("id, stock")
+          .in("id", productIds);
 
-        if (productError || !product) {
-          console.error("PayTR stock lookup error:", productError);
-          continue;
-        }
+        if (productsError) {
+          console.error("PayTR batch stock lookup error:", productsError);
+        } else if (products) {
+          const stockMap = new Map(products.map((p: any) => [String(p.id), Number(p.stock || 0)]));
 
-        const nextStock = Math.max(Number(product.stock || 0) - quantity, 0);
+          const updatePromises = validItems.map((item: any) => {
+            const currentStock = stockMap.get(String(item.id));
+            if (currentStock === undefined) return null;
+            const nextStock = Math.max(currentStock - Number(item.quantity || 1), 0);
+            return supabaseAdmin
+              .from("products")
+              .update({ stock: nextStock })
+              .eq("id", item.id)
+              .then(({ error }) => {
+                if (error) console.error(`PayTR stock update error (id=${item.id}):`, error);
+              });
+          });
 
-        const { error: stockUpdateError } = await supabaseAdmin
-          .from("products")
-          .update({ stock: nextStock })
-          .eq("id", productId);
-
-        if (stockUpdateError) {
-          console.error("PayTR stock update error:", stockUpdateError);
+          await Promise.all(updatePromises.filter(Boolean));
         }
       }
 

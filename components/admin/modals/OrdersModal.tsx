@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import type { OrderRow } from "../types";
-import { supabase } from "@/lib/supabase";
+import { adminDb } from "../adminDb";
 import { useAppAlert } from "@/context/AppAlertContext";
+import { formatMoney } from "@/lib/utils";
 
 type Props = {
   open: boolean;
@@ -76,12 +77,6 @@ function getStatusClass(status: string) {
   return "bg-black text-white border-black";
 }
 
-function formatMoney(value: any) {
-  return Number(value || 0).toLocaleString("tr-TR", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
-}
 
 function getItemsSubtotal(items: any[]) {
   return items.reduce((sum, item) => {
@@ -166,16 +161,18 @@ export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: P
     setIsSaving(true);
 
     try {
-      const { error } = await supabase
-        .from("orders")
-        .update({
+      const { error } = await adminDb({
+        action: "update",
+        table: "orders",
+        data: {
           shipping_carrier: cleanCarrier,
           tracking_number: cleanTrackingNo,
           status: "Kargolandı",
-        })
-        .eq("id", orderId);
+        },
+        filters: [{ column: "id", op: "eq", value: orderId }],
+      });
 
-      if (error) throw error;
+      if (error) throw new Error(error);
 
       showToast("Kargo bilgileri başarıyla kaydedildi.", "success");
       onUpdateStatus(orderId, "Kargolandı");

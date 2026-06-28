@@ -1,4 +1,7 @@
 import { supabase } from "@/lib/supabase";
+import { safeParseIds } from "@/lib/utils";
+
+export { safeParseIds };
 
 export const STORAGE_BUCKET = "products";
 
@@ -47,7 +50,38 @@ function createRandomFileName(file: File, prefix: string) {
   return `${safePrefix}/${Date.now()}-${randomPart}.${ext}`;
 }
 
-function validateImageFile(file: File) {
+/**
+ * Dosyanın ilk baytlarını okuyarak gerçek formatını doğrular.
+ * Uzantı değiştirilerek gizlenmiş SVG/HTML/JS dosyalarını tespit eder.
+ */
+async function verifyMagicBytes(file: File): Promise<boolean> {
+  const SIGNATURES: { type: string; bytes: number[] }[] = [
+    { type: "image/jpeg", bytes: [0xFF, 0xD8, 0xFF] },
+    { type: "image/png", bytes: [0x89, 0x50, 0x4E, 0x47] },
+    { type: "image/webp", bytes: [0x52, 0x49, 0x46, 0x46] }, // RIFF header
+    { type: "image/avif", bytes: [] }, // AVIF uses ftyp box, check separately
+  ];
+
+  try {
+    const buffer = await file.slice(0, 12).arrayBuffer();
+    const header = new Uint8Array(buffer);
+
+    // AVIF: bytes 4-8 should be "ftyp"
+    if (file.type === "image/avif") {
+      const ftyp = String.fromCharCode(header[4], header[5], header[6], header[7]);
+      return ftyp === "ftyp";
+    }
+
+    const sig = SIGNATURES.find((s) => s.type === file.type);
+    if (!sig || sig.bytes.length === 0) return false;
+
+    return sig.bytes.every((byte, i) => header[i] === byte);
+  } catch {
+    return false;
+  }
+}
+
+async function validateImageFile(file: File) {
   if (!file) {
     throw new Error("Dosya bulunamadı.");
   }
@@ -63,10 +97,16 @@ function validateImageFile(file: File) {
   if (file.size <= 0) {
     throw new Error("Boş dosya yüklenemez.");
   }
+
+  // SEC-20/21: Magic bytes doğrulaması — dosya içeriğinin gerçekten beyan edilen format olduğunu kontrol et
+  const isReal = await verifyMagicBytes(file);
+  if (!isReal) {
+    throw new Error("Dosya içeriği beyan edilen formatla uyuşmuyor. Lütfen geçerli bir görsel dosyası yükleyin.");
+  }
 }
 
 export async function uploadToStorageAndGetPublicUrl(file: File, prefix: string) {
-  validateImageFile(file);
+  await validateImageFile(file);
 
   const fileName = createRandomFileName(file, prefix);
 
@@ -101,25 +141,4 @@ export function getTimeAgo(dateString?: string) {
   if (diffMins < 60) return `${diffMins} dk önce`;
   if (diffHours < 24) return `${diffHours} saat önce`;
   return `${diffDays} gün önce`;
-}
-
-// campaigns.product_ids bazen array, bazen string JSON gelebiliyor -> güvenli parse
-export function safeParseIds(ids: unknown): number[] {
-  if (Array.isArray(ids)) {
-    return ids.map((x) => Number(x)).filter((x) => Number.isFinite(x));
-  }
-
-  if (typeof ids === "string") {
-    try {
-      const parsed = JSON.parse(ids);
-
-      if (Array.isArray(parsed)) {
-        return parsed.map((x) => Number(x)).filter((x) => Number.isFinite(x));
-      }
-    } catch {
-      return [];
-    }
-  }
-
-  return [];
 }

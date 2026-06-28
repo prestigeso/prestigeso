@@ -1,5 +1,6 @@
 import ClearCartOnSuccess from "@/components/payment/ClearCartOnSuccess";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { formatMoney } from "@/lib/utils";
 
 type PaymentSuccessPageProps = {
   searchParams?: Promise<{
@@ -18,12 +19,6 @@ function safeParseAddress(address: any): any {
   }
 }
 
-function formatMoney(value: any) {
-  return Number(value || 0).toLocaleString("tr-TR", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
-}
 
 function getCouponInfo(address: any) {
   if (!address || typeof address !== "object") return null;
@@ -59,10 +54,13 @@ function getCouponDiscountLabel(couponInfo: ReturnType<typeof getCouponInfo>) {
 async function getOrderSummary(oid: string) {
   if (!oid) return null;
 
+  // GÜVENLİK: Sadece ödeme tamamlanmış siparişleri göster.
+  // merchant_oid tahmin edilmesi çok zor (rastgele) ama hassas bilgi yüzeyini minimize ediyoruz.
   const { data, error } = await supabaseAdmin
     .from("orders")
     .select("order_no, merchant_oid, total_amount, shipping_address, payment_status, status")
     .eq("merchant_oid", oid)
+    .eq("payment_status", "paid")
     .maybeSingle();
 
   if (error || !data) return null;

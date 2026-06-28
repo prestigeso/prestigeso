@@ -1,4 +1,4 @@
-﻿
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -6,25 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useCart } from "@/context/CartContext";
 import { useAppAlert } from "@/context/AppAlertContext";
-
-function safeParseIds(ids: unknown): number[] {
-  if (Array.isArray(ids)) {
-    return ids.map((x) => Number(x)).filter((x) => Number.isFinite(x));
-  }
-
-  if (typeof ids === "string") {
-    try {
-      const parsed = JSON.parse(ids);
-      if (Array.isArray(parsed)) {
-        return parsed.map((x) => Number(x)).filter((x) => Number.isFinite(x));
-      }
-    } catch {
-      return [];
-    }
-  }
-
-  return [];
-}
+import { safeParseIds } from "@/lib/utils";
 
 function safeParseItems(items: any): any[] {
   try {
@@ -126,13 +108,13 @@ export default function ProductDetailPage() {
         const { data: campData } = await supabase.from("campaigns").select("*");
 
         if (campData) {
-          const nowIso = new Date().toISOString();
+          const now = new Date();
           const activeCamp = campData.find((campaign: any) => {
             const ids = safeParseIds(campaign.product_ids);
             return (
               ids.includes(Number(pData.id)) &&
-              nowIso >= campaign.start_date &&
-              nowIso <= campaign.end_date
+              now >= new Date(campaign.start_date) &&
+              now <= new Date(campaign.end_date)
             );
           });
 
@@ -355,6 +337,7 @@ export default function ProductDetailPage() {
       image: productImages[0],
       category: product.category,
       quantity: 1,
+      stock: Number(product.stock || 0),
     });
 
     if (openCart) {
@@ -645,8 +628,8 @@ export default function ProductDetailPage() {
                 reviews.length > 0 ? "text-yellow-400" : "text-gray-300"
               }`}
             >
-              {"★".repeat(Math.round(Number(avgRating)))}
-              {"☆".repeat(5 - Math.round(Number(avgRating)))}
+              {"★".repeat(Math.min(5, Math.max(0, Math.round(Number(avgRating)))))}
+              {"☆".repeat(5 - Math.min(5, Math.max(0, Math.round(Number(avgRating)))))}
             </span>
 
             <button

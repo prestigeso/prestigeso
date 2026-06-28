@@ -19,12 +19,7 @@ export function normalizeCouponCode(value: string) {
     .slice(0, 40);
 }
 
-export function formatMoney(value: unknown) {
-  return Number(value || 0).toLocaleString("tr-TR", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
-}
+export { formatMoney } from "@/lib/utils";
 
 export function isValidEmail(value: string) {
   const email = normalizeEmail(value);

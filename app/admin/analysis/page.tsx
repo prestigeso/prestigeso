@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
+import { formatMoney } from "@/lib/utils";
 
 type AnalysisTab = "overview" | "revenue" | "orders" | "visits" | "products";
 type RangeKey = "24h" | "7d" | "28d" | "90d" | "365d" | "all";
@@ -98,9 +99,6 @@ function isAfterRange(value: string | null | undefined, range: RangeKey) {
   return new Date(value).getTime() >= start.getTime();
 }
 
-function formatMoney(value: number) {
-  return Number(value || 0).toLocaleString("tr-TR") + " ₺";
-}
 
 function formatNumber(value: number) {
   return Number(value || 0).toLocaleString("tr-TR");
@@ -316,6 +314,11 @@ export default function AdminAnalysisPage() {
 
   useEffect(() => {
     setActiveTab(getTabFromUrl());
+
+    // FEAT-15: Geri/ileri tuşuyla URL değiştiğinde tab'ı senkronize et
+    const handlePopState = () => setActiveTab(getTabFromUrl());
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
   useEffect(() => {

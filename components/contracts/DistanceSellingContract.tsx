@@ -16,7 +16,7 @@ export default function DistanceSellingContract() {
       <section>
         <h3 className="font-black text-black uppercase mb-2">Madde 2 - Konu</h3>
         <p>
-          İşbu sözleşmenin konusu, ALICI'nın SATICI'ya ait "prestigeso.com.tr" internet alışveriş sitesinden elektronik ortamda siparişini yaptığı aşağıda nitelikleri ve satış fiyatı belirtilen ürünün satışı ve teslimi ile ilgili olarak "4077 Sayılı Tüketicilerin Korunması Hakkındaki Kanun" ve "Mesafeli Sözleşmeler Uygulama Usul ve Esasları Hakkında Yönetmelik" hükümleri gereğince tarafların hak ve yükümlülüklerinin saptanmasıdır.
+          İşbu sözleşmenin konusu, ALICI'nın SATICI'ya ait "prestigeso.com.tr" internet alışveriş sitesinden elektronik ortamda siparişini yaptığı aşağıda nitelikleri ve satış fiyatı belirtilen ürünün satışı ve teslimi ile ilgili olarak "6502 Sayılı Tüketicinin Korunması Hakkında Kanun" ve "Mesafeli Sözleşmeler Yönetmeliği" hükümleri gereğince tarafların hak ve yükümlülüklerinin saptanmasıdır.
         </p>
       </section>
 

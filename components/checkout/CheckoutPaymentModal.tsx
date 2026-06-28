@@ -13,7 +13,17 @@ export default function CheckoutPaymentModal({
   merchantOid,
   onClose,
 }: CheckoutPaymentModalProps) {
-  if (!isOpen || !iframeUrl) return null;
+  // GÜVENLİK: Sadece PayTR domain'inden gelen URL'leri kabul et
+  const isValidPaytrUrl = (() => {
+    try {
+      const url = new URL(iframeUrl);
+      return url.protocol === "https:" && url.hostname.endsWith("paytr.com");
+    } catch {
+      return false;
+    }
+  })();
+
+  if (!isOpen || !iframeUrl || !isValidPaytrUrl) return null;
 
   return (
     <div className="fixed inset-0 z-[1100] bg-black/70 backdrop-blur-sm flex items-center justify-center p-0 md:p-4">

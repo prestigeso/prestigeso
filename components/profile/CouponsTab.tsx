@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAppAlert } from "@/context/AppAlertContext";
+import { formatMoney } from "@/lib/utils";
 
 type CouponRow = {
   id: string;
@@ -33,12 +34,6 @@ type CouponUsageRow = {
   created_at?: string;
 };
 
-function formatMoney(value: number | string | null | undefined) {
-  return Number(value || 0).toLocaleString("tr-TR", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
-}
 
 function formatDate(value?: string | null) {
   if (!value) return "Süresiz";
@@ -102,9 +97,16 @@ export default function CouponsTab() {
 
       setUser(session.user);
 
+      const nowIso = new Date().toISOString();
+
       const [{ data: couponData, error: couponError }, { data: usageData, error: usageError }] =
         await Promise.all([
-          supabase.from("coupons").select("*").order("created_at", { ascending: false }),
+          supabase
+            .from("coupons")
+            .select("id, code, name, description, discount_type, discount_value, min_order_amount, max_discount_amount, starts_at, ends_at, usage_limit_per_user, usage_limit_total, used_count, is_active, is_member_only, created_at")
+            .eq("is_active", true)
+            .or(`ends_at.is.null,ends_at.gte.${nowIso}`)
+            .order("created_at", { ascending: false }),
           supabase
             .from("coupon_usages")
             .select("*")

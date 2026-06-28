@@ -71,14 +71,21 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
   useEffect(() => {
     const fetchCities = async () => {
       try {
-        const res = await fetch("https://turkiyeapi.dev/api/v1/provinces");
-        const json = await res.json();
+        // PERF-06: İl listesini sessionStorage'dan cache'le
+        const cachedProvinces = sessionStorage.getItem("prestige_provinces");
+        if (cachedProvinces) {
+          setCities(JSON.parse(cachedProvinces));
+        } else {
+          const res = await fetch("https://turkiyeapi.dev/api/v1/provinces");
+          const json = await res.json();
 
-        if (json.status === "OK") {
-          const sorted = json.data.sort((a: any, b: any) =>
-            a.name.localeCompare(b.name, "tr")
-          );
-          setCities(sorted);
+          if (json.status === "OK") {
+            const sorted = json.data.sort((a: any, b: any) =>
+              a.name.localeCompare(b.name, "tr")
+            );
+            setCities(sorted);
+            try { sessionStorage.setItem("prestige_provinces", JSON.stringify(sorted)); } catch { /* quota */ }
+          }
         }
       } catch (error) {
         console.error("Şehirler yüklenemedi:", error);
@@ -256,7 +263,8 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
 
     if (!ok) return;
 
-    const { error } = await supabase.from("addresses").delete().eq("id", id);
+    // GÜVENLİK: user_id filtresi ile sadece kendi adresini silebilir
+    const { error } = await supabase.from("addresses").delete().eq("id", id).eq("user_id", user.id);
 
     if (error) {
       showToast("Adres silinemedi: " + error.message, "error");

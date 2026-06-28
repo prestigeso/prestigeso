@@ -7,25 +7,7 @@ import Link from "next/link";
 import { useSearch } from "@/context/SearchContext";
 import { useAppAlert } from "@/context/AppAlertContext";
 import { supabase } from "@/lib/supabase";
-
-function safeParseIds(ids: unknown): number[] {
-  if (Array.isArray(ids)) {
-    return ids.map((x) => Number(x)).filter((x) => Number.isFinite(x));
-  }
-
-  if (typeof ids === "string") {
-    try {
-      const parsed = JSON.parse(ids);
-      if (Array.isArray(parsed)) {
-        return parsed.map((x) => Number(x)).filter((x) => Number.isFinite(x));
-      }
-    } catch {
-      return [];
-    }
-  }
-
-  return [];
-}
+import { safeParseIds, sanitizeImageUrl } from "@/lib/utils";
 
 export default function Home() {
   const { searchQuery, setSearchQuery, selectedCategory, setSelectedCategory } =
@@ -39,7 +21,7 @@ export default function Home() {
     0
   );
 
-  const [nowIso] = useState(() => new Date().toISOString());
+
   const [dbProducts, setDbProducts] = useState<any[]>([]);
   const [dbCampaigns, setDbCampaigns] = useState<any[]>([]);
   const [heroSlides, setHeroSlides] = useState<any[]>([]);
@@ -77,7 +59,7 @@ export default function Home() {
   };
 
   useEffect(() => {
-    setLocalCampaign(localStorage.getItem("prestigeso_campaign") || "");
+    setLocalCampaign((localStorage.getItem("prestigeso_campaign") || "").slice(0, 200));
 
     const loadAllDataAndCount = async () => {
       const {
@@ -105,9 +87,13 @@ export default function Home() {
 
       try {
         const isHere = sessionStorage.getItem("prestige_session_active");
+        const lastView = Number(localStorage.getItem("prestige_last_view") || 0);
+        const now = Date.now();
+        const THROTTLE_MS = 30 * 60 * 1000; // 30 dakika
 
-        if (!isHere) {
+        if (!isHere && (now - lastView) > THROTTLE_MS) {
           sessionStorage.setItem("prestige_session_active", "true");
+          localStorage.setItem("prestige_last_view", String(now));
 
           await supabase
             .from("page_views")
@@ -123,12 +109,12 @@ export default function Home() {
 
         if (slidesData) setHeroSlides(slidesData);
 
-        const { data: campData } = await supabase.from("campaigns").select("*");
+        const { data: campData } = await supabase.from("campaigns").select("*").gte("end_date", new Date().toISOString());
         if (campData) setDbCampaigns(campData);
 
         const { data: productsData, error: pError } = await supabase
           .from("products")
-          .select("*")
+          .select("id, name, price, category, stock, images, image, is_bestseller, discount_price, created_at")
           .gt("stock", 0)
           .order("created_at", { ascending: false });
 
@@ -180,18 +166,19 @@ export default function Home() {
   }, [heroSlides.length]);
 
   const discountedFull = useMemo(() => {
+    const now = new Date();
     return dbProducts.filter((p) => {
       return dbCampaigns.find((c) => {
         const ids = safeParseIds(c.product_ids);
 
         return (
           ids.includes(Number(p.id)) &&
-          nowIso >= c.start_date &&
-          nowIso <= c.end_date
+          now >= new Date(c.start_date) &&
+          now <= new Date(c.end_date)
         );
       });
     });
-  }, [dbProducts, dbCampaigns, nowIso]);
+  }, [dbProducts, dbCampaigns]);
 
   const bestsellersFull = useMemo(
     () => dbProducts.filter((p) => p.is_bestseller).slice(0, 20),
@@ -326,7 +313,15 @@ export default function Home() {
               </p>
             </div>
           ) : (
-            heroSlides.map((slide, index) => (
+            heroSlides
+              .filter((_, index) => {
+                // PERF-13: Sadece aktif ve sonraki slide'ı render et
+                const next = (currentSlide + 1) % heroSlides.length;
+                return index === currentSlide || index === next;
+              })
+              .map((slide, _, arr) => {
+                const index = heroSlides.indexOf(slide);
+                return (
               <div
                 key={slide.id}
                 className={`absolute inset-0 transition-opacity duration-1000 ${
@@ -350,7 +345,8 @@ export default function Home() {
                   </p>
                 </div>
               </div>
-            ))
+                );
+              })
           )}
         </div>
       )}
@@ -380,15 +376,16 @@ export default function Home() {
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-6">
-                {filteredProducts.map((p) => (
+                {(() => { const now = new Date(); return filteredProducts.map((p) => (
                   <PrestigeCard
                     key={p.id}
                     product={p}
                     campaigns={dbCampaigns}
                     isFavorite={favoriteIds.has(Number(p.id))}
                     onToggleFavorite={handleToggleFavorite}
+                    now={now}
                   />
-                ))}
+                )); })()}
               </div>
             )}
           </div>
@@ -623,7 +620,7 @@ function ProductCarousel({
       </div>
 
       <div className="flex overflow-x-auto md:grid md:grid-cols-5 gap-3 md:gap-4 px-1 hide-scrollbar pb-4 snap-x snap-mandatory">
-        {products.map((p: any) => (
+        {(() => { const now = new Date(); return products.map((p: any) => (
           <div
             key={p.id}
             className="min-w-[140px] md:min-w-0 w-[45vw] md:w-auto snap-start"
@@ -634,9 +631,10 @@ function ProductCarousel({
               badgeLabel={badgeLabel}
               isFavorite={favoriteIds?.has?.(Number(p.id)) || false}
               onToggleFavorite={onToggleFavorite}
+              now={now}
             />
           </div>
-        ))}
+        )); })()}
       </div>
     </div>
   );
@@ -648,26 +646,26 @@ function PrestigeCard({
   badgeLabel,
   isFavorite,
   onToggleFavorite,
+  now,
 }: {
   product: any;
   campaigns: any[];
   badgeLabel?: string;
   isFavorite: boolean;
   onToggleFavorite: (productId: number, isCurrentlyFavorite: boolean) => void;
+  now: Date;
 }) {
-  const displayImage = product.images?.[0] || product.image || "/logo.jpeg";
+  const displayImage = sanitizeImageUrl(product.images?.[0] || product.image);
   const ratingCount = product.reviewCount || 0;
   const avgRating = product.ratingAvg || 0;
-
-  const nowIso = new Date().toISOString();
 
   const activeCamp = campaigns?.find((c) => {
     const ids = safeParseIds(c.product_ids);
 
     return (
       ids.includes(Number(product.id)) &&
-      nowIso >= c.start_date &&
-      nowIso <= c.end_date
+      now >= new Date(c.start_date) &&
+      now <= new Date(c.end_date)
     );
   });
 
@@ -743,8 +741,8 @@ function PrestigeCard({
               ratingCount > 0 ? "text-yellow-400" : "text-gray-300"
             }`}
           >
-            {"★".repeat(Math.round(avgRating))}
-            {"☆".repeat(5 - Math.round(avgRating))}
+            {"★".repeat(Math.min(5, Math.max(0, Math.round(avgRating))))}
+            {"☆".repeat(5 - Math.min(5, Math.max(0, Math.round(avgRating))))}
           </span>
 
           <span className="text-[8px] md:text-[9px] font-bold text-gray-400">

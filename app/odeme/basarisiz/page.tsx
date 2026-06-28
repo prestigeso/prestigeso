@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { formatMoney } from "@/lib/utils";
 
 type PaymentFailPageProps = {
   searchParams?: Promise<{
@@ -31,12 +32,6 @@ async function getFailedOrderSummary(oid: string) {
   };
 }
 
-function formatMoney(value: any) {
-  return Number(value || 0).toLocaleString("tr-TR", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
-}
 
 export default async function PaymentFailPage({
   searchParams,

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAppAlert } from "@/context/AppAlertContext";
+import { formatMoney } from "@/lib/utils";
 
 type CouponRow = {
   id: string;
@@ -71,12 +72,6 @@ function normalizeCouponCode(value: string) {
     .slice(0, MAX_CODE_LENGTH);
 }
 
-function formatMoney(value: number | string | null | undefined) {
-  return Number(value || 0).toLocaleString("tr-TR", {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  });
-}
 
 function formatDate(value?: string | null) {
   if (!value) return "Süresiz";

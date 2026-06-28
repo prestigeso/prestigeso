@@ -29,5 +29,7 @@ export function getCouponLabel(coupon: CouponRow) {
     return `${formatMoney(coupon.discount_value)} TL indirim`;
   }
 
-  return `%${formatMoney(coupon.discount_value)} indirim`;
+  const val = Number(coupon.discount_value || 0);
+  const display = Number.isInteger(val) ? String(val) : val.toFixed(1);
+  return `%${display} indirim`;
 }

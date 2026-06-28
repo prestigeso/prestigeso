@@ -137,21 +137,21 @@ export async function POST(req: Request) {
 
     if (!adminPass) {
       return NextResponse.json(
-        { error: "Server misconfigured: ADMIN_PASSWORD boş veya okunamadı" },
+        { error: "Server misconfigured." },
         { status: 500 }
       );
     }
 
     if (!adminSecret) {
       return NextResponse.json(
-        { error: "Server misconfigured: ADMIN_COOKIE_SECRET boş veya okunamadı" },
+        { error: "Server misconfigured." },
         { status: 500 }
       );
     }
 
     if (adminSecret.length < 32) {
       return NextResponse.json(
-        { error: "Server misconfigured: ADMIN_COOKIE_SECRET en az 32 karakter olmalı" },
+        { error: "Server misconfigured." },
         { status: 500 }
       );
     }
@@ -185,7 +185,7 @@ export async function POST(req: Request) {
     return res;
   } catch (e: any) {
     return NextResponse.json(
-      { error: "Bad request", details: e?.message },
+      { error: "Bad request" },
       { status: 400 }
     );
   }

@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { createClient } from "@supabase/supabase-js";
+import { safeParseIds } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
@@ -33,19 +35,6 @@ const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
   free_shipping_threshold: 0,
   shipping_enabled: true,
 };
-
-function safeParseIds(ids: unknown): number[] {
-  if (Array.isArray(ids)) return ids.map((x) => Number(x)).filter((x) => Number.isFinite(x));
-  if (typeof ids === "string") {
-    try {
-      const parsed = JSON.parse(ids);
-      if (Array.isArray(parsed)) return parsed.map((x) => Number(x)).filter((x) => Number.isFinite(x));
-    } catch {
-      return [];
-    }
-  }
-  return [];
-}
 
 function getClientIp(req: NextRequest) {
   const forwarded = req.headers.get("x-forwarded-for");
@@ -227,12 +216,35 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json();
-    const userId = body.userId || null;
     const checkoutMode = body.checkoutMode === "member" ? "member" : "guest";
     const requestedEmail = normalizeEmail(body.userEmail);
     const requestedCouponCode = normalizeCouponCode(body.couponCode);
     const items = Array.isArray(body.items) ? body.items : [];
     const shippingAddress = body.shippingAddress || null;
+
+    // --- userId doğrulaması: client'tan gelen değere güvenmek yerine auth token'dan çözümle ---
+    let userId: string | null = null;
+    if (checkoutMode === "member") {
+      const authHeader = req.headers.get("authorization");
+      const accessToken = authHeader?.replace("Bearer ", "");
+
+      if (!accessToken) {
+        return NextResponse.json({ error: "Üye siparişi için giriş yapmanız gerekiyor." }, { status: 401 });
+      }
+
+      const supabaseAuth = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
+
+      const { data: { user: authUser }, error: authError } = await supabaseAuth.auth.getUser(accessToken);
+
+      if (authError || !authUser) {
+        return NextResponse.json({ error: "Oturum doğrulanamadı. Lütfen tekrar giriş yapın." }, { status: 401 });
+      }
+
+      userId = authUser.id;
+    }
 
     if (requestedEmail && !isValidEmail(requestedEmail)) return NextResponse.json({ error: "Geçersiz e-posta adresi." }, { status: 400 });
     if (checkoutMode === "member" && (!userId || !requestedEmail)) return NextResponse.json({ error: "Üye siparişi için giriş yapmanız gerekiyor." }, { status: 401 });
@@ -256,6 +268,10 @@ export async function POST(req: NextRequest) {
       .in("id", productIds);
 
     if (productError || !products) return NextResponse.json({ error: "Ürünler kontrol edilemedi." }, { status: 500 });
+
+    // GÜVENLİK: Tüm fiyat, indirim, kargo ve toplam tutar hesaplamaları sunucu tarafında
+    // bağımsız olarak yapılır. Client'tan gelen fiyat bilgilerine asla güvenilmez.
+    // Client yalnızca ürün ID, miktar, adres ve kupon kodu gönderir.
 
     const { data: campaigns } = await supabaseAdmin.from("campaigns").select("*");
     const nowIso = new Date().toISOString();

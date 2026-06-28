@@ -5,6 +5,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useSearch } from "@/context/SearchContext";
 import { useAppAlert } from "@/context/AppAlertContext";
+import { safeParseIds, sanitizeImageUrl } from "@/lib/utils";
 
 type Product = {
   id: number | string;
@@ -26,36 +27,16 @@ type Campaign = {
   product_ids: number[] | string;
 };
 
-function safeParseIds(ids: unknown): number[] {
-  if (Array.isArray(ids)) {
-    return ids.map((x) => Number(x)).filter((x) => Number.isFinite(x));
-  }
-
-  if (typeof ids === "string") {
-    try {
-      const parsed = JSON.parse(ids);
-
-      if (Array.isArray(parsed)) {
-        return parsed.map((x) => Number(x)).filter((x) => Number.isFinite(x));
-      }
-    } catch {
-      return [];
-    }
-  }
-
-  return [];
-}
-
 function getActiveCampaign(productId: number | string, campaigns: Campaign[]) {
-  const nowIso = new Date().toISOString();
+  const now = new Date();
 
   return campaigns.find((campaign) => {
     const ids = safeParseIds(campaign.product_ids);
 
     return (
       ids.includes(Number(productId)) &&
-      nowIso >= campaign.start_date &&
-      nowIso <= campaign.end_date
+      now >= new Date(campaign.start_date) &&
+      now <= new Date(campaign.end_date)
     );
   });
 }
@@ -119,6 +100,7 @@ export default function ShopPage() {
       const { data: campaignsData, error: campaignsError } = await supabase
         .from("campaigns")
         .select("*")
+        .gte("end_date", new Date().toISOString())
         .order("created_at", { ascending: false });
 
       if (!campaignsError && campaignsData) {
@@ -262,7 +244,7 @@ function ShopCard({
   isFavorite: boolean;
   onToggleFavorite: (productId: number, isCurrentlyFavorite: boolean) => void;
 }) {
-  const displayImage = product.images?.[0] || product.image || "/logo.jpeg";
+  const displayImage = sanitizeImageUrl(product.images?.[0] || product.image);
   const activeCampaign = getActiveCampaign(product.id, campaigns);
 
   const originalPrice = Number(product.price || 0);

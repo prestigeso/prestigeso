@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useAppAlert } from "@/context/AppAlertContext";
+import { useCart } from "@/context/CartContext";
 
 import AddressesTab from "@/components/profile/AddressesTab";
 import OrdersTab from "@/components/profile/OrdersTab";
@@ -53,6 +54,7 @@ function getDisplayName(user: any, customerProfile?: any) {
 export default function ProfilePage() {
   const router = useRouter();
   const { showToast } = useAppAlert();
+  const { clearCart } = useCart();
 
   const [user, setUser] = useState<any>(null);
   const [customerProfile, setCustomerProfile] = useState<any>(null);
@@ -110,13 +112,19 @@ export default function ProfilePage() {
 
       if (customerData) setCustomerProfile(customerData);
 
-      const { data: favData, error: favError } = await supabase
-        .from("favorites")
-        .select("product_id, products (*)")
-        .eq("user_id", session.user.id);
+      // PERF-03: Tüm sorguları paralel çalıştır
+      const [favResult, messagesResult, reviewsResult, questionsResult, ordersResult, addressesResult] = await Promise.all([
+        supabase.from("favorites").select("product_id, products (*)").eq("user_id", session.user.id),
+        supabase.from("messages").select("*").eq("user_id", session.user.id).order("created_at", { ascending: false }),
+        supabase.from("reviews").select("*, products(*)").eq("user_id", session.user.id).order("created_at", { ascending: false }),
+        supabase.from("questions").select("*, products(*)").eq("user_id", session.user.id).order("created_at", { ascending: false }),
+        supabase.from("orders").select("*").eq("user_id", session.user.id).eq("payment_status", "paid").order("created_at", { ascending: false }),
+        supabase.from("addresses").select("*").eq("user_id", session.user.id).order("is_default", { ascending: false }).order("created_at", { ascending: false }),
+      ]);
 
-      if (!favError && favData) {
-        const dbFavs = favData.map((f: any) => f.products).filter(Boolean);
+      // Favorites
+      if (!favResult.error && favResult.data) {
+        const dbFavs = favResult.data.map((f: any) => f.products).filter(Boolean);
         const favIds = dbFavs.map((p: any) => p.id);
 
         if (favIds.length > 0) {
@@ -145,42 +153,11 @@ export default function ProfilePage() {
         setRecentlyViewed([]);
       }
 
-      const { data: mData } = await supabase
-        .from("messages")
-        .select("*")
-        .eq("user_id", session.user.id)
-        .order("created_at", { ascending: false });
-      if (mData) setMyMessages(mData);
-
-      const { data: revData } = await supabase
-        .from("reviews")
-        .select("*, products(*)")
-        .eq("user_id", session.user.id)
-        .order("created_at", { ascending: false });
-      if (revData) setMyReviews(revData);
-
-      const { data: qData } = await supabase
-        .from("questions")
-        .select("*, products(*)")
-        .eq("user_id", session.user.id)
-        .order("created_at", { ascending: false });
-      if (qData) setMyQuestions(qData);
-
-      const { data: ordData } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("user_id", session.user.id)
-        .eq("payment_status", "paid")
-        .order("created_at", { ascending: false });
-      if (ordData) setMyOrders(ordData);
-
-      const { data: addrData } = await supabase
-        .from("addresses")
-        .select("*")
-        .eq("user_id", session.user.id)
-        .order("is_default", { ascending: false })
-        .order("created_at", { ascending: false });
-      if (addrData) setAddresses(addrData);
+      if (messagesResult.data) setMyMessages(messagesResult.data);
+      if (reviewsResult.data) setMyReviews(reviewsResult.data);
+      if (questionsResult.data) setMyQuestions(questionsResult.data);
+      if (ordersResult.data) setMyOrders(ordersResult.data);
+      if (addressesResult.data) setAddresses(addressesResult.data);
 
       setLoading(false);
     };
@@ -280,7 +257,7 @@ export default function ProfilePage() {
           </div>
 
           <button type="button" onClick={() => setIsMessageModalOpen(true)} className="w-full text-center bg-white p-4 rounded-3xl border border-gray-100 font-black text-black text-xs uppercase tracking-widest hover:bg-gray-50 transition-all shadow-sm flex items-center justify-center gap-3"><span>💬</span> Satıcıya Mesaj Gönder</button>
-          <button type="button" onClick={() => supabase.auth.signOut().then(() => router.push("/login"))} className="w-full text-center bg-white p-4 rounded-3xl border border-gray-100 font-bold text-red-500 text-sm hover:bg-red-50 transition-all shadow-sm mt-2">Güvenli Çıkış</button>
+          <button type="button" onClick={() => { clearCart(); try { localStorage.removeItem("prestige_viewed"); localStorage.removeItem("prestigeso_profile_tab"); } catch {} supabase.auth.signOut().then(() => router.push("/login")); }} className="w-full text-center bg-white p-4 rounded-3xl border border-gray-100 font-bold text-red-500 text-sm hover:bg-red-50 transition-all shadow-sm mt-2">Güvenli Çıkış</button>
         </div>
 
         <div className="w-full md:w-3/4 flex flex-col gap-6">
@@ -315,7 +292,7 @@ export default function ProfilePage() {
                     <Link href={`/product/${item.id}`} key={item.id} className="min-w-[90px] w-[90px] md:min-w-[100px] md:w-[100px] snap-start group relative block cursor-pointer flex-shrink-0 border border-gray-100 p-1.5 rounded-xl hover:border-black transition-all bg-white">
                       <div className="aspect-square w-full overflow-hidden rounded-lg bg-gray-50 relative mb-2"><img src={displayImage} alt={item.name || "Ürün"} className="h-full w-full object-cover mix-blend-multiply group-hover:scale-110 transition-transform duration-500 ease-out" /></div>
                       <h4 className="font-bold text-[9px] uppercase truncate text-black">{item.name}</h4>
-                      <div className="flex items-center gap-0.5 mt-0.5"><span className={`text-[8px] ${ratingCount > 0 ? "text-yellow-400" : "text-gray-300"}`}>{"★".repeat(Math.round(avgRating))}{"☆".repeat(5 - Math.round(avgRating))}</span><span className="text-[7px] font-bold text-gray-400">({ratingCount})</span></div>
+                      <div className="flex items-center gap-0.5 mt-0.5"><span className={`text-[8px] ${ratingCount > 0 ? "text-yellow-400" : "text-gray-300"}`}>{"★".repeat(Math.min(5, Math.max(0, Math.round(avgRating))))}{"☆".repeat(5 - Math.min(5, Math.max(0, Math.round(avgRating))))}</span><span className="text-[7px] font-bold text-gray-400">({ratingCount})</span></div>
                       <div className="flex items-end gap-1 mt-0.5"><p className="text-[10px] font-black text-black">{activePrice.toLocaleString("tr-TR")} ₺</p></div>
                     </Link>
                   );

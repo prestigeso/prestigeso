@@ -51,187 +51,139 @@ export function useAdminData() {
     setLoading(true);
 
     try {
-      // 1) PRODUCTS
-      const { data: pData, error: pErr } = await supabase
-        .from("products")
-        .select(
-          'id,name,price,category,stock,"SKU",is_bestseller,discount_price,campaign_start_date,campaign_end_date,created_at,barcode,images,image,description'
-        )
-        .order("created_at", { ascending: false });
-
-      if (pErr) {
-        console.error("Ürünler çekilemedi:", pErr);
-        setDbProducts([]);
-      } else {
-        setDbProducts((pData as any) || []);
-      }
-
-      // 2) SLIDES
-      const { data: sData, error: sErr } = await supabase
-        .from("hero_slides")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (sErr) {
-        console.error("Slide'lar çekilemedi:", sErr);
-        setDbSlides([]);
-      } else {
-        setDbSlides((sData as any) || []);
-      }
-
-      // 3) CAMPAIGNS
-      const { data: campData, error: campErr } = await supabase
-        .from("campaigns")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (campErr) {
-        console.error("Kampanyalar çekilemedi:", campErr);
-        setDbCampaigns([]);
-      } else {
-        setDbCampaigns((campData as any) || []);
-      }
-
-      // 4) MONTHLY METRICS
-      // Sadece ödenmiş siparişler aylık sipariş/ciro hesabına girer.
-      const { data: monthlyOrdersData, error: moErr } = await supabase
-        .from("orders")
-        .select("total_amount, created_at, payment_status")
-        .eq("payment_status", "paid")
-        .gte("created_at", firstDayOfThisMonthIso);
-
-      if (moErr) {
-        console.error("Aylık ödenmiş siparişler çekilemedi:", moErr);
-        setMonthlyOrders(0);
-        setMonthlyRevenue(0);
-      } else {
-        const list = monthlyOrdersData || [];
-
-        setMonthlyOrders(list.length);
-        setMonthlyRevenue(
-          list.reduce(
-            (acc: number, order: any) =>
-              acc + Number(order.total_amount || 0),
-            0
+      // Tüm sorguları paralel çalıştır (PERF-07)
+      const [
+        productsRes,
+        slidesRes,
+        campaignsRes,
+        monthlyOrdersRes,
+        monthlyVisitsRes,
+        messagesRes,
+        reviewsRes,
+        favoritesRes,
+        viewsRes,
+        questionsRes,
+        allOrdersRes,
+        allVisitsRes,
+      ] = await Promise.all([
+        // 1) PRODUCTS
+        supabase
+          .from("products")
+          .select(
+            'id,name,price,category,stock,"SKU",is_bestseller,discount_price,campaign_start_date,campaign_end_date,created_at,barcode,images,image,description'
           )
-        );
+          .order("created_at", { ascending: false }),
+        // 2) SLIDES
+        supabase
+          .from("hero_slides")
+          .select("*")
+          .order("created_at", { ascending: false }),
+        // 3) CAMPAIGNS
+        supabase
+          .from("campaigns")
+          .select("*")
+          .order("created_at", { ascending: false }),
+        // 4) MONTHLY ORDERS
+        supabase
+          .from("orders")
+          .select("total_amount, created_at, payment_status")
+          .eq("payment_status", "paid")
+          .gte("created_at", firstDayOfThisMonthIso),
+        // 5) MONTHLY VISITS
+        supabase
+          .from("page_views")
+          .select("id, created_at")
+          .gte("created_at", firstDayOfThisMonthIso),
+        // 6) MESSAGES
+        supabase
+          .from("messages")
+          .select("*")
+          .order("created_at", { ascending: false }),
+        // 7) REVIEWS
+        supabase
+          .from("reviews")
+          .select("*, products(name, image, images)")
+          .order("created_at", { ascending: false }),
+        // 8) FAVORITES
+        supabase.from("favorites").select("product_id"),
+        // 9) PRODUCT VIEWS
+        supabase.from("product_views").select("product_id"),
+        // 10) QUESTIONS
+        supabase
+          .from("questions")
+          .select("*, products(name, image, images)")
+          .order("created_at", { ascending: false }),
+        // 11) ALL TIME ORDERS
+        supabase
+          .from("orders")
+          .select(
+            "id, order_no, merchant_oid, user_id, user_email, items, shipping_address, status, total_amount, created_at, shipping_carrier, tracking_number, payment_provider, payment_status, paytr_total_amount, paid_at, failed_reason"
+          )
+          .eq("payment_status", "paid")
+          .order("created_at", { ascending: false }),
+        // 12) ALL TIME VISITS
+        supabase.from("page_views").select("id"),
+      ]);
+
+      // Products
+      if (productsRes.error) { console.error("Ürünler çekilemedi:", productsRes.error); setDbProducts([]); }
+      else { setDbProducts((productsRes.data as any) || []); }
+
+      // Slides
+      if (slidesRes.error) { console.error("Slide'lar çekilemedi:", slidesRes.error); setDbSlides([]); }
+      else { setDbSlides((slidesRes.data as any) || []); }
+
+      // Campaigns
+      if (campaignsRes.error) { console.error("Kampanyalar çekilemedi:", campaignsRes.error); setDbCampaigns([]); }
+      else { setDbCampaigns((campaignsRes.data as any) || []); }
+
+      // Monthly metrics
+      if (monthlyOrdersRes.error) {
+        console.error("Aylık ödenmiş siparişler çekilemedi:", monthlyOrdersRes.error);
+        setMonthlyOrders(0); setMonthlyRevenue(0);
+      } else {
+        const list = monthlyOrdersRes.data || [];
+        setMonthlyOrders(list.length);
+        setMonthlyRevenue(list.reduce((acc: number, order: any) => acc + Number(order.total_amount || 0), 0));
       }
 
-      const { data: monthlyVisitsData, error: mvErr } = await supabase
-        .from("page_views")
-        .select("id, created_at")
-        .gte("created_at", firstDayOfThisMonthIso);
+      if (monthlyVisitsRes.error) { console.error("Aylık ziyaretler çekilemedi:", monthlyVisitsRes.error); setMonthlyVisits(0); }
+      else { setMonthlyVisits((monthlyVisitsRes.data || []).length); }
 
-      if (mvErr) {
-        console.error("Aylık ziyaretler çekilemedi:", mvErr);
-        setMonthlyVisits(0);
+      // Messages
+      if (messagesRes.error) { console.error("Mesajlar çekilemedi:", messagesRes.error); setDbMessages([]); }
+      else { setDbMessages((messagesRes.data as any) || []); }
+
+      // Reviews
+      if (reviewsRes.error) { console.error("Yorumlar çekilemedi:", reviewsRes.error); setDbReviews([]); }
+      else { setDbReviews((reviewsRes.data as any) || []); }
+
+      // Favorites
+      if (favoritesRes.error) { console.error("Favoriler çekilemedi:", favoritesRes.error); setDbAllFavorites([]); }
+      else { setDbAllFavorites((favoritesRes.data as any) || []); }
+
+      // Product views
+      if (viewsRes.error) { console.error("Ürün görüntülenmeleri çekilemedi:", viewsRes.error); setDbProductViews([]); }
+      else { setDbProductViews((viewsRes.data as any) || []); }
+
+      // Questions
+      if (questionsRes.error) { console.error("Sorular çekilemedi:", questionsRes.error); setDbQuestions([]); }
+      else { setDbQuestions((questionsRes.data as any) || []); }
+
+      // All time orders
+      if (allOrdersRes.error) {
+        console.error("Ödenmiş siparişler çekilemedi:", allOrdersRes.error);
+        setDbOrders([]); setAllTimeOrders(0); setAllTimeRevenue(0);
       } else {
-        setMonthlyVisits((monthlyVisitsData || []).length);
-      }
-
-      // 5) MESSAGES
-      const { data: mData, error: mErr } = await supabase
-        .from("messages")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      if (mErr) {
-        console.error("Mesajlar çekilemedi:", mErr);
-        setDbMessages([]);
-      } else {
-        setDbMessages((mData as any) || []);
-      }
-
-      // 6) REVIEWS
-      const { data: rData, error: rErr } = await supabase
-        .from("reviews")
-        .select("*, products(name, image, images)")
-        .order("created_at", { ascending: false });
-
-      if (rErr) {
-        console.error("Yorumlar çekilemedi:", rErr);
-        setDbReviews([]);
-      } else {
-        setDbReviews((rData as any) || []);
-      }
-
-      // 7) FAVORITES
-      const { data: favData, error: favErr } = await supabase
-        .from("favorites")
-        .select("product_id");
-
-      if (favErr) {
-        console.error("Favoriler çekilemedi:", favErr);
-        setDbAllFavorites([]);
-      } else {
-        setDbAllFavorites((favData as any) || []);
-      }
-
-      // 8) PRODUCT VIEWS
-      const { data: viewData, error: viewErr } = await supabase
-        .from("product_views")
-        .select("product_id");
-
-      if (viewErr) {
-        console.error("Ürün görüntülenmeleri çekilemedi:", viewErr);
-        setDbProductViews([]);
-      } else {
-        setDbProductViews((viewData as any) || []);
-      }
-
-      // 9) QUESTIONS
-      const { data: qData, error: qErr } = await supabase
-        .from("questions")
-        .select("*, products(name, image, images)")
-        .order("created_at", { ascending: false });
-
-      if (qErr) {
-        console.error("Sorular çekilemedi:", qErr);
-        setDbQuestions([]);
-      } else {
-        setDbQuestions((qData as any) || []);
-      }
-
-      // 10) ALL TIME ORDERS
-      // Admin sipariş listesinde sadece ödeme alınmış siparişler görünür.
-      const { data: allOrdersData, error: aoErr } = await supabase
-        .from("orders")
-        .select(
-          "id, order_no, merchant_oid, user_id, user_email, items, shipping_address, status, total_amount, created_at, shipping_carrier, tracking_number, payment_provider, payment_status, paytr_total_amount, paid_at, failed_reason"
-        )
-        .eq("payment_status", "paid")
-        .order("created_at", { ascending: false });
-
-      if (aoErr) {
-        console.error("Ödenmiş siparişler çekilemedi:", aoErr);
-        setDbOrders([]);
-        setAllTimeOrders(0);
-        setAllTimeRevenue(0);
-      } else {
-        const list = (allOrdersData as any[]) || [];
-
+        const list = (allOrdersRes.data as any[]) || [];
         setDbOrders(list);
         setAllTimeOrders(list.length);
-        setAllTimeRevenue(
-          list.reduce(
-            (acc: number, order: any) =>
-              acc + Number(order.total_amount || 0),
-            0
-          )
-        );
+        setAllTimeRevenue(list.reduce((acc: number, order: any) => acc + Number(order.total_amount || 0), 0));
       }
 
-      // 11) ALL TIME VISITS
-      const { data: allVisitsData, error: avErr } = await supabase
-        .from("page_views")
-        .select("id");
-
-      if (avErr) {
-        console.error("Tüm ziyaretler çekilemedi:", avErr);
-        setAllTimeVisits(0);
-      } else {
-        setAllTimeVisits((allVisitsData || []).length);
-      }
+      // All time visits
+      if (allVisitsRes.error) { console.error("Tüm ziyaretler çekilemedi:", allVisitsRes.error); setAllTimeVisits(0); }
+      else { setAllTimeVisits((allVisitsRes.data || []).length); }
     } finally {
       setLoading(false);
     }

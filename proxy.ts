@@ -23,7 +23,7 @@ export async function proxy(req: NextRequest) {
   const adminSecret = (process.env.ADMIN_COOKIE_SECRET ?? "").trim();
   if (!adminSecret) {
     return NextResponse.json(
-      { error: "Server misconfigured: ADMIN_COOKIE_SECRET boş veya okunamadı" },
+      { error: "Server misconfigured" },
       { status: 500 }
     );
   }

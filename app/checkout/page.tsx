@@ -78,14 +78,25 @@ export default function CheckoutPage() {
   const [showNeighborhoodSelect, setShowNeighborhoodSelect] = useState(false);
   const [neighborhoodSearch, setNeighborhoodSearch] = useState("");
 
+  const noticeTimerRef = { current: null as ReturnType<typeof setTimeout> | null };
   const showNotice = (message: string, type: NoticeType = "info") => {
+    if (noticeTimerRef.current) clearTimeout(noticeTimerRef.current);
     setNotice({ message, type });
-    window.setTimeout(() => setNotice(null), 3500);
+    noticeTimerRef.current = setTimeout(() => setNotice(null), 3500);
   };
 
+  const [redirecting, setRedirecting] = useState(false);
+
   useEffect(() => {
-    if (!cartItems || cartItems.length === 0) router.replace("/");
-  }, [cartItems, router]);
+    if (!loading && !redirecting && (!cartItems || cartItems.length === 0)) {
+      setRedirecting(true);
+      router.replace("/");
+    }
+  }, [cartItems, router, loading, redirecting]);
+
+  if (redirecting || (!loading && (!cartItems || cartItems.length === 0))) {
+    return <div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-[3px] border-gray-200 border-t-black rounded-full animate-spin" /></div>;
+  }
 
   useEffect(() => {
     const initCheckout = async () => {
@@ -110,7 +121,13 @@ export default function CheckoutPage() {
           setSelectedAddressId((addr[0] as AddressRow).id);
         }
         setIsCouponsLoading(true);
-        const { data: couponsData, error: couponsError } = await supabase.from("coupons").select("*").order("created_at", { ascending: false });
+        const nowIso = new Date().toISOString();
+        const { data: couponsData, error: couponsError } = await supabase
+          .from("coupons")
+          .select("id, code, name, description, discount_type, discount_value, min_order_amount, max_discount_amount, starts_at, ends_at, usage_limit_per_user, usage_limit_total, used_count, is_active, is_member_only")
+          .eq("is_active", true)
+          .or(`ends_at.is.null,ends_at.gte.${nowIso}`)
+          .order("created_at", { ascending: false });
         if (!couponsError && couponsData) setCoupons(couponsData as CouponRow[]);
         const { data: usageData } = await supabase.from("coupon_usages").select("*").eq("user_id", session.user.id);
         if (usageData) setCouponUsages(usageData as CouponUsageRow[]);
@@ -126,9 +143,19 @@ export default function CheckoutPage() {
       }
 
       try {
-        const res = await fetch("https://turkiyeapi.dev/api/v1/provinces");
-        const json = await res.json();
-        if (json.status === "OK") setCities(json.data.sort((a: any, b: any) => a.name.localeCompare(b.name, "tr")));
+        // PERF-06: İl listesini sessionStorage'dan cache'le
+        const cachedProvinces = sessionStorage.getItem("prestige_provinces");
+        if (cachedProvinces) {
+          setCities(JSON.parse(cachedProvinces));
+        } else {
+          const res = await fetch("https://turkiyeapi.dev/api/v1/provinces");
+          const json = await res.json();
+          if (json.status === "OK") {
+            const sorted = json.data.sort((a: any, b: any) => a.name.localeCompare(b.name, "tr"));
+            setCities(sorted);
+            try { sessionStorage.setItem("prestige_provinces", JSON.stringify(sorted)); } catch { /* quota */ }
+          }
+        }
       } catch (error) {
         console.error("Şehirler yüklenemedi:", error);
       }
@@ -244,7 +271,10 @@ export default function CheckoutPage() {
         const newGuestAddr: AddressRow = { id: dummyId, user_id: "guest", ...cleanedAddress };
         setSavedAddresses([newGuestAddr]); setSelectedAddressId(dummyId);
       }
-      setIsAddressModalOpen(false); showNotice("Adres kaydedildi.", "success");
+      setIsAddressModalOpen(false);
+      setAddressData((prev) => ({ ...prev, addressTitle: "", firstName: "", lastName: "", phone: "", city: "", district: "", neighborhood: "", fullAddress: "" }));
+      setDistricts([]); setNeighborhoods([]); setCitySearch(""); setDistrictSearch(""); setNeighborhoodSearch("");
+      showNotice("Adres kaydedildi.", "success");
     } catch (err: any) {
       showNotice("Adres kaydedilemedi: " + (err?.message || "Bilinmeyen hata"), "error");
     } finally {
@@ -275,7 +305,12 @@ export default function CheckoutPage() {
       }
       const shippingAddressObject = { email: normalizeEmail(addressData.email || user?.email || ""), firstName: selectedAddress?.first_name, lastName: selectedAddress?.last_name, phone: selectedAddress?.phone, city: selectedAddress?.city, district: selectedAddress?.district, neighborhood: selectedAddress?.neighborhood, fullAddress: selectedAddress?.full_address, addressTitle: selectedAddress?.title };
       const activeCouponCode = isMember && selectedCoupon && couponDiscount > 0 ? selectedCoupon.code : "";
-      const response = await fetch("/api/paytr/create-token", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: isMember ? user?.id || null : null, userEmail: normalizeEmail(addressData.email || user?.email || ""), items: cartItems, shippingAddress: shippingAddressObject, checkoutMode, couponCode: activeCouponCode, couponDiscountPreview: couponDiscount, cartSubtotal: Number(cartTotal || 0), cartTotalAfterCoupon: subtotalAfterCoupon, shippingFeePreview: shippingFee, freeShippingThresholdPreview: shippingSettings.free_shipping_threshold, finalTotalPreview: finalTotal }) });
+      const { data: { session: currentSession } } = await supabase.auth.getSession();
+      const authHeaders: Record<string, string> = { "Content-Type": "application/json" };
+      if (isMember && currentSession?.access_token) {
+        authHeaders["Authorization"] = `Bearer ${currentSession.access_token}`;
+      }
+      const response = await fetch("/api/paytr/create-token", { method: "POST", headers: authHeaders, body: JSON.stringify({ userEmail: normalizeEmail(addressData.email || user?.email || ""), items: cartItems.map(item => ({ id: item.id, quantity: item.quantity, name: item.name })), shippingAddress: shippingAddressObject, checkoutMode, couponCode: activeCouponCode }) });
       const result = await response.json();
       if (!response.ok) throw new Error(result?.error || "PayTR ödeme başlatılamadı.");
       setPaytrIframeUrl(result.iframe_url); setPaytrMerchantOid(result.merchant_oid || ""); setIsPaymentModalOpen(true);

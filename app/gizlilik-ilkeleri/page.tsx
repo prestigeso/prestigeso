@@ -33,7 +33,7 @@ export default function PrivacyPolicyPage() {
           </p>
           
           <p>
-            Sitemizin kayıt formunda, kullanıcılarımız iletişim bilgilerini (isim, adres, telefon, mail adresi vb.) girmelidir. Bu formda aldığımız iletişim bilgileri; üyelerimize, firmamız ve tarafımızca belirlenen firmalar hakkında bilgi, kampanya haberleri ve materyallerini göndermek için kullanılır. İletişim bilgileri ayrıca kullanıcılarımızla iletişime geçmemiz gerektiğinde kullanılır ve kullanıcımızla iletişime geçmek isteyen diğer firmalarla paylaşılır. 
+            Sitemizin kayıt formunda, kullanıcılarımız iletişim bilgilerini (isim, adres, telefon, mail adresi vb.) girmelidir. Bu formda aldığımız iletişim bilgileri; üyelerimize kampanya haberleri ve materyallerini göndermek için kullanılır. İletişim bilgileri ayrıca kullanıcılarımızla iletişime geçmemiz gerektiğinde kullanılır. Kişisel verileriniz yasal zorunluluklar ve sipariş teslimatı dışında üçüncü şahıslarla paylaşılmaz.
           </p>
           
           <p>

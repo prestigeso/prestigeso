@@ -32,7 +32,7 @@ export default function OrdersTab({ orders }: { orders: any[] }) {
   const getItemsSubtotal = (items: any[]) => {
     return items.reduce((sum, item) => {
       const quantity = Number(item.quantity || 1);
-      const price = Number(item.price || item.discount_price || 0);
+      const price = Number(item.discount_price || item.price || 0);
 
       if (!Number.isFinite(quantity) || !Number.isFinite(price)) {
         return sum;
@@ -163,7 +163,7 @@ export default function OrdersTab({ orders }: { orders: any[] }) {
         </div>
       ) : (
         <div className="space-y-6">
-          {orders.map((order) => {
+          {orders.map((order, index) => {
             const safeItems = safeParseItems(order.items);
             const parsedAddress = safeParseAddress(order.shipping_address);
             const couponInfo = getCouponInfo(parsedAddress);
@@ -174,7 +174,7 @@ export default function OrdersTab({ orders }: { orders: any[] }) {
 
             return (
               <div
-                key={order.id || Math.random()}
+                key={order.id || index}
                 className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm flex flex-col gap-4 hover:border-black transition-all"
               >
                 <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-gray-50 pb-4 gap-4">

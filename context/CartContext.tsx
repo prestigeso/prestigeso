@@ -9,6 +9,7 @@ import {
   ReactNode,
 } from "react";
 import { supabase } from "@/lib/supabase";
+import { safeParseIds } from "@/lib/utils";
 
 export type CartItem = {
   id: number | string;
@@ -17,6 +18,7 @@ export type CartItem = {
   image: string;
   quantity: number;
   category?: string;
+  stock?: number;
 };
 
 type CartContextType = {
@@ -40,28 +42,6 @@ type CartContextType = {
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
-function safeParseIds(ids: unknown): number[] {
-  if (Array.isArray(ids)) {
-    return ids.map((x) => Number(x)).filter((x) => Number.isFinite(x));
-  }
-
-  if (typeof ids === "string") {
-    try {
-      const parsed = JSON.parse(ids);
-
-      if (Array.isArray(parsed)) {
-        return parsed.map((x) => Number(x)).filter((x) => Number.isFinite(x));
-      }
-
-      return [];
-    } catch {
-      return [];
-    }
-  }
-
-  return [];
-}
-
 export function CartProvider({ children }: { children: ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
@@ -78,13 +58,30 @@ export function CartProvider({ children }: { children: ReactNode }) {
       if (!savedCart) return;
 
       try {
-        const localCart: CartItem[] = JSON.parse(savedCart);
+        const parsed = JSON.parse(savedCart);
 
-        if (!Array.isArray(localCart)) {
+        if (!Array.isArray(parsed)) {
           localStorage.removeItem("prestigeso_cart");
           setCart([]);
           return;
         }
+
+        // SEC-17: localStorage verileri doğrula — XSS ile zehirlenmiş elemanları filtrele
+        const localCart: CartItem[] = parsed.filter((item: any) =>
+          item &&
+          typeof item === "object" &&
+          (typeof item.id === "number" || typeof item.id === "string") &&
+          typeof item.name === "string" &&
+          Number.isFinite(Number(item.price)) &&
+          Number.isFinite(Number(item.quantity)) &&
+          Number(item.quantity) > 0
+        ).map((item: any) => ({
+          ...item,
+          id: typeof item.id === "number" ? item.id : Number(item.id),
+          name: String(item.name).slice(0, 200),
+          price: Number(item.price),
+          quantity: Math.min(Math.max(1, Math.floor(Number(item.quantity))), 99),
+        }));
 
         setCart(localCart);
 
@@ -99,9 +96,10 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
         const { data: campaigns } = await supabase
           .from("campaigns")
-          .select("*");
+          .select("*")
+          .gte("end_date", new Date().toISOString());
 
-        const nowIso = new Date().toISOString();
+        const now = new Date();
 
         if (!pData || error) return;
 
@@ -131,8 +129,8 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
             return (
               campaignProductIds.includes(Number(dbItem.id)) &&
-              nowIso >= c.start_date &&
-              nowIso <= c.end_date
+              now >= new Date(c.start_date) &&
+              now <= new Date(c.end_date)
             );
           });
 
@@ -152,12 +150,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
             return {
               ...item,
               price: activePrice,
-              quantity: fixedQuantity > 0 ? fixedQuantity : 1,
+              quantity: fixedQuantity,
             };
           }
 
           return item;
-        });
+        }).filter((item) => item.quantity > 0);
 
         if (isChanged) {
           setCart(syncedCart);
@@ -197,22 +195,34 @@ export function CartProvider({ children }: { children: ReactNode }) {
         (item) => String(item.id) === String(product.id)
       );
 
+      const maxStock = product.stock != null ? Number(product.stock) : Infinity;
+
       if (existing) {
+        const currentQty = Number(existing.quantity || 1);
+        const addQty = Number(product.quantity || 1);
+        const newQty = Math.min(currentQty + addQty, maxStock);
+
+        if (newQty <= currentQty) return prev;
+
         return prev.map((item) =>
           String(item.id) === String(product.id)
             ? {
                 ...item,
-                quantity: Number(item.quantity || 1) + Number(product.quantity || 1),
+                quantity: newQty,
+                ...(product.stock != null ? { stock: product.stock } : {}),
               }
             : item
         );
       }
 
+      const qty = Math.min(Number(product.quantity || 1), maxStock);
+      if (qty <= 0) return prev;
+
       return [
         ...prev,
         {
           ...product,
-          quantity: Number(product.quantity || 1),
+          quantity: qty,
         },
       ];
     });

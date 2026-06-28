@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import type { AdminNotification } from "../hooks/useAdminNotifications";
 
 type Props = {
@@ -33,10 +34,24 @@ export default function HeaderBar({
   onCloseNotifications,
   avatarLetter = "A",
 }: Props) {
+  const notifRef = useRef<HTMLDivElement>(null);
+
   const close = () => {
     setIsNotificationsOpen(false);
     onCloseNotifications?.();
   };
+
+  // FEAT-16: Dış tıklama ile dropdown'u kapat
+  useEffect(() => {
+    if (!isNotificationsOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
+        close();
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isNotificationsOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div className="bg-white px-6 py-4 flex items-center justify-between relative z-50 border-b border-gray-100">
@@ -61,7 +76,7 @@ export default function HeaderBar({
 
       {/* RIGHT: Notifications + Avatar */}
       <div className="flex items-center gap-5">
-        <div className="relative">
+        <div className="relative" ref={notifRef}>
           <button
             onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
             className="text-2xl hover:scale-110 transition-transform relative"

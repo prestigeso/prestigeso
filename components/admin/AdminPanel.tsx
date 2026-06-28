@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { adminDb } from "./adminDb";
 import { useAppAlert } from "@/context/AppAlertContext";
 
 import type { Slide } from "./types";
@@ -295,6 +296,12 @@ export default function AdminPanel() {
       return;
     }
 
+    const skuDuplicate = dbProducts.find((p: any) => normalizeSku(p["SKU"]) === sku && String(p.id) !== String(editingProduct.id));
+    if (skuDuplicate) {
+      showToast(`Bu SKU başka bir ürüne ait: ${skuDuplicate.name}`, "warning");
+      return;
+    }
+
     setSaving(true);
     const images: string[] = Array.isArray(editingProduct.images) ? editingProduct.images : [];
     const payload: any = {
@@ -310,11 +317,11 @@ export default function AdminPanel() {
       barcode: (editingProduct.barcode ?? "").toString().trim() || null,
     };
 
-    const { error } = await supabase.from("products").update(payload).eq("id", editingProduct.id);
+    const { error } = await adminDb({ action: "update", table: "products", data: payload, filters: [{ column: "id", op: "eq", value: editingProduct.id }] });
     setSaving(false);
 
     if (error) {
-      showToast("Kaydetme hatası: " + error.message, "error");
+      showToast("Kaydetme hatası: " + error, "error");
       return;
     }
 
@@ -333,9 +340,9 @@ export default function AdminPanel() {
     });
     if (!ok) return;
 
-    const { error } = await supabase.from("products").delete().eq("id", id);
+    const { error } = await adminDb({ action: "delete", table: "products", filters: [{ column: "id", op: "eq", value: id }] });
     if (error) {
-      showToast("Silinemedi: " + error.message, "error");
+      showToast("Silinemedi: " + error, "error");
       return;
     }
 
@@ -352,6 +359,12 @@ export default function AdminPanel() {
 
     if (!sku) {
       showToast("SKU zorunludur.", "warning");
+      return;
+    }
+
+    const skuDuplicate = dbProducts.find((p: any) => normalizeSku(p["SKU"]) === sku);
+    if (skuDuplicate) {
+      showToast(`Bu SKU başka bir ürüne ait: ${skuDuplicate.name}`, "warning");
       return;
     }
 
@@ -376,8 +389,7 @@ export default function AdminPanel() {
         urls.push(url);
       }
 
-      const { error } = await supabase.from("products").insert([
-        {
+      const { error } = await adminDb({ action: "insert", table: "products", data: {
           ["SKU"]: sku,
           name,
           price,
@@ -389,8 +401,7 @@ export default function AdminPanel() {
           images: urls,
           image: urls[0] || "",
           discount_price: 0,
-        },
-      ]);
+        } });
 
       if (error) throw error;
       revokeUrls(newProductPreviews);
@@ -413,9 +424,9 @@ export default function AdminPanel() {
     }
 
     const now = new Date().toISOString();
-    const { error } = await supabase.from("messages").update({ answer: replyText, answered_at: now }).eq("id", messageId);
+    const { error } = await adminDb({ action: "update", table: "messages", data: { answer: replyText, answered_at: now }, filters: [{ column: "id", op: "eq", value: messageId }] });
     if (error) {
-      showToast("Cevap gönderilemedi: " + error.message, "error");
+      showToast("Cevap gönderilemedi: " + error, "error");
       return;
     }
 
@@ -432,9 +443,9 @@ export default function AdminPanel() {
     }
 
     const now = new Date().toISOString();
-    const { error } = await supabase.from("questions").update({ answer: qReplyText, answered_at: now }).eq("id", questionId);
+    const { error } = await adminDb({ action: "update", table: "questions", data: { answer: qReplyText, answered_at: now }, filters: [{ column: "id", op: "eq", value: questionId }] });
     if (error) {
-      showToast("Cevap gönderilemedi: " + error.message, "error");
+      showToast("Cevap gönderilemedi: " + error, "error");
       return;
     }
 
@@ -446,9 +457,9 @@ export default function AdminPanel() {
 
   const handleToggleQuestionApproval = async (questionId: number, currentStatus: boolean) => {
     const newStatus = !currentStatus;
-    const { error } = await supabase.from("questions").update({ is_approved: newStatus }).eq("id", questionId);
+    const { error } = await adminDb({ action: "update", table: "questions", data: { is_approved: newStatus }, filters: [{ column: "id", op: "eq", value: questionId }] });
     if (error) {
-      showToast("Durum güncellenemedi: " + error.message, "error");
+      showToast("Durum güncellenemedi: " + error, "error");
       return;
     }
 
@@ -456,10 +467,16 @@ export default function AdminPanel() {
     showToast(newStatus ? "Soru yayına alındı." : "Soru yayından kaldırıldı.", "success");
   };
 
+  const VALID_ORDER_STATUSES = ["Bekliyor", "Hazırlanıyor", "Kargolandı", "Teslim Edildi", "İptal Edildi"];
+
   const handleUpdateOrderStatus = async (orderId: number, newStatus: string) => {
-    const { error } = await supabase.from("orders").update({ status: newStatus }).eq("id", orderId);
+    if (!VALID_ORDER_STATUSES.includes(newStatus)) {
+      showToast("Geçersiz sipariş durumu.", "error");
+      return;
+    }
+    const { error } = await adminDb({ action: "update", table: "orders", data: { status: newStatus }, filters: [{ column: "id", op: "eq", value: orderId }] });
     if (error) {
-      showToast("Hata: " + error.message, "error");
+      showToast("Hata: " + error, "error");
       return;
     }
 
@@ -468,9 +485,9 @@ export default function AdminPanel() {
   };
 
   const handleApproveReview = async (reviewId: string) => {
-    const { error } = await supabase.from("reviews").update({ is_approved: true }).eq("id", reviewId);
+    const { error } = await adminDb({ action: "update", table: "reviews", data: { is_approved: true }, filters: [{ column: "id", op: "eq", value: reviewId }] });
     if (error) {
-      showToast("Hata: " + error.message, "error");
+      showToast("Hata: " + error, "error");
       return;
     }
 
@@ -488,9 +505,9 @@ export default function AdminPanel() {
     });
     if (!ok) return;
 
-    const { error } = await supabase.from("reviews").delete().eq("id", reviewId);
+    const { error } = await adminDb({ action: "delete", table: "reviews", filters: [{ column: "id", op: "eq", value: reviewId }] });
     if (error) {
-      showToast("Hata: " + error.message, "error");
+      showToast("Hata: " + error, "error");
       return;
     }
 
@@ -514,6 +531,11 @@ export default function AdminPanel() {
       return;
     }
 
+    if (new Date(campaignDates.start) >= new Date(campaignDates.end + "T23:59:59")) {
+      showToast("Bitiş tarihi, başlangıç tarihinden sonra olmalıdır.", "warning");
+      return;
+    }
+
     if (discountPercent <= 0 || discountPercent >= 90) {
       showToast("İndirim yüzdesi 1-89 arası olmalıdır.", "warning");
       return;
@@ -522,18 +544,16 @@ export default function AdminPanel() {
     const startIso = new Date(campaignDates.start).toISOString();
     const endIso = new Date(campaignDates.end + "T23:59:59").toISOString();
 
-    const { error } = await supabase.from("campaigns").insert([
-      {
+    const { error } = await adminDb({ action: "insert", table: "campaigns", data: {
         name: campaignName,
         discount_percent: discountPercent,
         start_date: startIso,
         end_date: endIso,
         product_ids: selectedCampaignProducts,
-      },
-    ]);
+      } });
 
     if (error) {
-      showToast("Kampanya oluşturulamadı: " + error.message, "error");
+      showToast("Kampanya oluşturulamadı: " + error, "error");
       return;
     }
 
@@ -546,9 +566,9 @@ export default function AdminPanel() {
   };
 
   const handleDeleteCampaign = async (id: number) => {
-    const { error } = await supabase.from("campaigns").delete().eq("id", id);
+    const { error } = await adminDb({ action: "delete", table: "campaigns", filters: [{ column: "id", op: "eq", value: id }] });
     if (error) {
-      showToast("Kampanya silinemedi: " + error.message, "error");
+      showToast("Kampanya silinemedi: " + error, "error");
       return;
     }
 
@@ -570,7 +590,7 @@ export default function AdminPanel() {
     try {
       const urls = await Promise.all(newSlideFiles.map((file) => uploadToStorageAndGetPublicUrl(file, "hero")));
       const inserts = urls.map((url) => ({ image_url: url, title: newSlide.title.trim(), subtitle: newSlide.subtitle.trim() }));
-      const { error } = await supabase.from("hero_slides").insert(inserts);
+      const { error } = await adminDb({ action: "insert", table: "hero_slides", data: inserts });
       if (error) throw error;
 
       showToast("Slide'lar eklendi.", "success");
@@ -594,9 +614,9 @@ export default function AdminPanel() {
     });
     if (!ok) return;
 
-    const { error } = await supabase.from("hero_slides").delete().eq("id", id);
+    const { error } = await adminDb({ action: "delete", table: "hero_slides", filters: [{ column: "id", op: "eq", value: id }] });
     if (error) {
-      showToast("Slide silinemedi: " + error.message, "error");
+      showToast("Slide silinemedi: " + error, "error");
       return;
     }
 
@@ -605,9 +625,9 @@ export default function AdminPanel() {
   };
 
   const handleUpdateSlide = async (slide: Slide) => {
-    const { error } = await supabase.from("hero_slides").update({ image_url: slide.image_url, title: slide.title, subtitle: slide.subtitle }).eq("id", slide.id);
+    const { error } = await adminDb({ action: "update", table: "hero_slides", data: { image_url: slide.image_url, title: slide.title, subtitle: slide.subtitle }, filters: [{ column: "id", op: "eq", value: slide.id }] });
     if (error) {
-      showToast("Slide güncellenemedi: " + error.message, "error");
+      showToast("Slide güncellenemedi: " + error, "error");
       return;
     }
 

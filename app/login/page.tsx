@@ -7,7 +7,7 @@ import { supabase } from "@/lib/supabase";
 import { useAppAlert } from "@/context/AppAlertContext";
 import DistanceSellingContract from "@/components/contracts/DistanceSellingContract";
 
-type AuthStep = "INIT" | "LOGIN" | "REGISTER";
+type AuthStep = "INIT" | "LOGIN" | "REGISTER" | "FORGOT_PASSWORD";
 type ContractModalType = "terms" | "distance" | "aydinlatma" | "privacy" | null;
 type GenderValue = "" | "female" | "male" | "other" | "prefer_not_to_say";
 
@@ -73,6 +73,7 @@ export default function LoginPage() {
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [resetSent, setResetSent] = useState(false);
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -152,8 +153,7 @@ export default function LoginPage() {
 
       resetAuthForm();
       setStep(data ? "LOGIN" : "REGISTER");
-    } catch (err: any) {
-      console.error("Kontrol hatası:", err?.message);
+    } catch {
       setErrorMsg("Bir hata oluştu, lütfen tekrar deneyin.");
       showToast("Bir hata oluştu, lütfen tekrar deneyin.", "error");
     } finally {
@@ -179,7 +179,24 @@ export default function LoginPage() {
     }
 
     showToast("Giriş başarılı. Yönlendiriliyorsunuz.", "success");
-    router.push(getSafeRedirectPath());
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      router.push(getSafeRedirectPath());
+    } else {
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+        if (session) {
+          subscription.unsubscribe();
+          router.push(getSafeRedirectPath());
+        }
+      });
+
+      setTimeout(() => {
+        subscription.unsubscribe();
+        router.push(getSafeRedirectPath());
+      }, 3000);
+    }
+
     setLoading(false);
   };
 
@@ -341,7 +358,80 @@ export default function LoginPage() {
             <button type="submit" disabled={loading} className="w-full bg-black text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest shadow-xl hover:bg-gray-900 transition-all active:scale-95 disabled:opacity-50">
               {loading ? "Bekleniyor..." : "Giriş Yap"}
             </button>
+
+            <button
+              type="button"
+              onClick={() => { setStep("FORGOT_PASSWORD"); setErrorMsg(""); setResetSent(false); }}
+              className="w-full text-center text-xs font-bold text-gray-400 hover:text-black transition-colors uppercase tracking-widest"
+            >
+              Şifremi Unuttum
+            </button>
           </form>
+        )}
+
+        {step === "FORGOT_PASSWORD" && (
+          <div className="space-y-6 animate-in slide-in-from-right-4 duration-300">
+            <div className="flex items-center gap-3 mb-2">
+              <button onClick={() => setStep("LOGIN")} type="button" className="text-black hover:-translate-x-1 transition-transform">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="w-6 h-6">
+                  <path d="M19 12H5M12 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <h2 className="text-xl font-black uppercase tracking-tight">Şifremi Unuttum</h2>
+            </div>
+
+            <div className="p-4 bg-gray-50 rounded-xl border border-gray-100 text-sm font-bold text-gray-500">
+              <span className="truncate">{email}</span>
+            </div>
+
+            {resetSent ? (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-5 text-center">
+                <span className="text-3xl block mb-3">✉️</span>
+                <p className="text-sm font-bold text-green-800 mb-1">Sıfırlama e-postası gönderildi!</p>
+                <p className="text-xs font-medium text-green-700">Lütfen e-posta kutunuzu (ve spam klasörünü) kontrol edin.</p>
+              </div>
+            ) : (
+              <>
+                <p className="text-xs font-medium text-gray-500 leading-relaxed">
+                  Aşağıdaki butona tıkladığınızda e-posta adresinize şifre sıfırlama bağlantısı gönderilecektir.
+                </p>
+
+                {errorMsg && <p className="text-red-500 text-[10px] font-bold uppercase text-center">{errorMsg}</p>}
+
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={async () => {
+                    setLoading(true);
+                    setErrorMsg("");
+                    try {
+                      const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
+                        redirectTo: `${window.location.origin}/login`,
+                      });
+                      if (error) throw error;
+                      setResetSent(true);
+                      showToast("Şifre sıfırlama e-postası gönderildi.", "success");
+                    } catch {
+                      setErrorMsg("E-posta gönderilemedi. Lütfen tekrar deneyin.");
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                  className="w-full bg-black text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest shadow-xl hover:bg-gray-900 transition-all active:scale-95 disabled:opacity-50"
+                >
+                  {loading ? "Gönderiliyor..." : "Sıfırlama E-postası Gönder"}
+                </button>
+              </>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setStep("LOGIN")}
+              className="w-full text-center text-xs font-bold text-gray-400 hover:text-black transition-colors uppercase tracking-widest"
+            >
+              Giriş Yap'a Dön
+            </button>
+          </div>
         )}
 
         {step === "REGISTER" && (

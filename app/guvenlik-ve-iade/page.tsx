@@ -139,8 +139,8 @@ export default function SecurityAndReturnsPage() {
               <h2 className="text-lg font-black text-black uppercase tracking-tight">Tüketici Hakları</h2>
             </div>
             <div className="pl-11 space-y-3">
-              <p>Alışveriş yapmak için sitemize üye olmanız şarttır. Sitemize üyelik ücretsizdir. Siteye üye olmayan kişilere satış yapılmaz.</p>
-              <p>Firmamız, 4822 sayılı kanun ile değişik, 4077 sayılı Tüketicinin Korunması hakkındaki kanun hükümlerine uygun hareket edeceğini peşinen kabul ve taahhüt eder.</p>
+              <p>Sitemizden üye olarak veya misafir olarak alışveriş yapabilirsiniz. Üyelik ücretsizdir ve size sipariş takibi, kupon kullanımı gibi ek avantajlar sağlar.</p>
+              <p>Firmamız, 6502 sayılı Tüketicinin Korunması Hakkında Kanun hükümlerine uygun hareket edeceğini peşinen kabul ve taahhüt eder.</p>
             </div>
           </section>
 
