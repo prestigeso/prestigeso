@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
+import { Inter, Playfair_Display } from "next/font/google";
 import "./globals.css";
 
 import { CartProvider } from "@/context/CartContext";
@@ -8,6 +8,7 @@ import ConditionalLayout from "@/components/ConditionalUI";
 import AppAlertProvider from "@/components/ui/AppAlertProvider";
 
 const inter = Inter({ subsets: ["latin"] });
+const playfair = Playfair_Display({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-playfair" });
 
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "https://prestigeso.com.tr";
@@ -60,7 +61,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="tr">
-      <body className={inter.className}>
+      <body className={`${inter.className} ${playfair.variable}`}>
         <AppAlertProvider>
           <SearchProvider>
             <CartProvider>

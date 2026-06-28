@@ -59,6 +59,7 @@ export default function ShopPage() {
     "Yüzükler",
     "Bilezikler",
     "Küpeler",
+    "Tespihler",
   ];
 
   useEffect(() => {

@@ -5,7 +5,7 @@ export { safeParseIds };
 
 export const STORAGE_BUCKET = "products";
 
-const MAX_IMAGE_SIZE_MB = 5;
+const MAX_IMAGE_SIZE_MB = 50;
 const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
 
 const ALLOWED_IMAGE_TYPES: Record<string, string> = {

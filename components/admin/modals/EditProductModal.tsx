@@ -5,7 +5,7 @@ import { useAppAlert } from "@/context/AppAlertContext";
 import { revokeUrls } from "../utils";
 
 const MAX_ADDED_IMAGE_COUNT = 8;
-const MAX_IMAGE_SIZE_MB = 5;
+const MAX_IMAGE_SIZE_MB = 50;
 const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
 
@@ -356,6 +356,7 @@ export default function EditProductModal({
                   <option value="Küpeler">Küpeler</option>
                   <option value="Setler">Setler</option>
                   <option value="Masa Süsleri">Masa Süsleri</option>
+                  <option value="Tespihler">Tespihler</option>
                 </select>
               </div>
 

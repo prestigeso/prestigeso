@@ -25,6 +25,7 @@ export default function Navbar() {
     "Yüzükler",
     "Bilezikler",
     "Küpeler",
+    "Tespihler",
   ];
 
   const totalItemsInCart = (items || []).reduce(

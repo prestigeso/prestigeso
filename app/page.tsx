@@ -41,6 +41,7 @@ export default function Home() {
     "Yüzükler",
     "Bilezikler",
     "Küpeler",
+    "Tespihler",
   ];
 
   useEffect(() => {
