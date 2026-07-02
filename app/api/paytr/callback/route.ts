@@ -27,9 +27,12 @@ function safeParseObject(value: any): any {
 
 async function registerCouponUsage(order: any) {
   const shippingAddress = safeParseObject(order?.shipping_address);
+  // BUG-15: Önce ayrı kolonlardan oku, yoksa shipping_address fallback
   const coupon = shippingAddress?.coupon;
+  const couponId = coupon?.id;
+  const couponCode = order?.coupon_code || coupon?.code;
 
-  if (!coupon?.id || !coupon?.code || !order?.user_id) {
+  if (!couponId || !couponCode || !order?.user_id) {
     return;
   }
 
@@ -43,7 +46,7 @@ async function registerCouponUsage(order: any) {
     .from("coupon_usages")
     .select("id")
     .eq("order_id", order.id)
-    .eq("coupon_id", coupon.id)
+    .eq("coupon_id", couponId)
     .maybeSingle();
 
   if (existingUsageError) {
@@ -57,10 +60,10 @@ async function registerCouponUsage(order: any) {
 
   const { error: usageInsertError } = await supabaseAdmin.from("coupon_usages").insert([
     {
-      coupon_id: coupon.id,
+      coupon_id: couponId,
       user_id: order.user_id,
       order_id: order.id,
-      coupon_code: String(coupon.code).toUpperCase(),
+      coupon_code: String(couponCode).toUpperCase(),
       discount_amount: discountAmount,
     },
   ]);
@@ -76,7 +79,7 @@ async function registerCouponUsage(order: any) {
   // .rpc kullanılamıyorsa en azından .eq ile koruma sağlanır.
   const { error: couponUpdateError } = await supabaseAdmin.rpc(
     "increment_coupon_used_count",
-    { coupon_id_input: coupon.id }
+    { coupon_id_input: couponId }
   ).maybeSingle();
 
   if (couponUpdateError) {
@@ -85,14 +88,14 @@ async function registerCouponUsage(order: any) {
     const { data: couponRow } = await supabaseAdmin
       .from("coupons")
       .select("used_count")
-      .eq("id", coupon.id)
+      .eq("id", couponId)
       .maybeSingle();
 
     if (couponRow) {
       await supabaseAdmin
         .from("coupons")
         .update({ used_count: Number(couponRow.used_count || 0) + 1 })
-        .eq("id", coupon.id);
+        .eq("id", couponId);
     }
   }
 }

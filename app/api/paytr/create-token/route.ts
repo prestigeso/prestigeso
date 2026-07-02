@@ -379,6 +379,9 @@ export async function POST(req: NextRequest) {
         payment_provider: "paytr",
         payment_status: "pending",
         paytr_total_amount: paymentAmount,
+        // BUG-15: Kupon bilgisini ayrı kolonlarda sakla
+        coupon_code: appliedCoupon?.code?.toUpperCase() || null,
+        coupon_discount_amount: couponDiscountAmount > 0 ? couponDiscountAmount : null,
       },
     ]);
 

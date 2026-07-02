@@ -50,6 +50,7 @@ export default function ShopPage() {
   const [favoriteIds, setFavoriteIds] = useState<Set<number>>(() => new Set());
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [visibleCount, setVisibleCount] = useState(20);
 
   const categories = [
     "Tümü",
@@ -117,6 +118,8 @@ export default function ShopPage() {
   }, []);
 
   const filteredProducts = useMemo(() => {
+    // FEAT-05: Kategori/arama değişince sayfalamayı sıfırla
+    setVisibleCount(20);
     return dbProducts.filter((product) => {
       const matchCategory =
         selectedCategory === "Tümü" || product.category === selectedCategory;
@@ -131,6 +134,9 @@ export default function ShopPage() {
       return matchCategory && matchSearch;
     });
   }, [dbProducts, selectedCategory, searchQuery]);
+
+  const paginatedProducts = filteredProducts.slice(0, visibleCount);
+  const hasMore = visibleCount < filteredProducts.length;
 
   const handleToggleFavorite = async (
     productId: number,
@@ -217,17 +223,30 @@ export default function ShopPage() {
             Ürün bulunamadı.
           </div>
         ) : (
-          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
-            {filteredProducts.map((product) => (
-              <ShopCard
-                key={product.id}
-                product={product}
-                campaigns={dbCampaigns}
-                isFavorite={favoriteIds.has(Number(product.id))}
-                onToggleFavorite={handleToggleFavorite}
-              />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
+              {paginatedProducts.map((product) => (
+                <ShopCard
+                  key={product.id}
+                  product={product}
+                  campaigns={dbCampaigns}
+                  isFavorite={favoriteIds.has(Number(product.id))}
+                  onToggleFavorite={handleToggleFavorite}
+                />
+              ))}
+            </div>
+            {hasMore && (
+              <div className="flex justify-center mt-10">
+                <button
+                  type="button"
+                  onClick={() => setVisibleCount((prev) => prev + 20)}
+                  className="bg-black text-white px-10 py-3.5 rounded-full font-black text-xs uppercase tracking-widest hover:bg-gray-800 transition-all shadow-lg active:scale-95"
+                >
+                  Daha Fazla Göster ({filteredProducts.length - visibleCount} ürün kaldı)
+                </button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>

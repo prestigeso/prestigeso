@@ -54,6 +54,7 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
   const [isSavingAddress, setIsSavingAddress] = useState(false);
   const [addressForm, setAddressForm] = useState<AddressFormState>(emptyAddressForm);
+  const [editingAddressId, setEditingAddressId] = useState<number | null>(null);
 
   const [cities, setCities] = useState<any[]>([]);
   const [districts, setDistricts] = useState<any[]>([]);
@@ -76,7 +77,7 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
         if (cachedProvinces) {
           setCities(JSON.parse(cachedProvinces));
         } else {
-          const res = await fetch("https://turkiyeapi.dev/api/v1/provinces");
+          const res = await fetch("/api/turkiyeapi/provinces");
           const json = await res.json();
 
           if (json.status === "OK") {
@@ -146,7 +147,7 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
 
     try {
       const res = await fetch(
-        `https://turkiyeapi.dev/api/v1/neighborhoods?districtId=${district.id}&limit=1000`
+        `/api/turkiyeapi/neighborhoods?districtId=${district.id}&limit=1000`
       );
       const json = await res.json();
 
@@ -232,12 +233,20 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
         user_id: user.id,
       };
 
-      const { error } = await supabase.from("addresses").insert([cleanedAddress]);
-      if (error) throw error;
+      // FEAT-04: Düzenleme veya yeni ekleme
+      if (editingAddressId) {
+        const { error } = await supabase.from("addresses").update(cleanedAddress).eq("id", editingAddressId).eq("user_id", user.id);
+        if (error) throw error;
+        showToast("Adres başarıyla güncellendi.", "success");
+      } else {
+        const { error } = await supabase.from("addresses").insert([cleanedAddress]);
+        if (error) throw error;
+        showToast("Adres başarıyla eklendi.", "success");
+      }
 
-      showToast("Adres başarıyla eklendi.", "success");
       setIsAddressModalOpen(false);
       setAddressForm(emptyAddressForm);
+      setEditingAddressId(null);
       setDistricts([]);
       setNeighborhoods([]);
       setCitySearch("");
@@ -352,7 +361,28 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
                   {addr.full_address}
                 </p>
               </div>
-              <div className="flex justify-end border-t border-gray-50 pt-3">
+              <div className="flex justify-end gap-4 border-t border-gray-50 pt-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingAddressId(addr.id);
+                    setAddressForm({
+                      title: addr.title || "",
+                      first_name: addr.first_name || "",
+                      last_name: addr.last_name || "",
+                      phone: addr.phone || "",
+                      city: addr.city || "",
+                      district: addr.district || "",
+                      neighborhood: addr.neighborhood || "",
+                      full_address: addr.full_address || "",
+                      is_default: addr.is_default || false,
+                    });
+                    setIsAddressModalOpen(true);
+                  }}
+                  className="text-[10px] font-bold text-black hover:text-gray-600 uppercase tracking-widest flex items-center gap-1"
+                >
+                  <span>✏️</span> Düzenle
+                </button>
                 <button
                   type="button"
                   onClick={() => handleDeleteAddress(addr.id)}
@@ -370,10 +400,10 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
         <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white w-full max-w-lg rounded-3xl p-6 md:p-8 shadow-2xl animate-in zoom-in duration-200 max-h-[90vh] flex flex-col relative z-10">
             <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4 shrink-0">
-              <h2 className="text-xl font-black uppercase tracking-tight">Yeni Adres Ekle</h2>
+              <h2 className="text-xl font-black uppercase tracking-tight">{editingAddressId ? "Adresi Düzenle" : "Yeni Adres Ekle"}</h2>
               <button
                 type="button"
-                onClick={() => setIsAddressModalOpen(false)}
+                onClick={() => { setIsAddressModalOpen(false); setEditingAddressId(null); setAddressForm(emptyAddressForm); }}
                 className="w-8 h-8 bg-gray-100 rounded-full font-bold hover:bg-gray-200"
               >
                 ✕
@@ -641,7 +671,7 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
                 disabled={isSavingAddress}
                 className="w-full bg-black text-white py-4 rounded-xl font-black text-xs uppercase tracking-widest disabled:opacity-50 shadow-md active:scale-95 transition-all mt-4"
               >
-                {isSavingAddress ? "Kaydediliyor..." : "Adresi Kaydet 📍"}
+                {isSavingAddress ? "Kaydediliyor..." : editingAddressId ? "Adresi Güncelle 📍" : "Adresi Kaydet 📍"}
               </button>
             </form>
           </div>

@@ -148,7 +148,7 @@ export default function CheckoutPage() {
         if (cachedProvinces) {
           setCities(JSON.parse(cachedProvinces));
         } else {
-          const res = await fetch("https://turkiyeapi.dev/api/v1/provinces");
+          const res = await fetch("/api/turkiyeapi/provinces");
           const json = await res.json();
           if (json.status === "OK") {
             const sorted = json.data.sort((a: any, b: any) => a.name.localeCompare(b.name, "tr"));
@@ -223,7 +223,7 @@ export default function CheckoutPage() {
     setAddressData((prev) => ({ ...prev, district: district.name, neighborhood: "" }));
     setShowDistrictSelect(false); setDistrictSearch("");
     try {
-      const res = await fetch(`https://turkiyeapi.dev/api/v1/neighborhoods?districtId=${district.id}&limit=1000`);
+      const res = await fetch(`/api/turkiyeapi/neighborhoods?districtId=${district.id}&limit=1000`);
       const json = await res.json();
       if (json.status === "OK") setNeighborhoods(json.data.sort((a: any, b: any) => a.name.localeCompare(b.name, "tr")));
     } catch (error) {

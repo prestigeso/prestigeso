@@ -156,6 +156,7 @@ export default function CouponsModal({ open, onClose }: Props) {
   const [coupons, setCoupons] = useState<CouponRow[]>([]);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState<CouponForm>(initialForm);
+  const [editingCouponId, setEditingCouponId] = useState<string | null>(null);
 
   const loadCoupons = async () => {
     setLoading(true);
@@ -199,7 +200,7 @@ export default function CouponsModal({ open, onClose }: Props) {
     });
   }, [coupons, search]);
 
-  const resetForm = () => setForm(initialForm);
+  const resetForm = () => { setForm(initialForm); setEditingCouponId(null); };
 
   const handleClose = () => {
     resetForm();
@@ -222,27 +223,50 @@ export default function CouponsModal({ open, onClose }: Props) {
     setSaving(true);
 
     try {
+      // FEAT-08: Düzenleme veya yeni oluşturma
+      const isEditing = !!editingCouponId;
       const response = await fetch("/api/admin/coupons", {
-        method: "POST",
+        method: isEditing ? "PATCH" : "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(buildPayload(form)),
+        body: JSON.stringify(isEditing ? { ...buildPayload(form), id: editingCouponId } : buildPayload(form)),
       });
 
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result?.error || "Kupon oluşturulamadı.");
+        throw new Error(result?.error || (isEditing ? "Kupon güncellenemedi." : "Kupon oluşturulamadı."));
       }
 
-      showToast("Kupon oluşturuldu.", "success");
+      showToast(isEditing ? "Kupon güncellendi." : "Kupon oluşturuldu.", "success");
       resetForm();
       await loadCoupons();
     } catch (error: any) {
-      showToast(error?.message || "Kupon oluşturulamadı.", "error");
+      showToast(error?.message || "Kupon kaydedilemedi.", "error");
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleEditCoupon = (coupon: CouponRow) => {
+    setEditingCouponId(coupon.id);
+    setForm({
+      code: coupon.code || "",
+      name: coupon.name || "",
+      description: coupon.description || "",
+      discountType: coupon.discount_type || "fixed",
+      discountValue: String(coupon.discount_value || ""),
+      minOrderAmount: String(coupon.min_order_amount || "0"),
+      maxDiscountAmount: coupon.max_discount_amount ? String(coupon.max_discount_amount) : "",
+      startsAt: coupon.starts_at ? String(coupon.starts_at).slice(0, 10) : "",
+      endsAt: coupon.ends_at ? String(coupon.ends_at).slice(0, 10) : "",
+      usageLimitTotal: coupon.usage_limit_total ? String(coupon.usage_limit_total) : "",
+      usageLimitPerUser: coupon.usage_limit_per_user ? String(coupon.usage_limit_per_user) : "1",
+      isActive: coupon.is_active ?? true,
+      isMemberOnly: coupon.is_member_only ?? true,
+    });
+    // Formu görünür yapmak için sayfayı yukarı scroll et
+    window.scrollTo?.({ top: 0, behavior: "smooth" });
   };
 
   const handleToggleCoupon = async (coupon: CouponRow) => {
@@ -551,7 +575,7 @@ export default function CouponsModal({ open, onClose }: Props) {
                 disabled={saving}
                 className="w-full bg-black text-white py-4 rounded-xl font-black uppercase tracking-widest text-xs shadow-lg disabled:opacity-50 active:scale-95 transition-all"
               >
-                {saving ? "Oluşturuluyor..." : "Kupon Oluştur"}
+                {saving ? (editingCouponId ? "Güncelleniyor..." : "Oluşturuluyor...") : (editingCouponId ? "Kuponu Güncelle" : "Kupon Oluştur")}
               </button>
             </div>
           </div>
@@ -695,6 +719,14 @@ export default function CouponsModal({ open, onClose }: Props) {
                           className="flex-1 bg-gray-50 border border-gray-200 text-black py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:border-black"
                         >
                           {coupon.is_active ? "Pasif Yap" : "Aktif Yap"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleEditCoupon(coupon)}
+                          className="flex-1 bg-gray-50 border border-gray-200 text-black py-3 rounded-xl text-[10px] font-black uppercase tracking-widest hover:border-black"
+                        >
+                          ✏️ Düzenle
                         </button>
 
                         <button
