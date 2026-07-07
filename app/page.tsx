@@ -32,6 +32,7 @@ export default function Home() {
   const [localCampaign, setLocalCampaign] = useState("");
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const [favoriteIds, setFavoriteIds] = useState<Set<number>>(() => new Set());
+  const [dbCategories, setDbCategories] = useState<{name: string, slug: string}[]>([]);
 
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
 
@@ -111,6 +112,9 @@ export default function Home() {
 
         const { data: campData } = await supabase.from("campaigns").select("*").gte("end_date", new Date().toISOString());
         if (campData) setDbCampaigns(campData);
+
+        const { data: catData } = await supabase.from("categories").select("name, slug");
+        if (catData) setDbCategories(catData);
 
         const { data: productsData, error: pError } = await supabase
           .from("products")
@@ -301,7 +305,15 @@ export default function Home() {
       {!showAll && (
         <div
           className="relative w-full aspect-video md:h-[75vh] flex items-center justify-center overflow-hidden bg-gray-900 group cursor-pointer"
-          onClick={() => handleSeeAll("Tümü")}
+          onClick={() => {
+            const activeSlide = heroSlides[currentSlide];
+            if (activeSlide && activeSlide.category_slug) {
+              const matched = dbCategories.find(c => c.slug === activeSlide.category_slug);
+              handleSeeAll(matched ? matched.name : "Tümü");
+            } else {
+              handleSeeAll("Tümü");
+            }
+          }}
         >
           {heroSlides.length === 0 ? (
             <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-black">
@@ -378,7 +390,7 @@ export default function Home() {
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-x-3 gap-y-8 md:gap-6 px-4 md:px-0">
                 {(() => { const now = new Date(); return filteredProducts.map((p) => (
                   <PrestigeCard
                     key={p.id}
@@ -630,11 +642,11 @@ function ProductCarousel({
         )}
       </div>
 
-      <div className="flex overflow-x-auto md:grid md:grid-cols-5 gap-3 md:gap-4 px-1 hide-scrollbar pb-4 snap-x snap-mandatory">
+      <div className="flex overflow-x-auto md:grid md:grid-cols-5 gap-3 md:gap-4 px-4 hide-scrollbar pb-4 snap-x snap-mandatory">
         {(() => { const now = new Date(); return products.map((p) => (
           <div
             key={p.id}
-            className="min-w-[140px] md:min-w-0 w-[45vw] md:w-auto snap-start"
+            className="min-w-[130px] md:min-w-0 w-[40vw] md:w-auto snap-start"
           >
             <PrestigeCard
               product={p}
@@ -695,14 +707,14 @@ function PrestigeCard({
   return (
     <Link
       href={`/product/${product.id}`}
-      className="group relative flex flex-col h-full border border-gray-100 p-2 rounded-2xl hover:border-black transition-all bg-white shadow-sm hover:shadow-md"
+      className="group relative flex flex-col h-full transition-all"
     >
-      <div className="aspect-[4/5] md:aspect-square w-full overflow-hidden rounded-xl bg-gray-50 relative mb-3">
+      <div className="aspect-[4/5] w-full overflow-hidden bg-gray-50 relative mb-3 rounded-md">
         <Image
           src={displayImage}
           alt={product.name || "Ürün"}
           fill
-          sizes="(max-width: 768px) 50vw, 25vw"
+          sizes="(max-width: 768px) 45vw, 25vw"
           className="object-cover mix-blend-multiply group-hover:scale-105 transition-transform duration-700"
         />
 
@@ -738,12 +750,12 @@ function PrestigeCard({
         ) : null}
       </div>
 
-      <div className="px-1 flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col">
         <p className="text-[8px] md:text-[9px] font-black uppercase text-gray-400 tracking-widest truncate mb-0.5">
           {product.category}
         </p>
 
-        <h3 className="text-[11px] md:text-sm font-bold text-gray-900 line-clamp-2 h-7 md:h-10 leading-snug mb-1">
+        <h3 className="text-[11px] md:text-sm font-medium text-gray-900 line-clamp-2 leading-snug mb-1">
           {product.name}
         </h3>
 

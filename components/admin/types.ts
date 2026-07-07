@@ -3,6 +3,7 @@ export type Slide = {
   image_url: string;
   title: string | null;
   subtitle: string | null;
+  category_slug?: string | null;
   created_at?: string;
 };
 

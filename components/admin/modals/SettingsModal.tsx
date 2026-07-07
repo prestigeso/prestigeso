@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { Slide } from "../types";
+import type { Slide, CategoryRow } from "../types";
 import { revokeUrls } from "../utils";
 
 type Props = {
@@ -21,8 +21,10 @@ type Props = {
   newSlidePreviews: string[];
   setNewSlidePreviews: (urls: string[]) => void;
 
-  newSlide: { title: string; subtitle: string };
-  setNewSlide: (v: { title: string; subtitle: string }) => void;
+  dbCategories: CategoryRow[];
+
+  newSlide: { title: string; subtitle: string; category_slug: string };
+  setNewSlide: (v: { title: string; subtitle: string; category_slug: string }) => void;
 
   onAddSlide: () => void;
   onUpdateSlide: (slide: Slide) => void;
@@ -61,6 +63,7 @@ export default function SettingsModal({
   onAddSlide,
   onUpdateSlide,
   onDeleteSlide,
+  dbCategories,
 }: Props) {
   const [shippingFee, setShippingFee] = useState("");
   const [freeShippingThreshold, setFreeShippingThreshold] = useState("");
@@ -289,6 +292,17 @@ export default function SettingsModal({
               className="w-full p-3 bg-white border border-gray-200 rounded-xl font-medium text-sm mt-3"
             />
 
+            <select
+              value={newSlide.category_slug || ""}
+              onChange={(e) => setNewSlide({ ...newSlide, category_slug: e.target.value })}
+              className="w-full p-3 bg-white border border-gray-200 rounded-xl font-medium text-sm mt-3 outline-none focus:border-black text-gray-700"
+            >
+              <option value="">Tüm Ürünler (Kategori Seçilmedi)</option>
+              {dbCategories.map(c => (
+                <option key={c.slug} value={c.slug}>{c.name}</option>
+              ))}
+            </select>
+
             <button
               type="button"
               onClick={onAddSlide}
@@ -338,6 +352,23 @@ export default function SettingsModal({
                     placeholder="Alt Yazı"
                     className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium"
                   />
+
+                  <select
+                    value={s.category_slug || ""}
+                    onChange={(e) =>
+                      setDbSlides((prev) =>
+                        prev.map((x) =>
+                          x.id === s.id ? { ...x, category_slug: e.target.value } : x
+                        )
+                      )
+                    }
+                    className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 outline-none"
+                  >
+                    <option value="">Tüm Ürünler (Kategori Seçilmedi)</option>
+                    {dbCategories.map(c => (
+                      <option key={c.slug} value={c.slug}>{c.name}</option>
+                    ))}
+                  </select>
 
                   <div className="flex gap-2 mt-2">
                     <button

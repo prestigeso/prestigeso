@@ -156,6 +156,7 @@ export interface HeroSlide {
   link_url?: string;
   sort_order?: number;
   is_active?: boolean;
+  category_slug?: string;
 }
 
 /* ─── Müşteri Profili ─── */

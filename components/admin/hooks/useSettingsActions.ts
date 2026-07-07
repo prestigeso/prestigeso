@@ -21,7 +21,7 @@ export function useSettingsActions({
   const [marquee, setMarquee] = useState("");
   const [newSlideFiles, setNewSlideFiles] = useState<File[]>([]);
   const [newSlidePreviews, setNewSlidePreviews] = useState<string[]>([]);
-  const [newSlide, setNewSlide] = useState({ title: "", subtitle: "" });
+  const [newSlide, setNewSlide] = useState({ title: "", subtitle: "", category_slug: "" });
 
   useEffect(() => {
     setMarquee(localStorage.getItem("prestigeso_campaign") || "");
@@ -40,7 +40,7 @@ export function useSettingsActions({
 
     try {
       const urls = await Promise.all(newSlideFiles.map((file) => uploadToStorageAndGetPublicUrl(file, "hero")));
-      const inserts = urls.map((url) => ({ image_url: url, title: newSlide.title.trim(), subtitle: newSlide.subtitle.trim() }));
+      const inserts = urls.map((url) => ({ image_url: url, title: newSlide.title.trim(), subtitle: newSlide.subtitle.trim(), category_slug: newSlide.category_slug || null }));
       const { error } = await adminDb({ action: "insert", table: "hero_slides", data: inserts });
       if (error) throw error;
 
@@ -48,7 +48,7 @@ export function useSettingsActions({
       revokeUrls(newSlidePreviews);
       setNewSlideFiles([]);
       setNewSlidePreviews([]);
-      setNewSlide({ title: "", subtitle: "" });
+      setNewSlide({ title: "", subtitle: "", category_slug: "" });
       loadAllData();
     } catch (err: unknown) {
       showToast("Slide eklenemedi: " + (err instanceof Error ? err.message : "Bilinmeyen hata"), "error");
@@ -76,7 +76,7 @@ export function useSettingsActions({
   };
 
   const handleUpdateSlide = async (slide: Slide) => {
-    const { error } = await adminDb({ action: "update", table: "hero_slides", data: { image_url: slide.image_url, title: slide.title, subtitle: slide.subtitle }, filters: [{ column: "id", op: "eq", value: slide.id }] });
+    const { error } = await adminDb({ action: "update", table: "hero_slides", data: { image_url: slide.image_url, title: slide.title, subtitle: slide.subtitle, category_slug: slide.category_slug || null }, filters: [{ column: "id", op: "eq", value: slide.id }] });
     if (error) {
       showToast("Slide güncellenemedi: " + error, "error");
       return;
