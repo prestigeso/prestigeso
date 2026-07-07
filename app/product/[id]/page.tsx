@@ -622,7 +622,7 @@ export default function ProductDetailPage() {
             {product.category}
           </p>
 
-          <h1 className="text-2xl md:text-5xl font-medium text-black uppercase tracking-tight mb-2 md:mb-4 leading-tight" style={{ fontFamily: "var(--font-playfair)" }}>
+          <h1 className="text-lg md:text-5xl font-normal md:font-medium text-gray-900 uppercase tracking-widest md:tracking-tight mb-2 md:mb-4 leading-snug md:leading-tight" style={{ fontFamily: "var(--font-playfair)" }}>
             {product.name}
           </h1>
 
