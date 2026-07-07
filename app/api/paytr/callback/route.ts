@@ -194,17 +194,28 @@ export async function POST(req: NextRequest) {
         } else if (products) {
           const stockMap = new Map(products.map((p: any) => [String(p.id), Number(p.stock || 0)]));
 
-          const updatePromises = validItems.map((item: any) => {
-            const currentStock = stockMap.get(String(item.id));
-            if (currentStock === undefined) return null;
-            const nextStock = Math.max(currentStock - Number(item.quantity || 1), 0);
-            return supabaseAdmin
-              .from("products")
-              .update({ stock: nextStock })
-              .eq("id", item.id)
-              .then(({ error }) => {
-                if (error) console.error(`PayTR stock update error (id=${item.id}):`, error);
-              });
+          const updatePromises = validItems.map(async (item: any) => {
+            const quantity = Number(item.quantity || 1);
+            
+            // 1. Önce RPC (Atomik) deniyoruz
+            const { error: rpcError } = await supabaseAdmin.rpc("decrement_product_stock", {
+              p_id: Number(item.id),
+              p_amount: quantity
+            });
+
+            // 2. Eğer RPC yoksa veya hata verirse fallback (read-then-write) kullan
+            if (rpcError) {
+              const currentStock = stockMap.get(String(item.id));
+              if (currentStock === undefined) return;
+              const nextStock = Math.max(currentStock - quantity, 0);
+              
+              const { error } = await supabaseAdmin
+                .from("products")
+                .update({ stock: nextStock })
+                .eq("id", item.id);
+                
+              if (error) console.error(`PayTR stock update fallback error (id=${item.id}):`, error);
+            }
           });
 
           await Promise.all(updatePromises.filter(Boolean));

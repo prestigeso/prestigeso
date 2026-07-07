@@ -1,7 +1,9 @@
 import Link from "next/link";
+import type { Order, OrderItem } from "@/types";
+import { safeParseAddress } from "@/lib/utils";
 
-export default function OrdersTab({ orders }: { orders: any[] }) {
-  const safeParseItems = (items: any): any[] => {
+export default function OrdersTab({ orders, onOrderAction }: { orders: Order[], onOrderAction?: (id: number, action: "cancel" | "return") => void }) {
+  const safeParseItems = (items: OrderItem[] | string): OrderItem[] => {
     try {
       if (Array.isArray(items)) return items;
       if (typeof items === "string") return JSON.parse(items || "[]");
@@ -11,18 +13,8 @@ export default function OrdersTab({ orders }: { orders: any[] }) {
     }
   };
 
-  const safeParseAddress = (addr: any): any => {
-    try {
-      if (!addr) return null;
-      if (typeof addr === "string") return JSON.parse(addr);
-      if (typeof addr === "object") return addr;
-      return null;
-    } catch {
-      return addr;
-    }
-  };
 
-  const formatMoney = (value: any) => {
+  const formatMoney = (value: unknown) => {
     return Number(value || 0).toLocaleString("tr-TR", {
       minimumFractionDigits: 0,
       maximumFractionDigits: 2,
@@ -220,6 +212,32 @@ export default function OrdersTab({ orders }: { orders: any[] }) {
                       </span>
                       {status}
                     </span>
+
+                    {onOrderAction && (status === "İşleniyor" || status === "Bekliyor") && (
+                      <button
+                        onClick={() => {
+                          if (confirm("Bu siparişi iptal etmek istediğinize emin misiniz?")) {
+                            onOrderAction(order.id, "cancel");
+                          }
+                        }}
+                        className="mt-2 text-[10px] font-bold text-red-500 hover:text-red-700 underline"
+                      >
+                        Siparişi İptal Et
+                      </button>
+                    )}
+
+                    {onOrderAction && (status === "Kargolandı" || status === "Tamamlandı") && (
+                      <button
+                        onClick={() => {
+                          if (confirm("Bu sipariş için iade talebi oluşturmak istediğinize emin misiniz?")) {
+                            onOrderAction(order.id, "return");
+                          }
+                        }}
+                        className="mt-2 text-[10px] font-bold text-orange-500 hover:text-orange-700 underline"
+                      >
+                        İade Talebi Oluştur
+                      </button>
+                    )}
                   </div>
                 </div>
 

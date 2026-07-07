@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { createClient } from "@supabase/supabase-js";
-import { safeParseIds } from "@/lib/utils";
+import { safeParseIds, normalizePhone, isValidTurkishPhone } from "@/lib/utils";
 
 export const runtime = "nodejs";
 
@@ -61,14 +61,6 @@ function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(value);
 }
 
-function normalizePhone(value: unknown) {
-  return String(value || "").replace(/[^0-9+]/g, "");
-}
-
-function isValidTurkishPhone(value: string) {
-  const digits = String(value || "").replace(/\D/g, "");
-  return /^(05\d{9}|5\d{9}|90\d{10})$/.test(digits);
-}
 
 function normalizeCouponCode(value: unknown) {
   return String(value || "").trim().toUpperCase().replace(/[^A-Z0-9_-]/g, "").slice(0, 40);

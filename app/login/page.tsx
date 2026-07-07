@@ -6,6 +6,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useAppAlert } from "@/context/AppAlertContext";
 import DistanceSellingContract from "@/components/contracts/DistanceSellingContract";
+import { normalizePhone } from "@/lib/utils";
 
 type AuthStep = "INIT" | "LOGIN" | "REGISTER" | "FORGOT_PASSWORD";
 type ContractModalType = "terms" | "distance" | "aydinlatma" | "privacy" | null;
@@ -36,9 +37,6 @@ const monthOptions = [
   { value: "12", label: "Aralık" },
 ];
 
-function normalizePhone(value: string) {
-  return value.replace(/\D/g, "").slice(0, MAX_PHONE_LENGTH);
-}
 
 function normalizeName(value: string) {
   return value.replace(/\s+/g, " ").trim();
@@ -406,7 +404,7 @@ export default function LoginPage() {
                     setErrorMsg("");
                     try {
                       const { error } = await supabase.auth.resetPasswordForEmail(normalizedEmail, {
-                        redirectTo: `${window.location.origin}/login`,
+                        redirectTo: `${window.location.origin}/update-password`,
                       });
                       if (error) throw error;
                       setResetSent(true);

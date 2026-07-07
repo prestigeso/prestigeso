@@ -1,6 +1,7 @@
 import Link from "next/link";
+import type { Question } from "@/types";
 
-export default function QuestionsTab({ questions }: { questions: any[] }) {
+export default function QuestionsTab({ questions }: { questions: Question[] }) {
   return (
     <div className="animate-in fade-in duration-300">
       <h3 className="text-xl font-black uppercase tracking-tight mb-6 text-black border-b-2 border-gray-100 pb-4">

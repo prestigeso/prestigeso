@@ -1,6 +1,6 @@
 import ClearCartOnSuccess from "@/components/payment/ClearCartOnSuccess";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { formatMoney } from "@/lib/utils";
+import { formatMoney, safeParseAddress } from "@/lib/utils";
 
 type PaymentSuccessPageProps = {
   searchParams?: Promise<{
@@ -8,16 +8,6 @@ type PaymentSuccessPageProps = {
   }>;
 };
 
-function safeParseAddress(address: any): any {
-  try {
-    if (!address) return null;
-    if (typeof address === "string") return JSON.parse(address);
-    if (typeof address === "object") return address;
-    return null;
-  } catch {
-    return null;
-  }
-}
 
 
 function getCouponInfo(address: any) {

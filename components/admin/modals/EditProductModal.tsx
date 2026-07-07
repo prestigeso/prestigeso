@@ -46,6 +46,7 @@ type Props = {
   setAddPreviews: (urls: string[]) => void;
   addUploading: boolean;
   onAddMoreImages: () => void;
+  categories: { id: number; name: string }[];
 };
 
 export default function EditProductModal({
@@ -65,6 +66,7 @@ export default function EditProductModal({
   setAddPreviews,
   addUploading,
   onAddMoreImages,
+  categories,
 }: Props) {
   const { showToast } = useAppAlert();
 
@@ -344,19 +346,16 @@ export default function EditProductModal({
                   Kategori
                 </label>
                 <select
-                  value={editingProduct.category || "Kolyeler"}
+                  value={editingProduct.category || ""}
                   onChange={(event) =>
                     setEditingProduct({ ...editingProduct, category: event.target.value })
                   }
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium text-black focus:ring-2 focus:ring-black outline-none transition-all"
                 >
-                  <option value="Kolyeler">Kolyeler</option>
-                  <option value="Yüzükler">Yüzükler</option>
-                  <option value="Bilezikler">Bilezikler</option>
-                  <option value="Küpeler">Küpeler</option>
-                  <option value="Setler">Setler</option>
-                  <option value="Masa Süsleri">Masa Süsleri</option>
-                  <option value="Tespihler">Tespihler</option>
+                  <option value="">Seçiniz...</option>
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
                 </select>
               </div>
 

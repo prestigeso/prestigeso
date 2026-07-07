@@ -142,7 +142,7 @@ export function useAdminNotifications(params: Params) {
     // 5) Stoğu biten ürünler
     (dbProducts || [])
       .filter((p) => Number(p.stock) <= 0)
-      .forEach((p: any) => {
+      .forEach((p) => {
         const img = p.images?.[0] || p.image || "/logo.jpeg";
         feed.push({
           id: `stock_${p.id}`,

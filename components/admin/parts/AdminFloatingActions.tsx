@@ -7,6 +7,7 @@ type AdminFloatingActionsProps = {
   onOpenAddProduct: () => void;
   onOpenCampaign: () => void;
   onOpenCoupons: () => void;
+  onOpenCategories: () => void;
 };
 
 export default function AdminFloatingActions({
@@ -16,6 +17,7 @@ export default function AdminFloatingActions({
   onOpenAddProduct,
   onOpenCampaign,
   onOpenCoupons,
+  onOpenCategories,
 }: AdminFloatingActionsProps) {
   return (
     <>
@@ -37,6 +39,17 @@ export default function AdminFloatingActions({
               : "opacity-0 scale-50 translate-y-10 pointer-events-none"
           }`}
         >
+          <button
+            type="button"
+            onClick={() => {
+              setIsFabOpen(false);
+              onOpenCategories();
+            }}
+            className="bg-purple-600 text-white shadow-lg px-4 py-3 rounded-2xl font-bold text-sm flex items-center gap-3 hover:bg-purple-700 w-max"
+          >
+            <span>🗂️</span> Kategoriler
+          </button>
+
           <button
             type="button"
             onClick={() => {

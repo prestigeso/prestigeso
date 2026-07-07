@@ -10,6 +10,7 @@ import type {
   OrderRow,
   ReviewRow,
   CampaignRow,
+  CategoryRow,
 } from "../types";
 
 /**
@@ -25,14 +26,15 @@ export function useAdminData() {
   const [dbProducts, setDbProducts] = useState<ProductRow[]>([]);
   const [dbSlides, setDbSlides] = useState<Slide[]>([]);
   const [dbCampaigns, setDbCampaigns] = useState<CampaignRow[]>([]);
+  const [dbCategories, setDbCategories] = useState<CategoryRow[]>([]);
 
   const [dbMessages, setDbMessages] = useState<MessageRow[]>([]);
   const [dbQuestions, setDbQuestions] = useState<QuestionRow[]>([]);
   const [dbOrders, setDbOrders] = useState<OrderRow[]>([]);
   const [dbReviews, setDbReviews] = useState<ReviewRow[]>([]);
 
-  const [dbAllFavorites, setDbAllFavorites] = useState<any[]>([]);
-  const [dbProductViews, setDbProductViews] = useState<any[]>([]);
+  const [dbAllFavorites, setDbAllFavorites] = useState<{ product_id: number }[]>([]);
+  const [dbProductViews, setDbProductViews] = useState<{ product_id: number }[]>([]);
 
   const [monthlyRevenue, setMonthlyRevenue] = useState(0);
   const [monthlyOrders, setMonthlyOrders] = useState(0);
@@ -61,10 +63,11 @@ export function useAdminData() {
         messagesRes,
         reviewsRes,
         favoritesRes,
-        viewsRes,
+        productViewsRes,
         questionsRes,
         allOrdersRes,
         allVisitsRes,
+        categoriesRes,
       ] = await Promise.all([
         // 1) PRODUCTS
         supabase
@@ -86,8 +89,8 @@ export function useAdminData() {
         // 4) MONTHLY ORDERS
         supabase
           .from("orders")
-          .select("total_amount, created_at, payment_status")
-          .eq("payment_status", "paid")
+          .select("total_amount, created_at, payment_status, status")
+          .in("payment_status", ["paid", "refunded"])
           .gte("created_at", firstDayOfThisMonthIso),
         // 5) MONTHLY VISITS
         supabase
@@ -119,10 +122,15 @@ export function useAdminData() {
           .select(
             "id, order_no, merchant_oid, user_id, user_email, items, shipping_address, status, total_amount, created_at, shipping_carrier, tracking_number, payment_provider, payment_status, paytr_total_amount, paid_at, failed_reason"
           )
-          .eq("payment_status", "paid")
+          .in("payment_status", ["paid", "refunded"])
           .order("created_at", { ascending: false }),
         // 12) ALL TIME VISITS
         supabase.from("page_views").select("id"),
+        // 13) CATEGORIES
+        supabase
+          .from("categories")
+          .select("*")
+          .order("created_at", { ascending: false }),
       ]);
 
       // Products
@@ -137,14 +145,19 @@ export function useAdminData() {
       if (campaignsRes.error) { console.error("Kampanyalar çekilemedi:", campaignsRes.error); setDbCampaigns([]); }
       else { setDbCampaigns((campaignsRes.data as any) || []); }
 
+      // Categories
+      if (categoriesRes.error) { console.error("Kategoriler çekilemedi:", categoriesRes.error); setDbCategories([]); }
+      else { setDbCategories((categoriesRes.data as any) || []); }
+
       // Monthly metrics
       if (monthlyOrdersRes.error) {
         console.error("Aylık ödenmiş siparişler çekilemedi:", monthlyOrdersRes.error);
         setMonthlyOrders(0); setMonthlyRevenue(0);
       } else {
         const list = monthlyOrdersRes.data || [];
-        setMonthlyOrders(list.length);
-        setMonthlyRevenue(list.reduce((acc: number, order: any) => acc + Number(order.total_amount || 0), 0));
+        const validList = list.filter((o: any) => o.payment_status === "paid" && o.status !== "İptal Edildi" && o.status !== "İade Edildi" && o.status !== "İptal edildi");
+        setMonthlyOrders(validList.length);
+        setMonthlyRevenue(validList.reduce((acc: number, order: any) => acc + Number(order.total_amount || 0), 0));
       }
 
       if (monthlyVisitsRes.error) { console.error("Aylık ziyaretler çekilemedi:", monthlyVisitsRes.error); setMonthlyVisits(0); }
@@ -163,8 +176,8 @@ export function useAdminData() {
       else { setDbAllFavorites((favoritesRes.data as any) || []); }
 
       // Product views
-      if (viewsRes.error) { console.error("Ürün görüntülenmeleri çekilemedi:", viewsRes.error); setDbProductViews([]); }
-      else { setDbProductViews((viewsRes.data as any) || []); }
+      if (productViewsRes.error) { console.error("Ürün görüntülenmeleri çekilemedi:", productViewsRes.error); setDbProductViews([]); }
+      else { setDbProductViews((productViewsRes.data as any) || []); }
 
       // Questions
       if (questionsRes.error) { console.error("Sorular çekilemedi:", questionsRes.error); setDbQuestions([]); }
@@ -176,9 +189,10 @@ export function useAdminData() {
         setDbOrders([]); setAllTimeOrders(0); setAllTimeRevenue(0);
       } else {
         const list = (allOrdersRes.data as any[]) || [];
-        setDbOrders(list);
-        setAllTimeOrders(list.length);
-        setAllTimeRevenue(list.reduce((acc: number, order: any) => acc + Number(order.total_amount || 0), 0));
+        const validList = list.filter((o: any) => o.payment_status === "paid" && o.status !== "İptal Edildi" && o.status !== "İade Edildi" && o.status !== "İptal edildi");
+        setDbOrders(list); // Biz listeyi state'e atarken hepsini atıyoruz ki admin iptal olanları da görebilsin
+        setAllTimeOrders(validList.length);
+        setAllTimeRevenue(validList.reduce((acc: number, order: any) => acc + Number(order.total_amount || 0), 0));
       }
 
       // All time visits
@@ -199,6 +213,7 @@ export function useAdminData() {
     dbProducts,
     dbSlides,
     dbCampaigns,
+    dbCategories,
     dbMessages,
     dbQuestions,
     dbOrders,
@@ -220,6 +235,7 @@ export function useAdminData() {
     setDbProducts,
     setDbSlides,
     setDbCampaigns,
+    setDbCategories,
     setDbMessages,
     setDbQuestions,
     setDbOrders,

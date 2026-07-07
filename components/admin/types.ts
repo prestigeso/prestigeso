@@ -6,6 +6,13 @@ export type Slide = {
   created_at?: string;
 };
 
+export type CategoryRow = {
+  id: number;
+  name: string;
+  slug: string;
+  created_at?: string;
+};
+
 export type ProductRow = {
   id: number;
   name: string;

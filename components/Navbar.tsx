@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSearch } from "@/context/SearchContext";
 import { useCart } from "@/context/CartContext";
@@ -17,8 +17,7 @@ export default function Navbar() {
   const { items, setIsCartOpen } = useCart();
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
-  const categories = [
+  const [categories, setCategories] = useState<string[]>([
     "Setler",
     "Masa Süsleri",
     "Kolyeler",
@@ -26,7 +25,17 @@ export default function Navbar() {
     "Bilezikler",
     "Küpeler",
     "Tespihler",
-  ];
+  ]);
+
+  useEffect(() => {
+    const fetchCategories = async () => {
+      const { data } = await supabase.from("categories").select("name").order("name");
+      if (data && data.length > 0) {
+        setCategories(data.map((c: any) => c.name));
+      }
+    };
+    fetchCategories();
+  }, []);
 
   const totalItemsInCart = (items || []).reduce(
     (total, item) => total + Number(item.quantity || 0),

@@ -43,6 +43,7 @@ type Props = {
   setPreviews: (urls: string[]) => void;
 
   moveImage: (index: number, direction: "left" | "right") => void;
+  categories: { id: number; name: string }[];
 };
 
 export default function AddProductModal({
@@ -55,6 +56,7 @@ export default function AddProductModal({
   previews,
   setPreviews,
   moveImage,
+  categories,
 }: Props) {
   const { showToast } = useAppAlert();
 
@@ -190,13 +192,10 @@ export default function AddProductModal({
               name="category"
               className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium text-black outline-none focus:ring-2 focus:ring-black transition-all"
             >
-              <option value="Kolyeler">Kolyeler</option>
-              <option value="Yüzükler">Yüzükler</option>
-              <option value="Bilezikler">Bilezikler</option>
-              <option value="Küpeler">Küpeler</option>
-              <option value="Setler">Setler</option>
-              <option value="Masa Süsleri">Masa Süsleri</option>
-              <option value="Tespihler">Tespihler</option>
+              <option value="">Seçiniz...</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.name}>{c.name}</option>
+              ))}
             </select>
           </div>
 

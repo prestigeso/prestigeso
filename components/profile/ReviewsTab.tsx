@@ -1,6 +1,7 @@
 import Link from "next/link";
+import type { Review } from "@/types";
 
-export default function ReviewsTab({ reviews }: { reviews: any[] }) {
+export default function ReviewsTab({ reviews }: { reviews: Review[] }) {
   return (
     <div className="animate-in fade-in duration-300">
       <h3 className="text-xl font-black uppercase tracking-tight mb-6 text-black border-b-2 border-gray-100 pb-4">
@@ -55,7 +56,7 @@ export default function ReviewsTab({ reviews }: { reviews: any[] }) {
                       {"☆".repeat(5 - rev.rating)}
                     </span>
                     <span className="text-[9px] font-bold text-gray-400">
-                      {new Date(rev.created_at).toLocaleDateString("tr-TR")}
+                      {new Date(rev.created_at || "").toLocaleDateString("tr-TR")}
                     </span>
                   </div>
 

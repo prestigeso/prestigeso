@@ -4,7 +4,7 @@ import { useState } from "react";
 import type { OrderRow } from "../types";
 import { adminDb } from "../adminDb";
 import { useAppAlert } from "@/context/AppAlertContext";
-import { formatMoney } from "@/lib/utils";
+import { formatMoney, safeParseAddress } from "@/lib/utils";
 
 type Props = {
   open: boolean;
@@ -23,16 +23,6 @@ function safeParseItems(items: any): any[] {
   }
 }
 
-function safeParseAddress(address: any): any {
-  try {
-    if (!address) return null;
-    if (typeof address === "string") return JSON.parse(address);
-    if (typeof address === "object") return address;
-    return null;
-  } catch {
-    return address;
-  }
-}
 
 function getAddressLine(address: any): string {
   if (!address) return "Adres bilgisi yok.";
@@ -74,6 +64,9 @@ function getStatusClass(status: string) {
   if (status === "Bekliyor") return "bg-orange-50 text-orange-600 border-orange-200";
   if (status === "Hazırlanıyor") return "bg-blue-50 text-blue-600 border-blue-200";
   if (status === "Teslim Edildi") return "bg-green-50 text-green-600 border-green-200";
+  if (status === "İptal Edildi") return "bg-red-50 text-red-600 border-red-200";
+  if (status === "İade Talebi") return "bg-yellow-50 text-yellow-600 border-yellow-200";
+  if (status === "İade Edildi") return "bg-purple-50 text-purple-600 border-purple-200";
   return "bg-black text-white border-black";
 }
 
@@ -323,6 +316,9 @@ export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: P
                             <option value="Hazırlanıyor">📦 Hazırlanıyor</option>
                             <option value="Kargolandı">🚀 Kargolandı</option>
                             <option value="Teslim Edildi">✅ Teslim Edildi</option>
+                            <option value="İptal Edildi">❌ İptal Edildi</option>
+                            <option value="İade Talebi">🔄 İade Talebi</option>
+                            <option value="İade Edildi">🔙 İade Edildi</option>
                           </select>
                         </div>
 

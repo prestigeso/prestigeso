@@ -1,6 +1,7 @@
 import Link from "next/link";
+import type { FavoriteProduct } from "@/types";
 
-export default function FavoritesTab({ favorites, removeFavorite }: { favorites: any[], removeFavorite: (id: string) => void }) {
+export default function FavoritesTab({ favorites, removeFavorite }: { favorites: FavoriteProduct[], removeFavorite: (id: number | string) => void }) {
   return (
     <div className="animate-in fade-in duration-300">
       <h3 className="text-xl font-black uppercase tracking-tight mb-6 text-black border-b-2 border-gray-50 pb-4">

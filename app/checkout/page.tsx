@@ -25,12 +25,10 @@ import {
 import {
   formatMoney,
   isValidEmail,
-  isValidTurkishPhone,
   normalizeCouponCode,
   normalizeEmail,
-  normalizePhone,
-  normalizeText,
 } from "@/lib/checkout/checkoutFormatters";
+import { normalizeText, normalizePhone, isValidTurkishPhone } from "@/lib/utils";
 import { validateAddressForm } from "@/lib/checkout/checkoutValidators";
 import {
   calculateRemainingForFreeShipping,

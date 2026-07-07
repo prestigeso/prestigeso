@@ -1,30 +1,31 @@
-
 "use client";
 
 import { useCart } from "@/context/CartContext";
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useSearch } from "@/context/SearchContext";
 import { useAppAlert } from "@/context/AppAlertContext";
 import { supabase } from "@/lib/supabase";
 import { safeParseIds, sanitizeImageUrl } from "@/lib/utils";
+import type { Product, Campaign, HeroSlide } from "@/types";
 
 export default function Home() {
   const { searchQuery, setSearchQuery, selectedCategory, setSelectedCategory } =
-    useSearch() as any;
+    useSearch();
 
   const { items, setIsCartOpen } = useCart();
   const { showToast } = useAppAlert();
 
   const totalItemsInCart = (items || []).reduce(
-    (total: number, item: any) => total + Number(item.quantity || 0),
+    (total: number, item) => total + Number(item.quantity || 0),
     0
   );
 
 
-  const [dbProducts, setDbProducts] = useState<any[]>([]);
-  const [dbCampaigns, setDbCampaigns] = useState<any[]>([]);
-  const [heroSlides, setHeroSlides] = useState<any[]>([]);
+  const [dbProducts, setDbProducts] = useState<(Partial<Product> & { id: number; ratingAvg?: number; reviewCount?: number })[]>([]);
+  const [dbCampaigns, setDbCampaigns] = useState<Campaign[]>([]);
+  const [heroSlides, setHeroSlides] = useState<HeroSlide[]>([]);
   const [currentSlide, setCurrentSlide] = useState(0);
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
@@ -78,7 +79,7 @@ export default function Home() {
         setFavoriteIds(
           () =>
             new Set(
-              (favData || []).map((fav: any) => Number(fav.product_id))
+              (favData || []).map((fav: { product_id: number }) => Number(fav.product_id))
             )
         );
       } else {
@@ -96,9 +97,7 @@ export default function Home() {
           sessionStorage.setItem("prestige_session_active", "true");
           localStorage.setItem("prestige_last_view", String(now));
 
-          await supabase
-            .from("page_views")
-            .insert([{ created_at: new Date().toISOString() }]);
+          await fetch("/api/page_views", { method: "POST" });
         }
       } catch {}
 
@@ -117,23 +116,23 @@ export default function Home() {
           .from("products")
           .select("id, name, price, category, stock, images, image, is_bestseller, discount_price, created_at")
           .gt("stock", 0)
-          .order("created_at", { ascending: false });
+          .order("created_at", { ascending: false })
+          .limit(100);
 
-        const { data: reviewsData } = await supabase
+        const { data: allReviews } = await supabase
           .from("reviews")
           .select("product_id, rating")
-          .eq("is_approved", true);
+          .eq("is_approved", true)
+          .limit(500);
 
         if (productsData && !pError) {
-          const productsWithStats = productsData.map((p: any) => {
-            const pRevs =
-              reviewsData?.filter(
-                (r: any) => String(r.product_id) === String(p.id)
-              ) || [];
-
+          const productsWithStats = productsData.map((p) => {
+            const pRevs = (allReviews || []).filter(
+              (r: { product_id: number }) => String(r.product_id) === String(p.id)
+            );
             const avg =
               pRevs.length > 0
-                ? pRevs.reduce((acc: number, r: any) => acc + r.rating, 0) /
+                ? pRevs.reduce((acc: number, r: { rating: number }) => acc + r.rating, 0) /
                   pRevs.length
                 : 0;
 
@@ -331,10 +330,13 @@ export default function Home() {
               >
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent z-10 transition-colors duration-500" />
 
-                <img
+                <Image
                   src={slide.image_url}
                   alt={slide.title || "PrestigeSO"}
-                  className="w-full h-full object-cover transition-transform duration-[10s] group-hover:scale-105"
+                  fill
+                  priority={index === 0}
+                  sizes="100vw"
+                  className="object-cover transition-transform duration-[10s] group-hover:scale-105"
                 />
 
                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-end md:justify-center pb-6 md:pb-0 text-center px-4">
@@ -599,7 +601,15 @@ function ProductCarousel({
   onSeeAll,
   favoriteIds,
   onToggleFavorite,
-}: any) {
+}: {
+  title: string;
+  products: (Partial<Product> & { id: number; ratingAvg?: number; reviewCount?: number })[];
+  campaigns: Campaign[];
+  badgeLabel?: string;
+  onSeeAll?: () => void;
+  favoriteIds?: Set<number>;
+  onToggleFavorite: (productId: number, isCurrentlyFavorite: boolean) => void;
+}) {
   if (!products || products.length === 0) return null;
 
   return (
@@ -621,7 +631,7 @@ function ProductCarousel({
       </div>
 
       <div className="flex overflow-x-auto md:grid md:grid-cols-5 gap-3 md:gap-4 px-1 hide-scrollbar pb-4 snap-x snap-mandatory">
-        {(() => { const now = new Date(); return products.map((p: any) => (
+        {(() => { const now = new Date(); return products.map((p) => (
           <div
             key={p.id}
             className="min-w-[140px] md:min-w-0 w-[45vw] md:w-auto snap-start"
@@ -649,8 +659,8 @@ function PrestigeCard({
   onToggleFavorite,
   now,
 }: {
-  product: any;
-  campaigns: any[];
+  product: Partial<Product> & { id: number; ratingAvg?: number; reviewCount?: number };
+  campaigns: Campaign[];
   badgeLabel?: string;
   isFavorite: boolean;
   onToggleFavorite: (productId: number, isCurrentlyFavorite: boolean) => void;
@@ -688,11 +698,12 @@ function PrestigeCard({
       className="group relative flex flex-col h-full border border-gray-100 p-2 rounded-2xl hover:border-black transition-all bg-white shadow-sm hover:shadow-md"
     >
       <div className="aspect-[4/5] md:aspect-square w-full overflow-hidden rounded-xl bg-gray-50 relative mb-3">
-        <img
+        <Image
           src={displayImage}
           alt={product.name || "Ürün"}
-          className="h-full w-full object-cover mix-blend-multiply group-hover:scale-105 transition-transform duration-700"
-          loading="lazy"
+          fill
+          sizes="(max-width: 768px) 50vw, 25vw"
+          className="object-cover mix-blend-multiply group-hover:scale-105 transition-transform duration-700"
         />
 
         <button

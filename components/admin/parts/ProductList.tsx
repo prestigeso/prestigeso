@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import type { ProductRow, CampaignRow } from "../types";
 import { safeParseIds } from "../utils";
 
@@ -20,6 +20,7 @@ type Props = {
 
   onEditProduct: (id: number) => void;
   onRefresh: () => void;
+  onInlineUpdate?: (id: number, field: "price" | "stock", value: number) => void;
 };
 
 export default function ProductList({
@@ -32,7 +33,16 @@ export default function ProductList({
   setSearchTerm,
   onEditProduct,
   onRefresh,
+  onInlineUpdate,
 }: Props) {
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [sortFilter, setSortFilter] = useState("newest");
+  
+  const categories = useMemo(() => {
+    const cats = new Set(dbProducts.map(p => p.category).filter(Boolean));
+    return Array.from(cats) as string[];
+  }, [dbProducts]);
+
   const outOfStockCount = useMemo(
     () => dbProducts.filter((p) => Number(p.stock) <= 0).length,
     [dbProducts]
@@ -54,8 +64,17 @@ export default function ProductList({
       });
     }
 
+    if (categoryFilter !== "all") {
+      result = result.filter(p => p.category === categoryFilter);
+    }
+
+    if (sortFilter === "newest") result = result.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+    if (sortFilter === "oldest") result = result.sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+    if (sortFilter === "price_asc") result = result.sort((a, b) => Number(a.price) - Number(b.price));
+    if (sortFilter === "price_desc") result = result.sort((a, b) => Number(b.price) - Number(a.price));
+
     return result;
-  }, [dbProducts, stockTab, searchTerm]);
+  }, [dbProducts, stockTab, searchTerm, categoryFilter, sortFilter]);
 
   return (
     <div>
@@ -102,17 +121,39 @@ export default function ProductList({
             Ürün Envanteri
           </h2>
 
-          <div className="relative w-full sm:w-80">
-            <input
-              type="text"
-              placeholder="Ürün / SKU / Barkod ara..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-black shadow-sm"
-            />
-            <span className="absolute left-3 top-2.5 text-gray-400 text-lg">
-              🔍
-            </span>
+          <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="w-full sm:w-auto bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-black"
+            >
+              <option value="all">Tüm Kategoriler</option>
+              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+
+            <select
+              value={sortFilter}
+              onChange={(e) => setSortFilter(e.target.value)}
+              className="w-full sm:w-auto bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-black"
+            >
+              <option value="newest">En Yeniler</option>
+              <option value="oldest">En Eskiler</option>
+              <option value="price_asc">Fiyat (Artan)</option>
+              <option value="price_desc">Fiyat (Azalan)</option>
+            </select>
+
+            <div className="relative w-full sm:w-80">
+              <input
+                type="text"
+                placeholder="Ürün / SKU / Barkod ara..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-black shadow-sm"
+              />
+              <span className="absolute left-3 top-2.5 text-gray-400 text-lg">
+                🔍
+              </span>
+            </div>
           </div>
         </div>
 
@@ -173,9 +214,36 @@ export default function ProductList({
                         )}
                       </h3>
 
-                      <p className="text-xs text-blue-600 font-black">
-                        {Number(p.price).toLocaleString("tr-TR")} ₺
-                      </p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <div className="flex items-center bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
+                          <span className="text-[10px] font-black text-gray-500 px-2">₺</span>
+                          <input
+                            type="number"
+                            defaultValue={p.price}
+                            onBlur={(e) => {
+                              const val = Number(e.target.value);
+                              if (val !== Number(p.price) && onInlineUpdate) {
+                                onInlineUpdate(p.id, "price", val);
+                              }
+                            }}
+                            className="w-20 bg-transparent text-xs font-black text-blue-600 outline-none py-1"
+                          />
+                        </div>
+                        <div className="flex items-center bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
+                          <span className="text-[10px] font-black text-gray-500 px-2">STOK</span>
+                          <input
+                            type="number"
+                            defaultValue={p.stock}
+                            onBlur={(e) => {
+                              const val = Number(e.target.value);
+                              if (val !== Number(p.stock) && onInlineUpdate) {
+                                onInlineUpdate(p.id, "stock", val);
+                              }
+                            }}
+                            className="w-16 bg-transparent text-xs font-black outline-none py-1"
+                          />
+                        </div>
+                      </div>
 
                       <p className="text-[10px] text-gray-400">
                         {p.category || "Kategori yok"}

@@ -4,11 +4,13 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAppAlert } from "@/context/AppAlertContext";
+import type { AuthUser, Address } from "@/types";
+import { normalizeText, normalizePhone, isValidTurkishPhone } from "@/lib/utils";
 
 type Props = {
-  user: any;
-  addresses: any[];
-  setAddresses: (val: any[]) => void;
+  user: AuthUser | null;
+  addresses: Address[];
+  setAddresses: (val: Address[]) => void;
 };
 
 type AddressFormState = {
@@ -35,18 +37,6 @@ const emptyAddressForm: AddressFormState = {
   is_default: false,
 };
 
-function normalizeText(value: string) {
-  return String(value || "").replace(/\s+/g, " ").trim();
-}
-
-function normalizePhone(value: string) {
-  return String(value || "").replace(/[^0-9+]/g, "").slice(0, 20);
-}
-
-function isValidTurkishPhone(value: string) {
-  const digits = String(value || "").replace(/\D/g, "");
-  return /^(05\d{9}|5\d{9}|90\d{10})$/.test(digits);
-}
 
 export default function AddressesTab({ user, addresses, setAddresses }: Props) {
   const { showToast, showConfirm } = useAppAlert();
@@ -81,7 +71,7 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
           const json = await res.json();
 
           if (json.status === "OK") {
-            const sorted = json.data.sort((a: any, b: any) =>
+            const sorted = json.data.sort((a: { name: string }, b: { name: string }) =>
               a.name.localeCompare(b.name, "tr")
             );
             setCities(sorted);
@@ -114,7 +104,7 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
     const selectedCity = cities.find((city) => city.name === cityName);
 
     if (selectedCity) {
-      const sortedDistricts = selectedCity.districts.sort((a: any, b: any) =>
+      const sortedDistricts = selectedCity.districts.sort((a: { name: string }, b: { name: string }) =>
         a.name.localeCompare(b.name, "tr")
       );
       setDistricts(sortedDistricts);
@@ -134,7 +124,7 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
     setCitySearch("");
   };
 
-  const handleDistrictSelect = async (district: any) => {
+  const handleDistrictSelect = async (district: { id?: number | string; name: string }) => {
     setAddressForm((prev) => ({
       ...prev,
       district: district.name,
@@ -152,7 +142,7 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
       const json = await res.json();
 
       if (json.status === "OK") {
-        const sortedNeighborhoods = json.data.sort((a: any, b: any) =>
+        const sortedNeighborhoods = json.data.sort((a: { name: string }, b: { name: string }) =>
           a.name.localeCompare(b.name, "tr")
         );
         setNeighborhoods(sortedNeighborhoods);
@@ -254,8 +244,8 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
       setNeighborhoodSearch("");
 
       await refreshAddresses();
-    } catch (err: any) {
-      showToast("Hata: " + (err?.message || "Adres kaydedilemedi."), "error");
+    } catch (err: unknown) {
+      showToast("Hata: " + (err instanceof Error ? err.message : "Adres kaydedilemedi."), "error");
     } finally {
       setIsSavingAddress(false);
     }
@@ -270,7 +260,7 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
       tone: "danger",
     });
 
-    if (!ok) return;
+    if (!ok || !user) return;
 
     // GÜVENLİK: user_id filtresi ile sadece kendi adresini silebilir
     const { error } = await supabase.from("addresses").delete().eq("id", id).eq("user_id", user.id);

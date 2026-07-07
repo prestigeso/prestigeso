@@ -7,6 +7,7 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabase";
 import { useAppAlert } from "@/context/AppAlertContext";
 import { useCart } from "@/context/CartContext";
+import type { AuthUser, CustomerProfile, FavoriteProduct, Order, Address, Review, Question, Message } from "@/types";
 
 import AddressesTab from "@/components/profile/AddressesTab";
 import OrdersTab from "@/components/profile/OrdersTab";
@@ -28,7 +29,7 @@ const VALID_PROFILE_TABS = [
   "settings",
 ];
 
-function getDisplayName(user: any, customerProfile?: any) {
+function getDisplayName(user: AuthUser | null, customerProfile?: CustomerProfile | null) {
   const dbFullName = (customerProfile?.full_name || "").toString().trim();
   if (dbFullName) return dbFullName;
 
@@ -56,18 +57,18 @@ export default function ProfilePage() {
   const { showToast } = useAppAlert();
   const { clearCart } = useCart();
 
-  const [user, setUser] = useState<any>(null);
-  const [customerProfile, setCustomerProfile] = useState<any>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [customerProfile, setCustomerProfile] = useState<CustomerProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("orders");
 
-  const [favorites, setFavorites] = useState<any[]>([]);
-  const [recentlyViewed, setRecentlyViewed] = useState<any[]>([]);
-  const [myMessages, setMyMessages] = useState<any[]>([]);
-  const [myReviews, setMyReviews] = useState<any[]>([]);
-  const [myQuestions, setMyQuestions] = useState<any[]>([]);
-  const [myOrders, setMyOrders] = useState<any[]>([]);
-  const [addresses, setAddresses] = useState<any[]>([]);
+  const [favorites, setFavorites] = useState<FavoriteProduct[]>([]);
+  const [recentlyViewed, setRecentlyViewed] = useState<FavoriteProduct[]>([]);
+  const [myMessages, setMyMessages] = useState<Message[]>([]);
+  const [myReviews, setMyReviews] = useState<Review[]>([]);
+  const [myQuestions, setMyQuestions] = useState<Question[]>([]);
+  const [myOrders, setMyOrders] = useState<Order[]>([]);
+  const [addresses, setAddresses] = useState<Address[]>([]);
 
   const [isMessageModalOpen, setIsMessageModalOpen] = useState(false);
   const [messageText, setMessageText] = useState("");
@@ -118,14 +119,14 @@ export default function ProfilePage() {
         supabase.from("messages").select("*").eq("user_id", session.user.id).order("created_at", { ascending: false }),
         supabase.from("reviews").select("*, products(*)").eq("user_id", session.user.id).order("created_at", { ascending: false }),
         supabase.from("questions").select("*, products(*)").eq("user_id", session.user.id).order("created_at", { ascending: false }),
-        supabase.from("orders").select("*").eq("user_id", session.user.id).eq("payment_status", "paid").order("created_at", { ascending: false }),
+        supabase.from("orders").select("*").eq("user_id", session.user.id).in("payment_status", ["paid", "refunded"]).order("created_at", { ascending: false }),
         supabase.from("addresses").select("*").eq("user_id", session.user.id).order("is_default", { ascending: false }).order("created_at", { ascending: false }),
       ]);
 
       // Favorites
       if (!favResult.error && favResult.data) {
-        const dbFavs = favResult.data.map((f: any) => f.products).filter(Boolean);
-        const favIds = dbFavs.map((p: any) => p.id);
+        const dbFavs = favResult.data.map((f: Record<string, unknown>) => f.products).filter(Boolean) as FavoriteProduct[];
+        const favIds = dbFavs.map((p) => p.id);
 
         if (favIds.length > 0) {
           const { data: productReviews } = await supabase
@@ -134,9 +135,9 @@ export default function ProfilePage() {
             .in("product_id", favIds)
             .eq("is_approved", true);
 
-          const favsWithStats = dbFavs.map((p: any) => {
-            const pRevs = productReviews?.filter((r: any) => String(r.product_id) === String(p.id)) || [];
-            const avg = pRevs.length > 0 ? pRevs.reduce((acc: number, r: any) => acc + Number(r.rating || 0), 0) / pRevs.length : 0;
+          const favsWithStats = dbFavs.map((p) => {
+            const pRevs = productReviews?.filter((r) => String(r.product_id) === String(p.id)) || [];
+            const avg = pRevs.length > 0 ? pRevs.reduce((acc: number, r) => acc + Number(r.rating || 0), 0) / pRevs.length : 0;
             return { ...p, ratingAvg: avg, reviewCount: pRevs.length };
           });
 
@@ -165,7 +166,7 @@ export default function ProfilePage() {
     checkUserAndLoadData();
   }, [router]);
 
-  const removeFavorite = async (productId: string) => {
+  const removeFavorite = async (productId: number | string) => {
     if (!user) return;
 
     const { error } = await supabase
@@ -215,10 +216,26 @@ export default function ProfilePage() {
         .eq("user_id", user.id)
         .order("created_at", { ascending: false });
       if (mData) setMyMessages(mData);
-    } catch (err: any) {
-      showToast("Hata oluştu: " + (err?.message || "Bilinmeyen hata"), "error");
+    } catch (err: unknown) {
+      showToast("Hata oluştu: " + (err instanceof Error ? err.message : "Bilinmeyen hata"), "error");
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleOrderAction = async (orderId: number, action: "cancel" | "return") => {
+    try {
+      const newStatus = action === "cancel" ? "İptal Edildi" : "İade Talebi";
+      const { error } = await supabase
+        .from("orders")
+        .update({ status: newStatus })
+        .eq("id", orderId);
+
+      if (error) throw error;
+      showToast(action === "cancel" ? "Siparişiniz iptal edildi." : "İade talebiniz alındı.", "success");
+      setMyOrders(myOrders.map(o => o.id === orderId ? { ...o, status: newStatus } : o));
+    } catch (err: unknown) {
+      showToast("İşlem başarısız: " + (err instanceof Error ? err.message : "Bilinmeyen hata"), "error");
     }
   };
 
@@ -262,7 +279,7 @@ export default function ProfilePage() {
 
         <div className="w-full md:w-3/4 flex flex-col gap-6">
           <div className="bg-white rounded-3xl p-8 shadow-sm border border-gray-100 min-h-[50vh]">
-            {activeTab === "orders" && <OrdersTab orders={myOrders} />}
+            {activeTab === "orders" && <OrdersTab orders={myOrders} onOrderAction={handleOrderAction} />}
             {activeTab === "favorites" && <FavoritesTab favorites={favorites} removeFavorite={removeFavorite} />}
             {activeTab === "addresses" && <AddressesTab user={user} addresses={addresses} setAddresses={setAddresses} />}
             {activeTab === "reviews" && <ReviewsTab reviews={myReviews} />}
@@ -283,7 +300,7 @@ export default function ProfilePage() {
             <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100 animate-in slide-in-from-bottom-5">
               <h3 className="text-sm font-black uppercase tracking-tight mb-4 text-black border-l-4 border-black pl-3">Son Gezdikleriniz</h3>
               <div className="flex items-center gap-3 overflow-x-auto pb-2 scrollbar-hide snap-x">
-                {recentlyViewed.map((item: any) => {
+                {recentlyViewed.map((item) => {
                   const displayImage = item.images?.[0] || item.image || "/logo.jpeg";
                   const activePrice = Number(item.discount_price) > 0 ? Number(item.discount_price) : Number(item.price);
                   const ratingCount = item.reviewCount || 0;

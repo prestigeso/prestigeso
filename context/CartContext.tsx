@@ -233,18 +233,19 @@ export function CartProvider({ children }: { children: ReactNode }) {
   };
 
   const updateQuantity = (id: number | string, amount: number) => {
-    setCart((prev) =>
-      prev.map((item) => {
-        if (String(item.id) !== String(id)) return item;
+    setCart((prev) => {
+      return prev
+        .map((item) => {
+          if (String(item.id) !== String(id)) return item;
 
-        const newQuantity = Number(item.quantity || 1) + amount;
+          const newQuantity = Number(item.quantity || 1) + amount;
+          const maxStock = item.stock != null ? Number(item.stock) : Infinity;
+          const capped = Math.min(newQuantity, maxStock);
 
-        return {
-          ...item,
-          quantity: newQuantity > 0 ? newQuantity : 1,
-        };
-      })
-    );
+          return { ...item, quantity: capped };
+        })
+        .filter((item) => item.quantity > 0);
+    });
   };
 
   const clearCart = () => {

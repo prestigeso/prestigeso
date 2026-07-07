@@ -4,19 +4,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAppAlert } from "@/context/AppAlertContext";
+import type { AuthUser, CustomerProfile } from "@/types";
 
 type Props = {
-  user: any;
-  setUser?: (user: any) => void;
-  customerProfile?: any;
-  setCustomerProfile?: (profile: any) => void;
+  user: AuthUser | null;
+  setUser?: (user: AuthUser | null) => void;
+  customerProfile?: CustomerProfile | null;
+  setCustomerProfile?: (profile: CustomerProfile | null) => void;
 };
 
-function getProfileValue(customerProfile: any, metadata: any, snakeKey: string, camelKey?: string) {
+function getProfileValue(customerProfile: CustomerProfile | null | undefined, metadata: Record<string, string> | undefined, snakeKey: string, camelKey?: string) {
+  const profileRecord = customerProfile as Record<string, unknown> | null | undefined;
   return (
-    customerProfile?.[snakeKey] ||
+    (profileRecord?.[snakeKey] as string | undefined) ||
     metadata?.[snakeKey] ||
-    (camelKey ? metadata?.[camelKey] : "") ||
+    (camelKey ? (profileRecord?.[camelKey] as string | undefined) : undefined) ||
+    (camelKey ? metadata?.[camelKey] : undefined) ||
     ""
   ).toString();
 }
@@ -58,6 +61,8 @@ export default function SettingsTab({ user, setUser, customerProfile, setCustome
   };
 
   const handleSave = async () => {
+    if (!user) return;
+
     const cleanFirstName = editFirstName.trim().replace(/\s+/g, " ");
     const cleanLastName = editLastName.trim().replace(/\s+/g, " ");
     const fullName = getDisplayName(cleanFirstName, cleanLastName, "");

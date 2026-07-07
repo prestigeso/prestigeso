@@ -140,15 +140,23 @@ export default function CartSidebar() {
               <ul className="space-y-6">
                 {items.map((item) => (
                   <li key={item.id} className="flex border-b border-gray-50 pb-4 last:border-0 last:pb-0">
-                    <div className="h-24 w-24 flex-shrink-0 overflow-hidden rounded-xl border border-gray-100 bg-white">
-                      <img src={item.image} alt={item.name} className="h-full w-full object-cover object-center" />
-                    </div>
+                    <button 
+                      type="button"
+                      onClick={() => closeCartAndGo(`/product/${item.id}`)}
+                      className="h-24 w-24 flex-shrink-0 overflow-hidden rounded-xl border border-gray-100 bg-white cursor-pointer group"
+                    >
+                      <img src={item.image} alt={item.name} className="h-full w-full object-cover object-center group-hover:scale-105 transition-transform" />
+                    </button>
 
                     <div className="ml-4 flex flex-1 flex-col justify-between">
                       <div className="flex justify-between items-start text-base font-bold text-gray-900">
-                        <h3 className="line-clamp-2 pr-4 text-xs uppercase text-gray-700 leading-snug">
+                        <button 
+                          type="button"
+                          onClick={() => closeCartAndGo(`/product/${item.id}`)}
+                          className="line-clamp-2 pr-4 text-xs uppercase text-gray-700 leading-snug text-left hover:text-black hover:underline cursor-pointer"
+                        >
                           {item.name}
-                        </h3>
+                        </button>
 
                         <p className="whitespace-nowrap font-black">
                           {formatMoney(item.price)} ₺

@@ -1,4 +1,6 @@
-export default function MessagesTab({ messages }: { messages: any[] }) {
+import type { Message } from "@/types";
+
+export default function MessagesTab({ messages }: { messages: Message[] }) {
   return (
     <div className="animate-in fade-in duration-300">
       <h3 className="text-xl font-black uppercase mb-6 text-black border-b-2 border-gray-100 pb-4">
@@ -17,7 +19,7 @@ export default function MessagesTab({ messages }: { messages: any[] }) {
           {messages.map((m) => (
             <div key={m.id} className="bg-white border border-gray-100 p-5 rounded-3xl shadow-sm hover:border-black transition-colors">
               <p className="text-[10px] font-black text-gray-400 uppercase mb-1">
-                Mesajınız - {new Date(m.created_at).toLocaleDateString("tr-TR")}
+                Mesajınız - {new Date(m.created_at || "").toLocaleDateString("tr-TR")}
               </p>
               <p className="text-sm font-bold text-black">{m.message}</p>
 

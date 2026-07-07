@@ -1,16 +1,12 @@
 import { MAX_EMAIL_LENGTH, MAX_PHONE_LENGTH } from "./checkoutTypes";
 
-export function normalizeText(value: string) {
-  return String(value || "").replace(/\s+/g, " ").trim();
-}
+export { normalizeText, normalizePhone, isValidTurkishPhone } from "@/lib/utils";
+import { normalizeText } from "@/lib/utils";
 
 export function normalizeEmail(value: string) {
   return normalizeText(value).toLowerCase();
 }
 
-export function normalizePhone(value: string) {
-  return String(value || "").replace(/[^0-9+]/g, "").slice(0, MAX_PHONE_LENGTH);
-}
 
 export function normalizeCouponCode(value: string) {
   return normalizeText(value)
@@ -26,7 +22,3 @@ export function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email) && email.length <= MAX_EMAIL_LENGTH;
 }
 
-export function isValidTurkishPhone(value: string) {
-  const digits = String(value || "").replace(/\D/g, "");
-  return /^(05\d{9}|5\d{9}|90\d{10})$/.test(digits);
-}

@@ -53,21 +53,24 @@ function getCouponLabel(coupon: CouponRow) {
   if (coupon.discount_type === "fixed") {
     return `${formatMoney(coupon.discount_value)} TL`;
   }
-
-  return `%${formatMoney(coupon.discount_value)}`;
+  const val = Number(coupon.discount_value || 0);
+  const display = Number.isInteger(val) ? String(val) : val.toFixed(1);
+  return `%${display}`;
 }
 
 function getCouponLongLabel(coupon: CouponRow) {
   if (coupon.discount_type === "fixed") {
     return `${formatMoney(coupon.discount_value)} TL İndirim`;
   }
+  const val = Number(coupon.discount_value || 0);
+  const display = Number.isInteger(val) ? String(val) : val.toFixed(1);
 
   const maxDiscount = Number(coupon.max_discount_amount || 0);
   if (maxDiscount > 0) {
-    return `%${formatMoney(coupon.discount_value)} İndirim / Maks. ${formatMoney(maxDiscount)} TL`;
+    return `%${display} İndirim / Maks. ${formatMoney(maxDiscount)} TL`;
   }
 
-  return `%${formatMoney(coupon.discount_value)} İndirim`;
+  return `%${display} İndirim`;
 }
 
 export default function CouponsTab() {

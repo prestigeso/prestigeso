@@ -2,30 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { supabase } from "@/lib/supabase";
 import { useSearch } from "@/context/SearchContext";
 import { useAppAlert } from "@/context/AppAlertContext";
 import { safeParseIds, sanitizeImageUrl } from "@/lib/utils";
 
-type Product = {
-  id: number | string;
-  name: string;
-  price: number;
-  category?: string | null;
-  stock?: number;
-  image?: string | null;
-  images?: string[] | null;
-  is_bestseller?: boolean;
-};
-
-type Campaign = {
-  id: number | string;
-  name?: string;
-  discount_percent: number;
-  start_date: string;
-  end_date: string;
-  product_ids: number[] | string;
-};
+import type { Product, Campaign } from "@/types";
 
 function getActiveCampaign(productId: number | string, campaigns: Campaign[]) {
   const now = new Date();
@@ -291,11 +274,12 @@ function ShopCard({
           {isFavorite ? "❤️" : "🤍"}
         </button>
 
-        <img
+        <Image
           src={displayImage}
           alt={product.name || "Ürün"}
-          className="w-full h-full object-cover mix-blend-multiply group-hover:scale-110 transition-transform duration-700"
-          loading="lazy"
+          fill
+          sizes="(max-width: 768px) 50vw, 25vw"
+          className="object-cover mix-blend-multiply group-hover:scale-110 transition-transform duration-700"
         />
 
         {activeCampaign ? (

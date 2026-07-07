@@ -1,16 +1,18 @@
 
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabase";
-import { adminDb } from "./adminDb";
+import { useState } from "react";
 import { useAppAlert } from "@/context/AppAlertContext";
-
-import type { Slide } from "./types";
-import { uploadToStorageAndGetPublicUrl, revokeUrls } from "./utils";
 
 import { useAdminData } from "./hooks/useAdminData";
 import { useAdminNotifications } from "./hooks/useAdminNotifications";
+import { useProductActions } from "./hooks/useProductActions";
+import { useCampaignActions } from "./hooks/useCampaignActions";
+import { useSettingsActions } from "./hooks/useSettingsActions";
+import { useMessagingActions } from "./hooks/useMessagingActions";
+import { useOrderActions } from "./hooks/useOrderActions";
+import { useReviewActions } from "./hooks/useReviewActions";
+import { usePerformanceData } from "./hooks/usePerformanceData";
 
 import { HeaderBar, AdminNav, ProductList } from "./parts";
 import AdminDashboardSummary from "./parts/AdminDashboardSummary";
@@ -27,11 +29,8 @@ import {
   OrdersModal,
   ReviewsModal,
   PerformanceModal,
+  CategoriesModal,
 } from "./modals";
-
-function normalizeSku(input: any) {
-  return (input ?? "").toString().trim().toUpperCase();
-}
 
 export default function AdminPanel() {
   const { showToast, showConfirm } = useAppAlert();
@@ -40,11 +39,13 @@ export default function AdminPanel() {
     .toLocaleString("tr-TR", { month: "long" })
     .toUpperCase();
 
+  // ── Data ─────────────────────────────────────────────────────
   const {
     loading,
     dbProducts,
     dbSlides,
     dbCampaigns,
+    dbCategories,
     dbMessages,
     dbQuestions,
     dbOrders,
@@ -62,6 +63,7 @@ export default function AdminPanel() {
     setDbReviews,
   } = useAdminData();
 
+  // ── UI state (modal open/close) ──────────────────────────────
   const [searchTerm, setSearchTerm] = useState("");
   const [stockTab, setStockTab] = useState<"all" | "in" | "out">("all");
   const [activeNavMenu, setActiveNavMenu] = useState<string | null>(null);
@@ -73,6 +75,7 @@ export default function AdminPanel() {
   const [isCampaignOpen, setIsCampaignOpen] = useState(false);
   const [isCouponsOpen, setIsCouponsOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
 
   const [isMessagesOpen, setIsMessagesOpen] = useState(false);
   const [isQuestionsOpen, setIsQuestionsOpen] = useState(false);
@@ -82,6 +85,7 @@ export default function AdminPanel() {
   const [isPerformanceOpen, setIsPerformanceOpen] = useState(false);
   const [perfTab, setPerfTab] = useState<"favorites" | "views" | "reviews">("favorites");
 
+  // ── Domain hooks ─────────────────────────────────────────────
   const {
     unifiedNotifications,
     totalNotifications,
@@ -117,524 +121,21 @@ export default function AdminPanel() {
     },
   });
 
-  const [creating, setCreating] = useState(false);
-  const [newProductFiles, setNewProductFiles] = useState<File[]>([]);
-  const [newProductPreviews, setNewProductPreviews] = useState<string[]>([]);
+  const productActions = useProductActions({ dbProducts, loadAllData, showToast, showConfirm });
+  const campaignActions = useCampaignActions({ loadAllData, showToast });
+  const settingsActions = useSettingsActions({ loadAllData, showToast, showConfirm });
+  const messagingActions = useMessagingActions({ setDbMessages, setDbQuestions, showToast });
+  const orderActions = useOrderActions({ setDbOrders, showToast });
+  const reviewActions = useReviewActions({ setDbReviews, showToast, showConfirm });
+  const performanceData = usePerformanceData({ dbProducts, dbReviews, dbAllFavorites, dbProductViews });
 
-  const moveNewImage = (index: number, direction: "left" | "right") => {
-    const files = [...newProductFiles];
-    const previews = [...newProductPreviews];
-
-    if (direction === "left" && index > 0) {
-      [files[index], files[index - 1]] = [files[index - 1], files[index]];
-      [previews[index], previews[index - 1]] = [previews[index - 1], previews[index]];
-    }
-
-    if (direction === "right" && index < files.length - 1) {
-      [files[index], files[index + 1]] = [files[index + 1], files[index]];
-      [previews[index], previews[index + 1]] = [previews[index + 1], previews[index]];
-    }
-
-    setNewProductFiles(files);
-    setNewProductPreviews(previews);
-  };
-
-  const [editingProduct, setEditingProduct] = useState<any>(null);
-  const [editLoading, setEditLoading] = useState(false);
-  const [saving, setSaving] = useState(false);
-
-  const [editAddFiles, setEditAddFiles] = useState<File[]>([]);
-  const [editAddPreviews, setEditAddPreviews] = useState<string[]>([]);
-  const [editAddUploading, setEditAddUploading] = useState(false);
-
-  const moveEditImage = (index: number, direction: "left" | "right") => {
-    if (!editingProduct) return;
-
-    const images: string[] = Array.isArray(editingProduct.images) ? [...editingProduct.images] : [];
-
-    if (direction === "left" && index > 0) {
-      [images[index], images[index - 1]] = [images[index - 1], images[index]];
-    }
-
-    if (direction === "right" && index < images.length - 1) {
-      [images[index], images[index + 1]] = [images[index + 1], images[index]];
-    }
-
-    setEditingProduct((prev: any) => ({ ...prev, images, image: images[0] || "" }));
-  };
-
-  const removeImageFromGallery = (url: string) => {
-    if (!editingProduct) return;
-    const images: string[] = Array.isArray(editingProduct.images) ? editingProduct.images : [];
-    const next = images.filter((x) => x !== url);
-    setEditingProduct((prev: any) => ({ ...prev, images: next, image: next[0] || "" }));
-  };
-
-  const [replyingTo, setReplyingTo] = useState<number | null>(null);
-  const [replyText, setReplyText] = useState("");
-  const [replyingToQ, setReplyingToQ] = useState<number | null>(null);
-  const [qReplyText, setQReplyText] = useState("");
-
-  const [campaignName, setCampaignName] = useState("");
-  const [selectedCampaignProducts, setSelectedCampaignProducts] = useState<number[]>([]);
-  const [campaignDates, setCampaignDates] = useState({ start: "", end: "" });
-  const [discountPercent, setDiscountPercent] = useState<number>(20);
-  const [marquee, setMarquee] = useState("");
-
-  const [newSlideFiles, setNewSlideFiles] = useState<File[]>([]);
-  const [newSlidePreviews, setNewSlidePreviews] = useState<string[]>([]);
-  const [newSlide, setNewSlide] = useState({ title: "", subtitle: "" });
-
-  useEffect(() => {
-    setMarquee(localStorage.getItem("prestigeso_campaign") || "");
-  }, []);
-
-  const favoritesRank = useMemo(() => {
-    const favCounts = (dbAllFavorites || []).reduce((acc: any, curr: any) => {
-      acc[curr.product_id] = (acc[curr.product_id] || 0) + 1;
-      return acc;
-    }, {});
-
-    return (dbProducts || [])
-      .map((p: any) => ({ ...p, count: favCounts[p.id] || 0 }))
-      .filter((p: any) => p.count > 0)
-      .sort((a: any, b: any) => b.count - a.count);
-  }, [dbAllFavorites, dbProducts]);
-
-  const viewsRank = useMemo(() => {
-    const viewCounts = (dbProductViews || []).reduce((acc: any, curr: any) => {
-      acc[curr.product_id] = (acc[curr.product_id] || 0) + 1;
-      return acc;
-    }, {});
-
-    return (dbProducts || [])
-      .map((p: any) => ({ ...p, count: viewCounts[p.id] || 0 }))
-      .filter((p: any) => p.count > 0)
-      .sort((a: any, b: any) => b.count - a.count);
-  }, [dbProductViews, dbProducts]);
-
-  const reviewsRank = useMemo(() => {
-    return (dbProducts || [])
-      .map((p: any) => {
-        const pRevs = (dbReviews || []).filter(
-          (r: any) => String(r.product_id) === String(p.id) && r.is_approved
-        );
-        const count = pRevs.length;
-        const avg = count > 0 ? pRevs.reduce((a: number, r: any) => a + r.rating, 0) / count : 0;
-        return { ...p, ratingCount: count, ratingAvg: avg };
-      })
-      .filter((p: any) => p.ratingCount > 0)
-      .sort((a: any, b: any) => b.ratingAvg - a.ratingAvg || b.ratingCount - a.ratingCount);
-  }, [dbProducts, dbReviews]);
-
-  const openEditProduct = async (id: number) => {
-    setEditLoading(true);
-    setEditingProduct(null);
-    revokeUrls(editAddPreviews);
-    setEditAddFiles([]);
-    setEditAddPreviews([]);
-
-    const { data, error } = await supabase.from("products").select("*").eq("id", id).single();
-    setEditLoading(false);
-
-    if (error) {
-      showToast("Ürün detayı çekilemedi: " + error.message, "error");
-      return;
-    }
-
-    const row: any = data;
-    const arr = Array.isArray(row.images) ? row.images : [];
-    const normalizedImages = arr.length > 0 ? arr : row.image ? [row.image] : [];
-
-    setEditingProduct({
-      ...row,
-      ["SKU"]: normalizeSku(row?.["SKU"]),
-      images: normalizedImages,
-      image: normalizedImages[0] || "",
-    });
-  };
-
-  const handleAddMoreImagesToProduct = async () => {
-    if (!editingProduct) return;
-
-    if (editAddFiles.length === 0) {
-      showToast("Eklemek için en az 1 fotoğraf seçin.", "warning");
-      return;
-    }
-
-    setEditAddUploading(true);
-
-    try {
-      const urls: string[] = [];
-      for (const file of editAddFiles) {
-        const url = await uploadToStorageAndGetPublicUrl(file, "product_extra");
-        urls.push(url);
-      }
-
-      const images: string[] = Array.isArray(editingProduct.images) ? editingProduct.images : [];
-      const next = [...images, ...urls];
-
-      setEditingProduct((prev: any) => ({ ...prev, images: next, image: next[0] || "" }));
-      revokeUrls(editAddPreviews);
-      setEditAddFiles([]);
-      setEditAddPreviews([]);
-      showToast("Fotoğraflar eklendi. Kaydet butonuna basmayı unutmayın.", "success");
-    } catch (err: any) {
-      showToast("Fotoğraf eklenemedi: " + (err?.message || "Bilinmeyen hata"), "error");
-    } finally {
-      setEditAddUploading(false);
-    }
-  };
-
-  const handleUpdateProduct = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!editingProduct) return;
-
-    const sku = normalizeSku(editingProduct?.["SKU"]);
-    if (!sku) {
-      showToast("SKU zorunludur.", "warning");
-      return;
-    }
-
-    const skuDuplicate = dbProducts.find((p: any) => normalizeSku(p["SKU"]) === sku && String(p.id) !== String(editingProduct.id));
-    if (skuDuplicate) {
-      showToast(`Bu SKU başka bir ürüne ait: ${skuDuplicate.name}`, "warning");
-      return;
-    }
-
-    setSaving(true);
-    const images: string[] = Array.isArray(editingProduct.images) ? editingProduct.images : [];
-    const payload: any = {
-      ["SKU"]: sku,
-      name: editingProduct.name,
-      price: Number(editingProduct.price),
-      category: editingProduct.category,
-      stock: Number(editingProduct.stock ?? 0),
-      is_bestseller: !!editingProduct.is_bestseller,
-      description: editingProduct.description ?? "",
-      images,
-      image: images[0] || "",
-      barcode: (editingProduct.barcode ?? "").toString().trim() || null,
-    };
-
-    const { error } = await adminDb({ action: "update", table: "products", data: payload, filters: [{ column: "id", op: "eq", value: editingProduct.id }] });
-    setSaving(false);
-
-    if (error) {
-      showToast("Kaydetme hatası: " + error, "error");
-      return;
-    }
-
-    showToast("Ürün kaydedildi.", "success");
-    setEditingProduct(null);
-    loadAllData();
-  };
-
-  const handleDeleteProduct = async (id: number) => {
-    const ok = await showConfirm({
-      title: "Ürün silinsin mi?",
-      message: "Bu ürünü kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.",
-      confirmText: "Sil",
-      cancelText: "Vazgeç",
-      tone: "danger",
-    });
-    if (!ok) return;
-
-    const { error } = await adminDb({ action: "delete", table: "products", filters: [{ column: "id", op: "eq", value: id }] });
-    if (error) {
-      showToast("Silinemedi: " + error, "error");
-      return;
-    }
-
-    showToast("Ürün silindi.", "success");
-    setEditingProduct(null);
-    loadAllData();
-  };
-
+  // ── handleAddProduct wrapper (closes modal on success) ──────
   const handleAddProduct = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const form = e.target as HTMLFormElement;
-    const name = (form.elements.namedItem("name") as HTMLInputElement).value;
-    const sku = normalizeSku((form.elements.namedItem("sku") as HTMLInputElement).value);
-
-    if (!sku) {
-      showToast("SKU zorunludur.", "warning");
-      return;
-    }
-
-    const skuDuplicate = dbProducts.find((p: any) => normalizeSku(p["SKU"]) === sku);
-    if (skuDuplicate) {
-      showToast(`Bu SKU başka bir ürüne ait: ${skuDuplicate.name}`, "warning");
-      return;
-    }
-
-    const price = Number((form.elements.namedItem("price") as HTMLInputElement).value);
-    const category = (form.elements.namedItem("category") as HTMLSelectElement).value;
-    const stock = Number((form.elements.namedItem("stock") as HTMLInputElement).value);
-    const barcode = (form.elements.namedItem("barcode") as HTMLInputElement).value;
-    const description = (form.elements.namedItem("description") as HTMLTextAreaElement).value;
-    const is_bestseller = (form.elements.namedItem("is_bestseller") as HTMLInputElement).checked;
-
-    if (newProductFiles.length === 0) {
-      showToast("Lütfen en az bir ürün görseli seçin.", "warning");
-      return;
-    }
-
-    setCreating(true);
-
-    try {
-      const urls: string[] = [];
-      for (const file of newProductFiles) {
-        const url = await uploadToStorageAndGetPublicUrl(file, "product");
-        urls.push(url);
-      }
-
-      const { error } = await adminDb({ action: "insert", table: "products", data: {
-          ["SKU"]: sku,
-          name,
-          price,
-          category,
-          stock,
-          barcode: barcode?.trim() || null,
-          is_bestseller,
-          description,
-          images: urls,
-          image: urls[0] || "",
-          discount_price: 0,
-        } });
-
-      if (error) throw error;
-      revokeUrls(newProductPreviews);
-      setNewProductFiles([]);
-      setNewProductPreviews([]);
-      setIsAddProductOpen(false);
-      showToast("Ürün eklendi.", "success");
-      loadAllData();
-    } catch (err: any) {
-      showToast("Ürün eklenemedi: " + (err?.message || "Bilinmeyen hata"), "error");
-    } finally {
-      setCreating(false);
-    }
+    const success = await productActions.handleAddProduct(e);
+    if (success) setIsAddProductOpen(false);
   };
 
-  const handleSendMessageReply = async (messageId: number) => {
-    if (!replyText.trim()) {
-      showToast("Lütfen bir cevap yazın.", "warning");
-      return;
-    }
-
-    const now = new Date().toISOString();
-    const { error } = await adminDb({ action: "update", table: "messages", data: { answer: replyText, answered_at: now }, filters: [{ column: "id", op: "eq", value: messageId }] });
-    if (error) {
-      showToast("Cevap gönderilemedi: " + error, "error");
-      return;
-    }
-
-    showToast("Cevap müşteriye iletildi.", "success");
-    setDbMessages((prev: any) => prev.map((m: any) => (m.id === messageId ? { ...m, answer: replyText, answered_at: now } : m)));
-    setReplyingTo(null);
-    setReplyText("");
-  };
-
-  const handleSendQuestionReply = async (questionId: number) => {
-    if (!qReplyText.trim()) {
-      showToast("Lütfen bir cevap yazın.", "warning");
-      return;
-    }
-
-    const now = new Date().toISOString();
-    const { error } = await adminDb({ action: "update", table: "questions", data: { answer: qReplyText, answered_at: now }, filters: [{ column: "id", op: "eq", value: questionId }] });
-    if (error) {
-      showToast("Cevap gönderilemedi: " + error, "error");
-      return;
-    }
-
-    showToast("Ürün sorusu cevaplandı.", "success");
-    setDbQuestions((prev: any) => prev.map((q: any) => (q.id === questionId ? { ...q, answer: qReplyText, answered_at: now } : q)));
-    setReplyingToQ(null);
-    setQReplyText("");
-  };
-
-  const handleToggleQuestionApproval = async (questionId: number, currentStatus: boolean) => {
-    const newStatus = !currentStatus;
-    const { error } = await adminDb({ action: "update", table: "questions", data: { is_approved: newStatus }, filters: [{ column: "id", op: "eq", value: questionId }] });
-    if (error) {
-      showToast("Durum güncellenemedi: " + error, "error");
-      return;
-    }
-
-    setDbQuestions((prev: any) => prev.map((q: any) => (q.id === questionId ? { ...q, is_approved: newStatus } : q)));
-    showToast(newStatus ? "Soru yayına alındı." : "Soru yayından kaldırıldı.", "success");
-  };
-
-  const VALID_ORDER_STATUSES = ["Bekliyor", "Hazırlanıyor", "Kargolandı", "Teslim Edildi", "İptal Edildi"];
-
-  const handleUpdateOrderStatus = async (orderId: number, newStatus: string) => {
-    if (!VALID_ORDER_STATUSES.includes(newStatus)) {
-      showToast("Geçersiz sipariş durumu.", "error");
-      return;
-    }
-    const { error } = await adminDb({ action: "update", table: "orders", data: { status: newStatus }, filters: [{ column: "id", op: "eq", value: orderId }] });
-    if (error) {
-      showToast("Hata: " + error, "error");
-      return;
-    }
-
-    showToast(`Sipariş durumu "${newStatus}" olarak güncellendi.`, "success");
-    setDbOrders((prev: any) => prev.map((o: any) => (o.id === orderId ? { ...o, status: newStatus } : o)));
-  };
-
-  const handleApproveReview = async (reviewId: string) => {
-    const { error } = await adminDb({ action: "update", table: "reviews", data: { is_approved: true }, filters: [{ column: "id", op: "eq", value: reviewId }] });
-    if (error) {
-      showToast("Hata: " + error, "error");
-      return;
-    }
-
-    showToast("Yorum yayına alındı.", "success");
-    setDbReviews((prev: any) => prev.map((r: any) => (r.id === reviewId ? { ...r, is_approved: true } : r)));
-  };
-
-  const handleDeleteReview = async (reviewId: string) => {
-    const ok = await showConfirm({
-      title: "Yorum silinsin mi?",
-      message: "Bu yorumu tamamen silmek istediğinize emin misiniz? Bu işlem geri alınamaz.",
-      confirmText: "Sil",
-      cancelText: "Vazgeç",
-      tone: "danger",
-    });
-    if (!ok) return;
-
-    const { error } = await adminDb({ action: "delete", table: "reviews", filters: [{ column: "id", op: "eq", value: reviewId }] });
-    if (error) {
-      showToast("Hata: " + error, "error");
-      return;
-    }
-
-    showToast("Yorum silindi.", "success");
-    setDbReviews((prev: any) => prev.filter((r: any) => r.id !== reviewId));
-  };
-
-  const handleCreateCampaign = async () => {
-    if (!campaignName.trim()) {
-      showToast("Lütfen kampanya için bir isim girin.", "warning");
-      return;
-    }
-
-    if (selectedCampaignProducts.length === 0) {
-      showToast("Kampanyaya dahil edilecek ürünleri seçin.", "warning");
-      return;
-    }
-
-    if (!campaignDates.start || !campaignDates.end) {
-      showToast("Lütfen kampanya başlangıç ve bitiş tarihlerini seçin.", "warning");
-      return;
-    }
-
-    if (new Date(campaignDates.start) >= new Date(campaignDates.end + "T23:59:59")) {
-      showToast("Bitiş tarihi, başlangıç tarihinden sonra olmalıdır.", "warning");
-      return;
-    }
-
-    if (discountPercent <= 0 || discountPercent >= 90) {
-      showToast("İndirim yüzdesi 1-89 arası olmalıdır.", "warning");
-      return;
-    }
-
-    const startIso = new Date(campaignDates.start).toISOString();
-    const endIso = new Date(campaignDates.end + "T23:59:59").toISOString();
-
-    const { error } = await adminDb({ action: "insert", table: "campaigns", data: {
-        name: campaignName,
-        discount_percent: discountPercent,
-        start_date: startIso,
-        end_date: endIso,
-        product_ids: selectedCampaignProducts,
-      } });
-
-    if (error) {
-      showToast("Kampanya oluşturulamadı: " + error, "error");
-      return;
-    }
-
-    showToast("Yeni kampanya başarıyla kuruldu.", "success");
-    setSelectedCampaignProducts([]);
-    setCampaignDates({ start: "", end: "" });
-    setCampaignName("");
-    setDiscountPercent(20);
-    loadAllData();
-  };
-
-  const handleDeleteCampaign = async (id: number) => {
-    const { error } = await adminDb({ action: "delete", table: "campaigns", filters: [{ column: "id", op: "eq", value: id }] });
-    if (error) {
-      showToast("Kampanya silinemedi: " + error, "error");
-      return;
-    }
-
-    showToast("Kampanya silindi.", "success");
-    loadAllData();
-  };
-
-  const handleSaveMarquee = () => {
-    localStorage.setItem("prestigeso_campaign", marquee);
-    showToast("Kayan yazı kaydedildi.", "success");
-  };
-
-  const handleAddSlide = async () => {
-    if (newSlideFiles.length === 0) {
-      showToast("Lütfen en az bir görsel seçin.", "warning");
-      return;
-    }
-
-    try {
-      const urls = await Promise.all(newSlideFiles.map((file) => uploadToStorageAndGetPublicUrl(file, "hero")));
-      const inserts = urls.map((url) => ({ image_url: url, title: newSlide.title.trim(), subtitle: newSlide.subtitle.trim() }));
-      const { error } = await adminDb({ action: "insert", table: "hero_slides", data: inserts });
-      if (error) throw error;
-
-      showToast("Slide'lar eklendi.", "success");
-      revokeUrls(newSlidePreviews);
-      setNewSlideFiles([]);
-      setNewSlidePreviews([]);
-      setNewSlide({ title: "", subtitle: "" });
-      loadAllData();
-    } catch (err: any) {
-      showToast("Slide eklenemedi: " + (err?.message || "Bilinmeyen hata"), "error");
-    }
-  };
-
-  const handleDeleteSlide = async (id: number) => {
-    const ok = await showConfirm({
-      title: "Slide silinsin mi?",
-      message: "Bu slide'ı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.",
-      confirmText: "Sil",
-      cancelText: "Vazgeç",
-      tone: "danger",
-    });
-    if (!ok) return;
-
-    const { error } = await adminDb({ action: "delete", table: "hero_slides", filters: [{ column: "id", op: "eq", value: id }] });
-    if (error) {
-      showToast("Slide silinemedi: " + error, "error");
-      return;
-    }
-
-    showToast("Slide silindi.", "success");
-    loadAllData();
-  };
-
-  const handleUpdateSlide = async (slide: Slide) => {
-    const { error } = await adminDb({ action: "update", table: "hero_slides", data: { image_url: slide.image_url, title: slide.title, subtitle: slide.subtitle }, filters: [{ column: "id", op: "eq", value: slide.id }] });
-    if (error) {
-      showToast("Slide güncellenemedi: " + error, "error");
-      return;
-    }
-
-    showToast("Slide kaydedildi.", "success");
-    loadAllData();
-  };
-
+  // ── Render ───────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-gray-100 font-sans text-black pb-32">
       <HeaderBar
@@ -700,8 +201,9 @@ export default function AdminPanel() {
           setStockTab={setStockTab}
           searchTerm={searchTerm}
           setSearchTerm={setSearchTerm}
-          onEditProduct={openEditProduct}
+          onEditProduct={productActions.openEditProduct}
           onRefresh={loadAllData}
+          onInlineUpdate={productActions.handleInlineUpdate}
         />
       </div>
 
@@ -712,18 +214,20 @@ export default function AdminPanel() {
         onOpenAddProduct={() => setIsAddProductOpen(true)}
         onOpenCampaign={() => setIsCampaignOpen(true)}
         onOpenCoupons={() => setIsCouponsOpen(true)}
+        onOpenCategories={() => setIsCategoriesOpen(true)}
       />
 
-      <AddProductModal open={isAddProductOpen} onClose={() => setIsAddProductOpen(false)} onSubmit={handleAddProduct} creating={creating} files={newProductFiles} setFiles={setNewProductFiles} previews={newProductPreviews} setPreviews={setNewProductPreviews} moveImage={moveNewImage} />
-      <EditProductModal open={editLoading || !!editingProduct} onClose={() => setEditingProduct(null)} loading={editLoading} editingProduct={editingProduct} setEditingProduct={setEditingProduct} onSubmit={handleUpdateProduct} saving={saving} onDelete={handleDeleteProduct} moveImage={moveEditImage} removeImage={removeImageFromGallery} addFiles={editAddFiles} setAddFiles={setEditAddFiles} addPreviews={editAddPreviews} setAddPreviews={setEditAddPreviews} addUploading={editAddUploading} onAddMoreImages={handleAddMoreImagesToProduct} />
-      <CampaignModal open={isCampaignOpen} onClose={() => setIsCampaignOpen(false)} campaignName={campaignName} setCampaignName={setCampaignName} discountPercent={discountPercent} setDiscountPercent={setDiscountPercent} campaignDates={campaignDates} setCampaignDates={setCampaignDates} selectedCampaignProducts={selectedCampaignProducts} setSelectedCampaignProducts={setSelectedCampaignProducts} dbProducts={dbProducts as any} dbCampaigns={dbCampaigns as any} onCreateCampaign={handleCreateCampaign} onDeleteCampaign={handleDeleteCampaign} />
+      <AddProductModal open={isAddProductOpen} onClose={() => setIsAddProductOpen(false)} onSubmit={handleAddProduct} creating={productActions.creating} files={productActions.newProductFiles} setFiles={productActions.setNewProductFiles} previews={productActions.newProductPreviews} setPreviews={productActions.setNewProductPreviews} moveImage={productActions.moveNewImage} categories={dbCategories} />
+      <EditProductModal open={productActions.editLoading || !!productActions.editingProduct} onClose={() => productActions.setEditingProduct(null)} loading={productActions.editLoading} editingProduct={productActions.editingProduct} setEditingProduct={productActions.setEditingProduct} onSubmit={productActions.handleUpdateProduct} saving={productActions.saving} onDelete={productActions.handleDeleteProduct} moveImage={productActions.moveEditImage} removeImage={productActions.removeImageFromGallery} addFiles={productActions.editAddFiles} setAddFiles={productActions.setEditAddFiles} addPreviews={productActions.editAddPreviews} setAddPreviews={productActions.setEditAddPreviews} addUploading={productActions.editAddUploading} onAddMoreImages={productActions.handleAddMoreImagesToProduct} categories={dbCategories} />
+      <CampaignModal open={isCampaignOpen} onClose={() => setIsCampaignOpen(false)} campaignName={campaignActions.campaignName} setCampaignName={campaignActions.setCampaignName} discountPercent={campaignActions.discountPercent} setDiscountPercent={campaignActions.setDiscountPercent} campaignDates={campaignActions.campaignDates} setCampaignDates={campaignActions.setCampaignDates} selectedCampaignProducts={campaignActions.selectedCampaignProducts} setSelectedCampaignProducts={campaignActions.setSelectedCampaignProducts} dbProducts={dbProducts as any} dbCampaigns={dbCampaigns as any} onCreateCampaign={campaignActions.handleCreateCampaign} onDeleteCampaign={campaignActions.handleDeleteCampaign} />
       <CouponsModal open={isCouponsOpen} onClose={() => setIsCouponsOpen(false)} />
-      <SettingsModal open={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} marquee={marquee} setMarquee={setMarquee} onSaveMarquee={handleSaveMarquee} dbSlides={dbSlides as any} setDbSlides={(updater) => setDbSlides(updater)} newSlideFiles={newSlideFiles} setNewSlideFiles={setNewSlideFiles} newSlidePreviews={newSlidePreviews} setNewSlidePreviews={setNewSlidePreviews} newSlide={newSlide} setNewSlide={setNewSlide} onAddSlide={handleAddSlide} onUpdateSlide={handleUpdateSlide} onDeleteSlide={handleDeleteSlide} />
-      <MessagesModal open={isMessagesOpen} onClose={() => setIsMessagesOpen(false)} messages={dbMessages as any} replyingTo={replyingTo} setReplyingTo={setReplyingTo} replyText={replyText} setReplyText={setReplyText} onSendReply={handleSendMessageReply} />
-      <QuestionsModal open={isQuestionsOpen} onClose={() => setIsQuestionsOpen(false)} questions={dbQuestions as any} replyingToQ={replyingToQ} setReplyingToQ={setReplyingToQ} qReplyText={qReplyText} setQReplyText={setQReplyText} onSendReply={handleSendQuestionReply} onToggleApproval={handleToggleQuestionApproval} />
-      <OrdersModal open={isOrdersOpen} onClose={() => setIsOrdersOpen(false)} orders={dbOrders as any} onUpdateStatus={handleUpdateOrderStatus} />
-      <ReviewsModal open={isReviewsOpen} onClose={() => setIsReviewsOpen(false)} reviews={dbReviews as any} onApprove={handleApproveReview} onDelete={handleDeleteReview} />
-      <PerformanceModal open={isPerformanceOpen} onClose={() => setIsPerformanceOpen(false)} tab={perfTab} setTab={setPerfTab} favoritesRank={favoritesRank as any} reviewsRank={reviewsRank as any} viewsRank={viewsRank as any} />
+      <CategoriesModal isOpen={isCategoriesOpen} onClose={() => setIsCategoriesOpen(false)} categories={dbCategories} onRefresh={loadAllData} showToast={showToast} showConfirm={showConfirm} />
+      <SettingsModal open={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} marquee={settingsActions.marquee} setMarquee={settingsActions.setMarquee} onSaveMarquee={settingsActions.handleSaveMarquee} dbSlides={dbSlides as any} setDbSlides={(updater) => setDbSlides(updater)} newSlideFiles={settingsActions.newSlideFiles} setNewSlideFiles={settingsActions.setNewSlideFiles} newSlidePreviews={settingsActions.newSlidePreviews} setNewSlidePreviews={settingsActions.setNewSlidePreviews} newSlide={settingsActions.newSlide} setNewSlide={settingsActions.setNewSlide} onAddSlide={settingsActions.handleAddSlide} onUpdateSlide={settingsActions.handleUpdateSlide} onDeleteSlide={settingsActions.handleDeleteSlide} />
+      <MessagesModal open={isMessagesOpen} onClose={() => setIsMessagesOpen(false)} messages={dbMessages as any} replyingTo={messagingActions.replyingTo} setReplyingTo={messagingActions.setReplyingTo} replyText={messagingActions.replyText} setReplyText={messagingActions.setReplyText} onSendReply={messagingActions.handleSendMessageReply} />
+      <QuestionsModal open={isQuestionsOpen} onClose={() => setIsQuestionsOpen(false)} questions={dbQuestions as any} replyingToQ={messagingActions.replyingToQ} setReplyingToQ={messagingActions.setReplyingToQ} qReplyText={messagingActions.qReplyText} setQReplyText={messagingActions.setQReplyText} onSendReply={messagingActions.handleSendQuestionReply} onToggleApproval={messagingActions.handleToggleQuestionApproval} />
+      <OrdersModal open={isOrdersOpen} onClose={() => setIsOrdersOpen(false)} orders={dbOrders as any} onUpdateStatus={orderActions.handleUpdateOrderStatus} />
+      <ReviewsModal open={isReviewsOpen} onClose={() => setIsReviewsOpen(false)} reviews={dbReviews as any} onApprove={reviewActions.handleApproveReview} onDelete={reviewActions.handleDeleteReview} />
+      <PerformanceModal open={isPerformanceOpen} onClose={() => setIsPerformanceOpen(false)} tab={perfTab} setTab={setPerfTab} favoritesRank={performanceData.favoritesRank as any} reviewsRank={performanceData.reviewsRank as any} viewsRank={performanceData.viewsRank as any} />
     </div>
   );
 }

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useRef } from "react";
@@ -12,12 +11,14 @@ export default function ClearCartOnSuccess() {
     if (didRunRef.current) return;
     didRunRef.current = true;
 
-    setIsCartOpen(false);
+    // Eğer sayfa PayTR iFrame'i içinde açıldıysa, ebeveyn sayfayı yönlendir
+    if (window.top !== window.self) {
+      window.top.location.href = window.location.href;
+      return;
+    }
 
-    window.setTimeout(() => {
-      clearCart();
-      setIsCartOpen(false);
-    }, 0);
+    setIsCartOpen(false);
+    clearCart();
   }, [clearCart, setIsCartOpen]);
 
   return null;

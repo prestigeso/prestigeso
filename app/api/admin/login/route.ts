@@ -137,21 +137,21 @@ export async function POST(req: Request) {
 
     if (!adminPass) {
       return NextResponse.json(
-        { error: "Server misconfigured." },
+        { error: "Giriş başarısız." },
         { status: 500 }
       );
     }
 
     if (!adminSecret) {
       return NextResponse.json(
-        { error: "Server misconfigured." },
+        { error: "Giriş başarısız." },
         { status: 500 }
       );
     }
 
     if (adminSecret.length < 32) {
       return NextResponse.json(
-        { error: "Server misconfigured." },
+        { error: "Giriş başarısız." },
         { status: 500 }
       );
     }
@@ -162,7 +162,7 @@ export async function POST(req: Request) {
       registerFailedAttempt(clientIp);
 
       return NextResponse.json(
-        { error: "Wrong password" },
+        { error: "Kullanıcı adı veya şifre hatalı." },
         { status: 401 }
       );
     }
@@ -185,7 +185,7 @@ export async function POST(req: Request) {
     return res;
   } catch (e: any) {
     return NextResponse.json(
-      { error: "Bad request" },
+      { error: "Geçersiz istek." },
       { status: 400 }
     );
   }

@@ -3,6 +3,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import Image from "next/image";
 import { supabase } from "@/lib/supabase";
 import { useCart } from "@/context/CartContext";
 import { useAppAlert } from "@/context/AppAlertContext";
@@ -524,10 +525,13 @@ export default function ProductDetailPage() {
             onTouchMove={(e) => setTouchEndX(e.targetTouches[0].clientX)}
             onTouchEnd={handleTouchEnd}
           >
-            <img
+            <Image
               src={productImages[selectedImageIndex]}
               alt={product.name}
-              className="w-full h-full object-cover mix-blend-multiply transition-opacity duration-300 pointer-events-none"
+              fill
+              priority
+              sizes="(max-width: 768px) 100vw, 50vw"
+              className="object-cover mix-blend-multiply transition-opacity duration-300 pointer-events-none"
             />
 
             <button
@@ -600,13 +604,13 @@ export default function ProductDetailPage() {
                   type="button"
                   key={index}
                   onClick={() => setSelectedImageIndex(index)}
-                  className={`w-20 h-20 flex-shrink-0 rounded-xl border-2 overflow-hidden snap-center transition-all ${
+                  className={`relative w-20 h-20 flex-shrink-0 rounded-xl border-2 overflow-hidden snap-center transition-all ${
                     index === selectedImageIndex
                       ? "border-black shadow-md scale-105"
                       : "border-transparent opacity-60 hover:opacity-100"
                   }`}
                 >
-                  <img src={url} alt="" className="w-full h-full object-cover" />
+                  <Image src={url} alt="" fill sizes="80px" className="object-cover" />
                 </button>
               ))}
             </div>
@@ -851,12 +855,15 @@ export default function ProductDetailPage() {
                           {review.images && review.images.length > 0 && (
                             <div className="flex gap-2 overflow-x-auto pb-2">
                               {review.images.map((img: string, index: number) => (
-                                <img
-                                  key={index}
-                                  src={img}
-                                  className="w-14 h-14 md:w-16 md:h-16 rounded-lg object-cover border border-gray-200"
-                                  alt="Yorum"
-                                />
+                                <div key={index} className="w-14 h-14 md:w-16 md:h-16 rounded-lg overflow-hidden border border-gray-200 relative shrink-0">
+                                  <Image
+                                    src={img}
+                                    fill
+                                    sizes="64px"
+                                    className="object-cover"
+                                    alt="Yorum"
+                                  />
+                                </div>
                               ))}
                             </div>
                           )}
@@ -1066,12 +1073,15 @@ export default function ProductDetailPage() {
                 {reviewPreviews.length > 0 && (
                   <div className="flex gap-2 overflow-x-auto mt-3 pb-2">
                     {reviewPreviews.map((url, index) => (
-                      <img
-                        key={index}
-                        src={url}
-                        className="w-16 h-16 object-cover rounded-lg border border-gray-200"
-                        alt=""
-                      />
+                      <div key={index} className="w-16 h-16 rounded-lg border border-gray-200 relative shrink-0 overflow-hidden">
+                        <Image
+                          src={url}
+                          fill
+                          sizes="64px"
+                          className="object-cover"
+                          alt=""
+                        />
+                      </div>
                     ))}
                   </div>
                 )}

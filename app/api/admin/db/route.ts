@@ -44,6 +44,7 @@ type AdminOperation = {
 // İzin verilen tablolar — sadece bunlara erişim sağlanabilir
 const ALLOWED_TABLES = new Set([
   "products",
+  "categories",
   "campaigns",
   "hero_slides",
   "orders",
@@ -60,6 +61,7 @@ const ALLOWED_TABLES = new Set([
 // Güncelleme/silme için izin verilen tablolar (okuma hariç)
 const WRITE_ALLOWED_TABLES = new Set([
   "products",
+  "categories",
   "campaigns",
   "hero_slides",
   "orders",

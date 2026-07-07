@@ -64,3 +64,36 @@ export function formatMoney(value: unknown): string {
     maximumFractionDigits: 2,
   });
 }
+
+/**
+ * Adres JSON stringini güvenle nesneye çevirir.
+ */
+export function safeParseAddress(address: unknown): Record<string, any> | null {
+  if (typeof address === "object" && address !== null) {
+    return address as Record<string, any>;
+  }
+  if (typeof address === "string") {
+    try {
+      const parsed = JSON.parse(address);
+      if (typeof parsed === "object" && parsed !== null) {
+        return parsed as Record<string, any>;
+      }
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+export function normalizeText(value: unknown): string {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+export function normalizePhone(value: unknown): string {
+  return String(value || "").replace(/[^0-9+]/g, "").slice(0, 20);
+}
+
+export function isValidTurkishPhone(value: unknown): boolean {
+  const digits = String(value || "").replace(/\D/g, "");
+  return /^(05\d{9}|5\d{9}|90\d{10})$/.test(digits);
+}

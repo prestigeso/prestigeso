@@ -1,2 +1,9 @@
 export { useAdminData } from "./useAdminData";
 export { useAdminNotifications } from "./useAdminNotifications";
+export { useProductActions } from "./useProductActions";
+export { useCampaignActions } from "./useCampaignActions";
+export { useSettingsActions } from "./useSettingsActions";
+export { useMessagingActions } from "./useMessagingActions";
+export { useOrderActions } from "./useOrderActions";
+export { useReviewActions } from "./useReviewActions";
+export { usePerformanceData } from "./usePerformanceData";

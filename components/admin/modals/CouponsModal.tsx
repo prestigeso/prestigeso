@@ -102,8 +102,9 @@ function getDiscountLabel(coupon: CouponRow) {
   if (coupon.discount_type === "fixed") {
     return `${formatMoney(coupon.discount_value)} TL`;
   }
-
-  return `%${formatMoney(coupon.discount_value)}`;
+  const val = Number(coupon.discount_value || 0);
+  const display = Number.isInteger(val) ? String(val) : val.toFixed(1);
+  return `%${display}`;
 }
 
 function validateCouponForm(form: CouponForm) {
