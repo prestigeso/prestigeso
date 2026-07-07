@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { ProductRow, CampaignRow } from "../types";
+import type { ProductRow, CampaignRow, CategoryRow } from "../types";
 import { safeParseIds } from "../utils";
 
 type StockTab = "all" | "in" | "out";
@@ -11,6 +11,7 @@ type Props = {
 
   dbProducts: ProductRow[];
   dbCampaigns: CampaignRow[];
+  dbCategories?: CategoryRow[];
 
   stockTab: StockTab;
   setStockTab: (t: StockTab) => void;
@@ -27,6 +28,7 @@ export default function ProductList({
   loading,
   dbProducts,
   dbCampaigns,
+  dbCategories = [],
   stockTab,
   setStockTab,
   searchTerm,
@@ -39,9 +41,12 @@ export default function ProductList({
   const [sortFilter, setSortFilter] = useState("newest");
   
   const categories = useMemo(() => {
-    const cats = new Set(dbProducts.map(p => p.category).filter(Boolean));
+    if (dbCategories && dbCategories.length > 0) {
+      return dbCategories.map((c) => c.name);
+    }
+    const cats = new Set(dbProducts.map((p) => p.category).filter(Boolean));
     return Array.from(cats) as string[];
-  }, [dbProducts]);
+  }, [dbProducts, dbCategories]);
 
   const outOfStockCount = useMemo(
     () => dbProducts.filter((p) => Number(p.stock) <= 0).length,

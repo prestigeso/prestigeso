@@ -42,7 +42,7 @@ export default function Home() {
     "Yüzükler",
     "Bilezikler",
     "Küpeler",
-    "Tespihler",
+    "Tesbihler",
   ];
 
   useEffect(() => {

@@ -24,7 +24,7 @@ export default function Navbar() {
     "Yüzükler",
     "Bilezikler",
     "Küpeler",
-    "Tespihler",
+    "Tesbihler",
   ]);
 
   useEffect(() => {

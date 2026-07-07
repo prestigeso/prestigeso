@@ -197,6 +197,7 @@ export default function AdminPanel() {
           loading={loading}
           dbProducts={dbProducts as any}
           dbCampaigns={dbCampaigns as any}
+          dbCategories={dbCategories as any}
           stockTab={stockTab}
           setStockTab={setStockTab}
           searchTerm={searchTerm}
