@@ -3,14 +3,15 @@ import type { CategoryRow } from "../types";
 import { supabaseAdmin } from "@/lib/supabaseAdmin"; // Using adminDb structure if needed, but since we are in client, let's use supabase client or adminDb
 // Wait, we should use adminDb because of SEC-07! 
 import { adminDb } from "../adminDb";
+import type { ShowConfirmOptions, ShowToastOptions, AppToastType } from "@/context/AppAlertContext";
 
 type Props = {
   isOpen: boolean;
   onClose: () => void;
   categories: CategoryRow[];
   onRefresh: () => void;
-  showToast: (msg: string, type: "success" | "error") => void;
-  showConfirm: (title: string, message: string, onConfirm: () => void) => void;
+  showToast: (options: ShowToastOptions | string, type?: AppToastType) => void;
+  showConfirm: (options: ShowConfirmOptions) => Promise<boolean>;
 };
 
 export default function CategoriesModal({
@@ -62,19 +63,27 @@ export default function CategoriesModal({
     }
   };
 
-  const handleDelete = (id: number) => {
-    showConfirm("Kategoriyi Sil", "Bu kategoriyi silmek istediğinize emin misiniz?", async () => {
-      setLoading(true);
-      const { error } = await adminDb({ action: "delete", table: "categories", filters: [{ column: "id", op: "eq", value: id }] });
-      setLoading(false);
-      
-      if (error) {
-        showToast("Kategori silinemedi.", "error");
-      } else {
-        showToast("Kategori silindi.", "success");
-        onRefresh();
-      }
+  const handleDelete = async (id: number) => {
+    const ok = await showConfirm({
+      title: "Kategoriyi Sil",
+      message: "Bu kategoriyi silmek istediğinize emin misiniz?",
+      confirmText: "Sil",
+      cancelText: "Vazgeç",
+      tone: "danger"
     });
+    
+    if (!ok) return;
+
+    setLoading(true);
+    const { error } = await adminDb({ action: "delete", table: "categories", filters: [{ column: "id", op: "eq", value: id }] });
+    setLoading(false);
+    
+    if (error) {
+      showToast("Kategori silinemedi.", "error");
+    } else {
+      showToast("Kategori silindi.", "success");
+      onRefresh();
+    }
   };
 
   return (

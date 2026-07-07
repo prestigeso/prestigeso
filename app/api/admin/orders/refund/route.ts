@@ -1,14 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { verifyAdminSessionCookie } from "@/lib/adminAuth";
+import { verifyAdminSessionCookie, ADMIN_COOKIE_NAME } from "@/lib/adminAuth";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
     // 1) Yetki kontrolü
-    const adminSession = verifyAdminSessionCookie(req);
+    const adminSecret = (process.env.ADMIN_COOKIE_SECRET ?? "").trim();
+    const cookieValue = req.cookies.get(ADMIN_COOKIE_NAME)?.value ?? "";
+    const adminSession = await verifyAdminSessionCookie(adminSecret, cookieValue);
+
     if (!adminSession) {
       return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
     }

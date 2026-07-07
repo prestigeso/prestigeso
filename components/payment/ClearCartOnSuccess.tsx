@@ -12,7 +12,7 @@ export default function ClearCartOnSuccess() {
     didRunRef.current = true;
 
     // Eğer sayfa PayTR iFrame'i içinde açıldıysa, ebeveyn sayfayı yönlendir
-    if (window.top !== window.self) {
+    if (window.top && window.top !== window.self) {
       window.top.location.href = window.location.href;
       return;
     }
