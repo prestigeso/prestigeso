@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
       from: `PrestigeSO <${fromEmail}>`,
       to: [email],
       subject: `Sipariş Faturanız (${orderId}) - PrestigeSO`,
-      react: InvoiceEmail({ orderId, customerName: customerName || "Müşterimiz" }),
+      react: InvoiceEmail({ orderId, customerName: customerName || "Müşterimiz" }) as any,
       attachments: [
         {
           filename: `fatura-${orderId}.pdf`,

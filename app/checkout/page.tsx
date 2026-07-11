@@ -330,7 +330,7 @@ export default function CheckoutPage() {
 
   const handleVerifyCheckoutOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (checkoutOtpCode.length !== 6) { showNotice("Lütfen 6 haneli kodu girin.", "warning"); return; }
+    if (checkoutOtpCode.length !== 6) { showNotice("Lütfen 6 haneli kodu girin.", "error"); return; }
     
     setIsProcessing(true);
     try {

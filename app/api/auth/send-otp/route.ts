@@ -56,7 +56,7 @@ export async function POST(req: NextRequest) {
       from: `PrestigeSO <${fromEmail}>`,
       to: [email],
       subject: `${code} - Doğrulama Kodunuz`,
-      react: OtpEmail({ code }),
+      react: OtpEmail({ code }) as any,
     });
 
     if (emailError) {

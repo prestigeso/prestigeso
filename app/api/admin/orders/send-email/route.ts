@@ -32,7 +32,7 @@ export async function POST(req: NextRequest) {
         from: `PrestigeSO <${fromEmail}>`,
         to: [email],
         subject: "Siparişiniz Teslim Edildi 🎉 - PrestigeSO",
-        react: OrderDelivered({ orderId, customerName: customerName || "Müşterimiz" }),
+        react: OrderDelivered({ orderId, customerName: customerName || "Müşterimiz" }) as any,
       });
 
       if (error) {

@@ -252,7 +252,7 @@ export async function POST(req: NextRequest) {
               customerName,
               items: validItems,
               totalAmount: Number(totalAmount) / 100
-            })
+            }) as any
           });
         }
       } catch (emailError) {
