@@ -41,13 +41,14 @@ export async function POST(req: NextRequest) {
       attachments: [
         {
           filename: `fatura-${orderId}.pdf`,
-          content: buffer,
+          content: buffer.toString("base64"),
         },
       ],
     });
 
     if (error) {
-      return NextResponse.json({ error }, { status: 500 });
+      console.error("Resend invoice API error:", error);
+      return NextResponse.json({ error: error.message || "Fatura maili gönderilirken bir hata oluştu." }, { status: 500 });
     }
 
     return NextResponse.json({ success: true, data });
