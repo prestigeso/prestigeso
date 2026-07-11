@@ -6,6 +6,7 @@ import { CartProvider } from "@/context/CartContext";
 import { SearchProvider } from "@/context/SearchContext";
 import ConditionalLayout from "@/components/ConditionalUI";
 import AppAlertProvider from "@/components/ui/AppAlertProvider";
+import CookieConsent from "@/components/CookieConsent";
 
 const inter = Inter({ subsets: ["latin"] });
 const playfair = Playfair_Display({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-playfair" });
@@ -69,6 +70,7 @@ export default function RootLayout({
             </CartProvider>
           </SearchProvider>
         </AppAlertProvider>
+        <CookieConsent />
       </body>
     </html>
   );

@@ -123,6 +123,7 @@ export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: P
   const [carrier, setCarrier] = useState("");
   const [trackingNo, setTrackingNo] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const [sendingInvoiceId, setSendingInvoiceId] = useState<number | null>(null);
 
   if (!open) return null;
 
@@ -174,6 +175,53 @@ export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: P
       showToast("Hata oluştu: " + (err?.message || "Bilinmeyen hata"), "error");
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleSendInvoice = async (orderId: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const order = orders.find((o) => o.id === orderId);
+    if (!order) return;
+
+    try {
+      setSendingInvoiceId(orderId);
+      
+      const shipping = typeof order.shipping_address === 'string' 
+        ? JSON.parse(order.shipping_address) 
+        : order.shipping_address;
+        
+      const email = shipping?.email;
+      const customerName = `${shipping?.firstName || ""} ${shipping?.lastName || ""}`.trim();
+
+      if (!email) {
+        showToast("Müşterinin e-posta adresi bulunamadı.", "error");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("orderId", String(orderId));
+      formData.append("email", email);
+      formData.append("customerName", customerName);
+      formData.append("invoice", file);
+
+      const res = await fetch("/api/admin/orders/invoice", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        throw new Error(data.error || "Fatura gönderilemedi");
+      }
+
+      showToast("Fatura başarıyla e-posta olarak gönderildi.", "success");
+    } catch (err: any) {
+      showToast(err.message, "error");
+    } finally {
+      e.target.value = "";
+      setSendingInvoiceId(null);
     }
   };
 
@@ -387,6 +435,30 @@ export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: P
                             )}
                           </div>
                         )}
+                        
+                        <div className="bg-gray-50 border border-gray-200 p-3 rounded-xl mt-3 flex flex-col gap-2">
+                          <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">E-Fatura Gönderimi</p>
+                          <div className="flex items-center gap-2">
+                            <input 
+                              type="file" 
+                              accept=".pdf" 
+                              id={`invoice-upload-${order.id}`}
+                              className="hidden"
+                              onChange={(e) => handleSendInvoice(order.id, e)}
+                              disabled={sendingInvoiceId === order.id}
+                            />
+                            <label 
+                              htmlFor={`invoice-upload-${order.id}`}
+                              className={`flex-1 text-center py-2 px-3 rounded-lg text-[10px] font-bold uppercase transition-colors cursor-pointer border border-blue-600 ${
+                                sendingInvoiceId === order.id 
+                                  ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
+                                  : "bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white"
+                              }`}
+                            >
+                              {sendingInvoiceId === order.id ? "Gönderiliyor..." : "PDF Fatura Yükle & Gönder"}
+                            </label>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>

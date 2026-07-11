@@ -10,11 +10,13 @@ const VALID_ORDER_STATUSES = ["Bekliyor", "Hazırlanıyor", "Kargolandı", "Tesl
 interface UseOrderActionsParams {
   setDbOrders: React.Dispatch<React.SetStateAction<OrderRow[]>>;
   showToast: (options: ShowToastOptions | string, type?: AppToastType) => void;
+  dbOrders: OrderRow[];
 }
 
 export function useOrderActions({
   setDbOrders,
   showToast,
+  dbOrders,
 }: UseOrderActionsParams) {
   const handleUpdateOrderStatus = async (orderId: number, newStatus: string) => {
     if (!VALID_ORDER_STATUSES.includes(newStatus)) {
@@ -41,7 +43,6 @@ export function useOrderActions({
       return;
     }
 
-    // Diğer durumlar için normal güncelleme
     const { error } = await adminDb({ action: "update", table: "orders", data: { status: newStatus }, filters: [{ column: "id", op: "eq", value: orderId }] });
     if (error) {
       showToast("Hata: " + error, "error");
@@ -50,6 +51,7 @@ export function useOrderActions({
 
     showToast(`Sipariş durumu "${newStatus}" olarak güncellendi.`, "success");
     setDbOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status: newStatus } : o)));
+
   };
 
   return {

@@ -8,7 +8,7 @@ import { useAppAlert } from "@/context/AppAlertContext";
 import DistanceSellingContract from "@/components/contracts/DistanceSellingContract";
 import { normalizePhone } from "@/lib/utils";
 
-type AuthStep = "INIT" | "LOGIN" | "REGISTER" | "FORGOT_PASSWORD";
+type AuthStep = "INIT" | "LOGIN" | "REGISTER" | "FORGOT_PASSWORD" | "OTP_VERIFICATION";
 type ContractModalType = "terms" | "distance" | "aydinlatma" | "privacy" | null;
 type GenderValue = "" | "female" | "male" | "other" | "prefer_not_to_say";
 
@@ -72,6 +72,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [resetSent, setResetSent] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
 
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -235,34 +236,58 @@ export default function LoginPage() {
     setLoading(true);
     setErrorMsg("");
 
-    const { data, error } = await supabase.auth.signUp({
-      email: normalizedEmail,
-      password,
-      options: {
-        data: {
-          first_name: cleanedFirstName,
-          last_name: cleanedLastName,
-          full_name: `${cleanedFirstName} ${cleanedLastName}`,
-          phone: cleanedPhone,
-          gender: gender || null,
-          birth_date: birthDate || null,
-        },
-      },
-    });
-
-    if (error) {
-      setErrorMsg(error.message);
-      showToast(error.message, "error");
+    try {
+      const res = await fetch("/api/auth/send-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: normalizedEmail }),
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+        throw new Error(data.error || "Doğrulama kodu gönderilemedi.");
+      }
+      
+      showToast("Doğrulama kodu e-postanıza gönderildi.", "success");
+      setStep("OTP_VERIFICATION");
+    } catch (err: any) {
+      setErrorMsg(err.message);
+      showToast(err.message, "error");
+    } finally {
       setLoading(false);
+    }
+  };
+
+  const handleVerifyOtpAndRegister = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!otpCode) {
+      showToast("Lütfen doğrulama kodunu girin.", "warning");
       return;
     }
 
-    if (data.user) {
-      const { error: dbError } = await supabase.from("customers").upsert(
-        [
-          {
-            id: data.user.id,
-            email: data.user.email,
+    setLoading(true);
+    setErrorMsg("");
+
+    try {
+      // 1) OTP'yi doğrula
+      const verifyRes = await fetch("/api/auth/verify-otp", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: normalizedEmail, code: otpCode }),
+      });
+      
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok) {
+        throw new Error(verifyData.error || "Kod doğrulanamadı.");
+      }
+
+      // 2) Kodu doğruysa Supabase'e kaydet
+      const { data, error } = await supabase.auth.signUp({
+        email: normalizedEmail,
+        password,
+        options: {
+          data: {
             first_name: cleanedFirstName,
             last_name: cleanedLastName,
             full_name: `${cleanedFirstName} ${cleanedLastName}`,
@@ -270,23 +295,48 @@ export default function LoginPage() {
             gender: gender || null,
             birth_date: birthDate || null,
           },
-        ],
-        { onConflict: "id" }
-      );
+        },
+      });
 
-      if (dbError) {
-        console.error("Müşteri tabloya eklenirken hata:", dbError);
-        showToast("Üyelik oluşturuldu ancak profil bilgileri kaydedilemedi. Lütfen profilinizden kontrol edin.", "warning");
-      } else {
-        showToast("Üyelik başarılı. Şimdi giriş yapabilirsiniz.", "success");
+      if (error) {
+        throw error;
       }
 
-      setStep("LOGIN");
-      setPassword("");
-      setPasswordConfirm("");
-    }
+      if (data.user) {
+        const { error: dbError } = await supabase.from("customers").upsert(
+          [
+            {
+              id: data.user.id,
+              email: data.user.email,
+              first_name: cleanedFirstName,
+              last_name: cleanedLastName,
+              full_name: `${cleanedFirstName} ${cleanedLastName}`,
+              phone: cleanedPhone,
+              gender: gender || null,
+              birth_date: birthDate || null,
+            },
+          ],
+          { onConflict: "id" }
+        );
 
-    setLoading(false);
+        if (dbError) {
+          console.error("Müşteri tabloya eklenirken hata:", dbError);
+          showToast("Üyelik oluşturuldu ancak profil bilgileri kaydedilemedi. Lütfen profilinizden kontrol edin.", "warning");
+        } else {
+          showToast("Üyelik başarılı. Şimdi giriş yapabilirsiniz.", "success");
+        }
+
+        setStep("LOGIN");
+        setPassword("");
+        setPasswordConfirm("");
+        setOtpCode("");
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message);
+      showToast(err.message, "error");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -590,6 +640,38 @@ export default function LoginPage() {
 
             <button type="submit" disabled={loading} className="w-full bg-black text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest shadow-xl hover:bg-gray-900 transition-all active:scale-95 disabled:opacity-50 mt-4 flex justify-center items-center gap-2">
               {loading ? "Hesap Açılıyor..." : "Üye Ol 🚀"}
+            </button>
+          </form>
+        )}
+
+        {step === "OTP_VERIFICATION" && (
+          <form onSubmit={handleVerifyOtpAndRegister} className="mt-8 flex flex-col gap-5 animate-in slide-in-from-right-4 duration-300">
+            <div className="text-center mb-4">
+              <p className="text-sm font-medium text-gray-600">
+                <span className="font-bold text-black">{normalizedEmail}</span> adresine 6 haneli doğrulama kodu gönderildi.
+              </p>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-gray-500 pl-1">Doğrulama Kodu</label>
+              <input
+                type="text"
+                value={otpCode}
+                onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="000000"
+                className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl font-bold text-2xl tracking-widest text-center outline-none text-black transition-all focus:border-black"
+                required
+              />
+            </div>
+
+            {errorMsg && <p className="text-red-500 text-[10px] font-bold uppercase text-center">{errorMsg}</p>}
+
+            <button type="submit" disabled={loading || otpCode.length !== 6} className="w-full bg-black text-white py-4 rounded-xl font-black text-sm uppercase tracking-widest shadow-xl hover:bg-gray-900 transition-all active:scale-95 disabled:opacity-50 mt-4 flex justify-center items-center gap-2">
+              {loading ? "Doğrulanıyor..." : "Kodu Doğrula ve Üye Ol"}
+            </button>
+
+            <button type="button" onClick={() => setStep("REGISTER")} className="w-full py-4 text-[11px] font-black uppercase tracking-widest text-gray-500 hover:text-black transition-colors rounded-xl border border-gray-200 hover:bg-gray-50">
+              Geri Dön
             </button>
           </form>
         )}

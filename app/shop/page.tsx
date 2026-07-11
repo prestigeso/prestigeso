@@ -100,9 +100,11 @@ export default function ShopPage() {
     fetchShopData();
   }, []);
 
-  const filteredProducts = useMemo(() => {
-    // FEAT-05: Kategori/arama değişince sayfalamayı sıfırla
+  useEffect(() => {
     setVisibleCount(20);
+  }, [selectedCategory, searchQuery]);
+
+  const filteredProducts = useMemo(() => {
     return dbProducts.filter((product) => {
       const matchCategory =
         selectedCategory === "Tümü" || product.category === selectedCategory;

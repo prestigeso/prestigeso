@@ -125,7 +125,7 @@ export default function AdminPanel() {
   const campaignActions = useCampaignActions({ loadAllData, showToast });
   const settingsActions = useSettingsActions({ loadAllData, showToast, showConfirm });
   const messagingActions = useMessagingActions({ setDbMessages, setDbQuestions, showToast });
-  const orderActions = useOrderActions({ setDbOrders, showToast });
+  const orderActions = useOrderActions({ setDbOrders, showToast, dbOrders });
   const reviewActions = useReviewActions({ setDbReviews, showToast, showConfirm });
   const performanceData = usePerformanceData({ dbProducts, dbReviews, dbAllFavorites, dbProductViews });
 

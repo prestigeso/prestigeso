@@ -224,6 +224,41 @@ export async function POST(req: NextRequest) {
 
       await registerCouponUsage(updatedOrder);
 
+      // E-posta gönderimi
+      try {
+        if (process.env.RESEND_API_KEY) {
+          const { Resend } = await import("resend");
+          const { OrderConfirmation } = await import("@/components/emails/OrderConfirmation");
+          const resend = new Resend(process.env.RESEND_API_KEY);
+          const fromEmail = process.env.RESEND_FROM_EMAIL || "info@prestigeso.com.tr";
+          
+          let customerEmail = "musteri@gmail.com";
+          let customerName = "Müşterimiz";
+          try {
+            const shipping = typeof updatedOrder.shipping_address === 'string' 
+              ? JSON.parse(updatedOrder.shipping_address) 
+              : updatedOrder.shipping_address;
+              
+            if (shipping?.email) customerEmail = shipping.email;
+            if (shipping?.firstName) customerName = `${shipping.firstName} ${shipping.lastName || ""}`.trim();
+          } catch(e) {}
+
+          await resend.emails.send({
+            from: `PrestigeSO <${fromEmail}>`,
+            to: [customerEmail],
+            subject: `Siparişiniz Alındı (${updatedOrder.id}) - PrestigeSO`,
+            react: OrderConfirmation({
+              orderId: String(updatedOrder.id),
+              customerName,
+              items: validItems,
+              totalAmount: Number(totalAmount) / 100
+            })
+          });
+        }
+      } catch (emailError) {
+        console.error("Order confirmation email error:", emailError);
+      }
+
       return new NextResponse("OK");
     }
 

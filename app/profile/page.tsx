@@ -229,7 +229,8 @@ export default function ProfilePage() {
       const { error } = await supabase
         .from("orders")
         .update({ status: newStatus })
-        .eq("id", orderId);
+        .eq("id", orderId)
+        .eq("user_id", user?.id);
 
       if (error) throw error;
       showToast(action === "cancel" ? "Siparişiniz iptal edildi." : "İade talebiniz alındı.", "success");
