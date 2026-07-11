@@ -5,11 +5,10 @@ import { OrderDelivered } from "@/components/emails/OrderDelivered";
 
 export const runtime = "nodejs";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-const fromEmail = process.env.RESEND_FROM_EMAIL || "info@prestigeso.com.tr";
-
 export async function POST(req: NextRequest) {
   try {
+    const resend = new Resend(process.env.RESEND_API_KEY || "re_dummy");
+    const fromEmail = process.env.RESEND_FROM_EMAIL || "info@prestigeso.com.tr";
     // 1) Admin yetki kontrolü
     const adminSecret = (process.env.ADMIN_COOKIE_SECRET ?? "").trim();
     const cookieValue = req.cookies.get(ADMIN_COOKIE_NAME)?.value ?? "";

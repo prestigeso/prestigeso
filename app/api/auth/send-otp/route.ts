@@ -5,15 +5,15 @@ import { OtpEmail } from "@/components/emails/OtpEmail";
 
 export const runtime = "nodejs";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
-const fromEmail = process.env.RESEND_FROM_EMAIL || "info@prestigeso.com.tr";
-
 function generateOtp() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
 export async function POST(req: NextRequest) {
   try {
+    const resend = new Resend(process.env.RESEND_API_KEY || "re_dummy");
+    const fromEmail = process.env.RESEND_FROM_EMAIL || "info@prestigeso.com.tr";
+
     const { email } = await req.json();
 
     if (!email || !email.includes("@")) {
