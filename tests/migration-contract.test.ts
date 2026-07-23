@@ -26,6 +26,10 @@ const launchReadinessMigration = new URL(
   "../supabase/migrations/20260723120000_launch_readiness.sql",
   import.meta.url,
 );
+const updatedAtRepairMigration = new URL(
+  "../supabase/migrations/20260723130000_repair_updated_at_columns.sql",
+  import.meta.url,
+);
 
 test("initial schema defines core commerce tables, constraints and indexes", async () => {
   const sql = await readFile(initialMigration, "utf8");
@@ -114,4 +118,24 @@ test("launch readiness migration rejects variant-less orders", async () => {
   assert.match(sql, /validate_order_variant_selection/);
   assert.match(sql, /VARIANT_REQUIRED/);
   assert.match(sql, /before insert or update of items on public\.orders/i);
+});
+
+test("updated-at repair supports databases created before the baseline schema", async () => {
+  const sql = await readFile(updatedAtRepairMigration, "utf8");
+  for (const table of [
+    "products",
+    "customers",
+    "addresses",
+    "orders",
+    "site_settings",
+  ]) {
+    assert.match(
+      sql,
+      new RegExp(
+        `alter table if exists public\\.${table}[\\s\\S]*?add column if not exists updated_at`,
+        "i",
+      ),
+    );
+  }
+  assert.match(sql, /create or replace function public\.set_updated_at/i);
 });
