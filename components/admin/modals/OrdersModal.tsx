@@ -1,109 +1,57 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import type { OrderRow } from "../types";
 import { adminDb } from "../adminDb";
 import { useAppAlert } from "@/context/AppAlertContext";
-import { formatMoney, safeParseAddress } from "@/lib/utils";
+import { formatMoney, getErrorMessage, safeParseAddress } from "@/lib/utils";
+import {
+  getOrderAddressLine as getAddressLine,
+  getOrderCouponInfo as getCouponInfo,
+  getOrderCustomerName as getCustomerName,
+  getOrderItemsSubtotal as getItemsSubtotal,
+  getOrderLocationLine as getLocationLine,
+  parseOrderItems as safeParseItems,
+} from "@/lib/orders/orderPresentation";
+import AdminPagination from "../parts/AdminPagination";
 
 type Props = {
   open: boolean;
   onClose: () => void;
   orders: OrderRow[];
   onUpdateStatus: (orderId: number, newStatus: string) => void;
+  onReturnDecision: (
+    orderId: number,
+    decision: "approve" | "reject",
+    note: string,
+    returnShippingCode?: string,
+  ) => void;
+  onShippingSaved: (
+    orderId: number,
+    carrier: string,
+    trackingNumber: string,
+  ) => void;
+  page: number;
+  pageSize: number;
+  total: number;
+  loading: boolean;
+  onPageChange: (page: number) => void;
 };
 
-function safeParseItems(items: any): any[] {
-  try {
-    if (Array.isArray(items)) return items;
-    if (typeof items === "string") return JSON.parse(items || "[]");
-    return [];
-  } catch {
-    return [];
-  }
-}
-
-
-function getAddressLine(address: any): string {
-  if (!address) return "Adres bilgisi yok.";
-  if (typeof address === "string") return address;
-
-  if (typeof address === "object") {
-    return (
-      address.fullAddress ||
-      address.full_address ||
-      address.address ||
-      address.addressLine ||
-      address.line ||
-      "Açık adres yok."
-    );
-  }
-
-  return String(address);
-}
-
-function getCustomerName(address: any): string {
-  if (!address || typeof address !== "object") return "Belirtilmedi";
-
-  const fullName = [address.firstName, address.lastName].filter(Boolean).join(" ");
-
-  return fullName || "Belirtilmedi";
-}
-
-function getLocationLine(address: any): string {
-  if (!address || typeof address !== "object") return "Belirtilmedi";
-
-  return (
-    [address.neighborhood, address.district, address.city]
-      .filter(Boolean)
-      .join(" / ") || "Belirtilmedi"
-  );
-}
-
 function getStatusClass(status: string) {
-  if (status === "Bekliyor") return "bg-orange-50 text-orange-600 border-orange-200";
-  if (status === "Hazırlanıyor") return "bg-blue-50 text-blue-600 border-blue-200";
-  if (status === "Teslim Edildi") return "bg-green-50 text-green-600 border-green-200";
+  if (status === "Bekliyor")
+    return "bg-orange-50 text-orange-600 border-orange-200";
+  if (status === "Hazırlanıyor")
+    return "bg-blue-50 text-blue-600 border-blue-200";
+  if (status === "Teslim Edildi")
+    return "bg-green-50 text-green-600 border-green-200";
   if (status === "İptal Edildi") return "bg-red-50 text-red-600 border-red-200";
-  if (status === "İade Talebi") return "bg-yellow-50 text-yellow-600 border-yellow-200";
-  if (status === "İade Edildi") return "bg-purple-50 text-purple-600 border-purple-200";
+  if (status === "İade Talebi")
+    return "bg-yellow-50 text-yellow-600 border-yellow-200";
+  if (status === "İade Edildi")
+    return "bg-purple-50 text-purple-600 border-purple-200";
   return "bg-black text-white border-black";
-}
-
-
-function getItemsSubtotal(items: any[]) {
-  return items.reduce((sum, item) => {
-    const quantity = Number(item.quantity || 1);
-    const price = Number(item.price || 0);
-
-    if (!Number.isFinite(quantity) || !Number.isFinite(price)) {
-      return sum;
-    }
-
-    return sum + price * quantity;
-  }, 0);
-}
-
-function getCouponInfo(address: any) {
-  if (!address || typeof address !== "object") return null;
-
-  const coupon = address.coupon;
-
-  if (!coupon || typeof coupon !== "object") return null;
-
-  const discountAmount = Number(coupon.discount_amount || 0);
-
-  if (!Number.isFinite(discountAmount) || discountAmount <= 0) return null;
-
-  return {
-    id: coupon.id || null,
-    code: String(coupon.code || "").toUpperCase(),
-    discountType: coupon.discount_type || null,
-    discountValue: Number(coupon.discount_value || 0),
-    discountAmount,
-    subtotalAmount: Number(coupon.subtotal_amount || 0),
-    totalAfterDiscount: Number(coupon.total_after_discount || 0),
-  };
 }
 
 function getCouponDiscountLabel(couponInfo: ReturnType<typeof getCouponInfo>) {
@@ -116,14 +64,29 @@ function getCouponDiscountLabel(couponInfo: ReturnType<typeof getCouponInfo>) {
   return `${formatMoney(couponInfo.discountValue)} TL indirim`;
 }
 
-export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: Props) {
+export default function OrdersModal({
+  open,
+  onClose,
+  orders,
+  onUpdateStatus,
+  onReturnDecision,
+  onShippingSaved,
+  page,
+  pageSize,
+  total,
+  loading,
+  onPageChange,
+}: Props) {
   const { showToast } = useAppAlert();
 
-  const [editingShippingId, setEditingShippingId] = useState<number | null>(null);
+  const [editingShippingId, setEditingShippingId] = useState<number | null>(
+    null,
+  );
   const [carrier, setCarrier] = useState("");
   const [trackingNo, setTrackingNo] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [sendingInvoiceId, setSendingInvoiceId] = useState<number | null>(null);
+  const [reconcilingId, setReconcilingId] = useState<number | null>(null);
 
   if (!open) return null;
 
@@ -169,16 +132,19 @@ export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: P
       if (error) throw new Error(error);
 
       showToast("Kargo bilgileri başarıyla kaydedildi.", "success");
-      onUpdateStatus(orderId, "Kargolandı");
+      onShippingSaved(orderId, cleanCarrier, cleanTrackingNo);
       resetShippingForm();
-    } catch (err: any) {
-      showToast("Hata oluştu: " + (err?.message || "Bilinmeyen hata"), "error");
+    } catch (error: unknown) {
+      showToast("Hata oluştu: " + getErrorMessage(error), "error");
     } finally {
       setIsSaving(false);
     }
   };
 
-  const handleSendInvoice = async (orderId: number, e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSendInvoice = async (
+    orderId: number,
+    e: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -187,13 +153,15 @@ export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: P
 
     try {
       setSendingInvoiceId(orderId);
-      
-      const shipping = typeof order.shipping_address === 'string' 
-        ? JSON.parse(order.shipping_address) 
-        : order.shipping_address;
-        
+
+      const shipping =
+        typeof order.shipping_address === "string"
+          ? JSON.parse(order.shipping_address)
+          : order.shipping_address;
+
       const email = shipping?.email;
-      const customerName = `${shipping?.firstName || ""} ${shipping?.lastName || ""}`.trim();
+      const customerName =
+        `${shipping?.firstName || ""} ${shipping?.lastName || ""}`.trim();
 
       if (!email) {
         showToast("Müşterinin e-posta adresi bulunamadı.", "error");
@@ -217,11 +185,35 @@ export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: P
       }
 
       showToast("Fatura başarıyla e-posta olarak gönderildi.", "success");
-    } catch (err: any) {
-      showToast(err.message, "error");
+    } catch (error: unknown) {
+      showToast(getErrorMessage(error, "Fatura gönderilemedi."), "error");
     } finally {
       e.target.value = "";
       setSendingInvoiceId(null);
+    }
+  };
+
+  const handleReconcile = async (orderId: number) => {
+    setReconcilingId(orderId);
+    try {
+      const response = await fetch("/api/admin/reconciliation", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Mutabakat yapılamadı.");
+      showToast(
+        result.status === "matched"
+          ? "PayTR ve yerel sipariş tutarları eşleşiyor."
+          : "PayTR ile yerel kayıt arasında fark bulundu.",
+        result.status === "matched" ? "success" : "warning",
+      );
+    } catch (error) {
+      showToast(getErrorMessage(error, "Mutabakat yapılamadı."), "error");
+    } finally {
+      setReconcilingId(null);
     }
   };
 
@@ -244,18 +236,27 @@ export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: P
         </div>
 
         <div className="overflow-y-auto space-y-6 flex-1 pr-2">
+          {loading && (
+            <p className="py-3 text-center text-[10px] font-black uppercase tracking-widest text-gray-400">
+              Siparişler yükleniyor...
+            </p>
+          )}
           {!orders || orders.length === 0 ? (
             <p className="text-center text-gray-400 font-bold py-20 uppercase tracking-widest text-sm">
               Sistemde henüz sipariş yok.
             </p>
           ) : (
-            orders.map((order: any) => {
+            orders.map((order) => {
               const parsedAddress = safeParseAddress(order.shipping_address);
               const safeItems = safeParseItems(order.items);
               const couponInfo = getCouponInfo(parsedAddress);
               const itemsSubtotal = getItemsSubtotal(safeItems);
-              const subtotalAmount = couponInfo?.subtotalAmount || itemsSubtotal;
-              const paidAmount = Number(order.total_amount || couponInfo?.totalAfterDiscount || 0);
+              const subtotalAmount =
+                couponInfo?.subtotalAmount || itemsSubtotal;
+              const paidAmount = Number(
+                order.total_amount || couponInfo?.totalAfterDiscount || 0,
+              );
+              const returnRequest = order.return_requests?.[0];
 
               return (
                 <div
@@ -265,23 +266,34 @@ export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: P
                   <div className="flex-1 space-y-4">
                     <div className="flex flex-col md:flex-row justify-between items-start border-b border-gray-50 pb-3 gap-4">
                       <div>
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Sipariş No</p>
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
+                          Sipariş No
+                        </p>
                         <p className="font-mono font-bold text-sm bg-gray-100 px-2 py-0.5 rounded text-black w-max">
                           {order.order_no || `PRS-ESKI-${order.id}`}
                         </p>
                       </div>
 
                       <div>
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Müşteri</p>
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
+                          Müşteri
+                        </p>
                         <p className="font-bold text-sm text-black break-all">
                           {order.user_email || "Bilinmeyen müşteri"}
                         </p>
                       </div>
 
                       <div className="md:text-right">
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Tarih</p>
-                        <p suppressHydrationWarning className="text-xs font-bold text-gray-600">
-                          {order.created_at ? new Date(order.created_at).toLocaleString("tr-TR") : "Bilinmiyor"}
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
+                          Tarih
+                        </p>
+                        <p
+                          suppressHydrationWarning
+                          className="text-xs font-bold text-gray-600"
+                        >
+                          {order.created_at
+                            ? new Date(order.created_at).toLocaleString("tr-TR")
+                            : "Bilinmiyor"}
                         </p>
                       </div>
                     </div>
@@ -320,55 +332,141 @@ export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: P
                         {parsedAddress && typeof parsedAddress === "object" ? (
                           <div className="grid grid-cols-2 gap-y-3 gap-x-4">
                             <div>
-                              <p className="text-[9px] font-bold text-gray-400 uppercase">Alıcı Kişi</p>
-                              <p className="text-xs font-black text-black">{getCustomerName(parsedAddress)}</p>
+                              <p className="text-[9px] font-bold text-gray-400 uppercase">
+                                Alıcı Kişi
+                              </p>
+                              <p className="text-xs font-black text-black">
+                                {getCustomerName(parsedAddress)}
+                              </p>
                             </div>
 
                             <div>
-                              <p className="text-[9px] font-bold text-gray-400 uppercase">Telefon</p>
-                              <p className="text-xs font-black text-blue-600">{parsedAddress.phone || "Belirtilmedi"}</p>
+                              <p className="text-[9px] font-bold text-gray-400 uppercase">
+                                Telefon
+                              </p>
+                              <p className="text-xs font-black text-blue-600">
+                                {String(parsedAddress.phone || "Belirtilmedi")}
+                              </p>
                             </div>
 
                             <div className="col-span-2 bg-white p-2 rounded-lg border border-gray-200">
-                              <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">Açık Adres</p>
-                              <p className="text-xs font-medium text-gray-700 leading-relaxed">{getAddressLine(parsedAddress)}</p>
+                              <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">
+                                Açık Adres
+                              </p>
+                              <p className="text-xs font-medium text-gray-700 leading-relaxed">
+                                {getAddressLine(parsedAddress)}
+                              </p>
                             </div>
 
                             <div className="col-span-2">
-                              <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">Bölge</p>
-                              <p className="text-xs font-black text-gray-700">{getLocationLine(parsedAddress)}</p>
+                              <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">
+                                Bölge
+                              </p>
+                              <p className="text-xs font-black text-gray-700">
+                                {getLocationLine(parsedAddress)}
+                              </p>
                             </div>
 
-                            {parsedAddress.email && (
+                            {Boolean(parsedAddress.email) && (
                               <div className="col-span-2">
-                                <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">E-posta</p>
-                                <p className="text-xs font-bold text-gray-600 break-all">{parsedAddress.email}</p>
+                                <p className="text-[9px] font-bold text-gray-400 uppercase mb-1">
+                                  E-posta
+                                </p>
+                                <p className="text-xs font-bold text-gray-600 break-all">
+                                  {String(parsedAddress.email)}
+                                </p>
                               </div>
                             )}
                           </div>
                         ) : (
-                          <p className="text-sm font-medium text-black leading-relaxed">{getAddressLine(parsedAddress)}</p>
+                          <p className="text-sm font-medium text-black leading-relaxed">
+                            {getAddressLine(parsedAddress)}
+                          </p>
                         )}
                       </div>
 
                       <div className="w-full md:w-1/2 flex flex-col gap-3">
                         <div className="bg-white border border-gray-200 p-3 rounded-xl flex items-center justify-between">
-                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Durum:</p>
+                          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                            Durum:
+                          </p>
 
                           <select
                             value={order.status || "Bekliyor"}
-                            onChange={(e) => onUpdateStatus(order.id, e.target.value)}
+                            onChange={(e) =>
+                              onUpdateStatus(order.id, e.target.value)
+                            }
                             className={`text-xs font-black uppercase tracking-widest px-3 py-1.5 rounded-lg border outline-none cursor-pointer transition-colors ${getStatusClass(order.status)}`}
                           >
                             <option value="Bekliyor">⏳ Bekliyor</option>
-                            <option value="Hazırlanıyor">📦 Hazırlanıyor</option>
+                            <option value="Hazırlanıyor">
+                              📦 Hazırlanıyor
+                            </option>
                             <option value="Kargolandı">🚀 Kargolandı</option>
-                            <option value="Teslim Edildi">✅ Teslim Edildi</option>
-                            <option value="İptal Edildi">❌ İptal Edildi</option>
+                            <option value="Teslim Edildi">
+                              ✅ Teslim Edildi
+                            </option>
+                            <option value="İptal Edildi">
+                              ❌ İptal Edildi
+                            </option>
                             <option value="İade Talebi">🔄 İade Talebi</option>
                             <option value="İade Edildi">🔙 İade Edildi</option>
                           </select>
                         </div>
+
+                        {order.status === "İade Talebi" && (
+                          <div className="space-y-2 rounded-xl border border-orange-200 bg-orange-50 p-3">
+                            {returnRequest && (
+                              <div className="space-y-2 text-xs">
+                                <p><strong>İade sebebi:</strong> {returnRequest.reason}</p>
+                                {Array.isArray(returnRequest.evidence_urls) && returnRequest.evidence_urls.length > 0 && (
+                                  <div className="flex flex-wrap gap-2">
+                                    {returnRequest.evidence_urls.map((url, index) => (
+                                      <a key={String(url)} href={`/api/admin/return-evidence?path=${encodeURIComponent(String(url))}`} target="_blank" rel="noreferrer" className="font-bold underline">
+                                        Görsel {index + 1}
+                                      </a>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                            <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const note = prompt("Onay notu (isteğe bağlı):") || "";
+                                const returnCode =
+                                  prompt("İade kargo kodu (isteğe bağlı):") || "";
+                                onReturnDecision(order.id, "approve", note, returnCode);
+                              }}
+                              className="rounded-xl bg-emerald-600 px-3 py-2 text-[10px] font-black uppercase text-white"
+                            >
+                              İadeyi onayla
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const note = prompt("Ret sebebini yazın:")?.trim();
+                                if (note) onReturnDecision(order.id, "reject", note);
+                              }}
+                              className="rounded-xl bg-red-600 px-3 py-2 text-[10px] font-black uppercase text-white"
+                            >
+                              Talebi reddet
+                            </button>
+                            </div>
+                          </div>
+                        )}
+
+                        <button
+                          type="button"
+                          disabled={reconcilingId === order.id}
+                          onClick={() => void handleReconcile(order.id)}
+                          className="w-full rounded-xl border border-gray-300 px-3 py-2 text-[10px] font-black uppercase disabled:opacity-50"
+                        >
+                          {reconcilingId === order.id
+                            ? "PayTR kontrol ediliyor..."
+                            : "PayTR ile doğrula"}
+                        </button>
 
                         {editingShippingId === order.id ? (
                           <div className="bg-blue-50 p-3 rounded-xl border border-blue-200 animate-in fade-in flex flex-col gap-2">
@@ -410,7 +508,9 @@ export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: P
                         ) : (
                           <div className="bg-gray-50 border border-gray-200 p-3 rounded-xl flex flex-col gap-2">
                             <div className="flex justify-between items-center">
-                              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Kargo Bilgisi</p>
+                              <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
+                                Kargo Bilgisi
+                              </p>
 
                               <button
                                 type="button"
@@ -421,41 +521,54 @@ export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: P
                                 }}
                                 className="text-[10px] font-bold text-blue-600 hover:underline"
                               >
-                                {order.tracking_number ? "Düzenle" : "+ Kargo Gir"}
+                                {order.tracking_number
+                                  ? "Düzenle"
+                                  : "+ Kargo Gir"}
                               </button>
                             </div>
 
                             {order.tracking_number ? (
                               <div>
-                                <p className="text-xs font-bold text-black">{order.shipping_carrier || "Kargo firması belirtilmedi"}</p>
-                                <p className="text-[10px] font-mono text-gray-500 break-all">{order.tracking_number}</p>
+                                <p className="text-xs font-bold text-black">
+                                  {order.shipping_carrier ||
+                                    "Kargo firması belirtilmedi"}
+                                </p>
+                                <p className="text-[10px] font-mono text-gray-500 break-all">
+                                  {order.tracking_number}
+                                </p>
                               </div>
                             ) : (
-                              <p className="text-[10px] text-gray-400 font-medium italic">Kargo bilgisi girilmedi.</p>
+                              <p className="text-[10px] text-gray-400 font-medium italic">
+                                Kargo bilgisi girilmedi.
+                              </p>
                             )}
                           </div>
                         )}
-                        
+
                         <div className="bg-gray-50 border border-gray-200 p-3 rounded-xl mt-3 flex flex-col gap-2">
-                          <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">E-Fatura Gönderimi</p>
+                          <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest">
+                            E-Fatura Gönderimi
+                          </p>
                           <div className="flex items-center gap-2">
-                            <input 
-                              type="file" 
-                              accept=".pdf" 
+                            <input
+                              type="file"
+                              accept=".pdf"
                               id={`invoice-upload-${order.id}`}
                               className="hidden"
                               onChange={(e) => handleSendInvoice(order.id, e)}
                               disabled={sendingInvoiceId === order.id}
                             />
-                            <label 
+                            <label
                               htmlFor={`invoice-upload-${order.id}`}
                               className={`flex-1 text-center py-2 px-3 rounded-lg text-[10px] font-bold uppercase transition-colors cursor-pointer border border-blue-600 ${
-                                sendingInvoiceId === order.id 
+                                sendingInvoiceId === order.id
                                   ? "bg-gray-100 text-gray-400 border-gray-200 cursor-not-allowed"
                                   : "bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white"
                               }`}
                             >
-                              {sendingInvoiceId === order.id ? "Gönderiliyor..." : "PDF Fatura Yükle & Gönder"}
+                              {sendingInvoiceId === order.id
+                                ? "Gönderiliyor..."
+                                : "PDF Fatura Yükle & Gönder"}
                             </label>
                           </div>
                         </div>
@@ -470,25 +583,33 @@ export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: P
 
                     <div className="flex-1 overflow-y-auto space-y-3 pr-1 max-h-48 scrollbar-hide">
                       {safeItems.length === 0 ? (
-                        <p className="text-xs font-bold text-gray-400 text-center py-6">Ürün bilgisi bulunamadı.</p>
+                        <p className="text-xs font-bold text-gray-400 text-center py-6">
+                          Ürün bilgisi bulunamadı.
+                        </p>
                       ) : (
-                        safeItems.map((item: any, idx: number) => {
-                          const displayImage = item.images?.[0] || item.image || "/logo.jpeg";
+                        safeItems.map((item, idx) => {
+                          const displayImage =
+                            item.images?.[0] || item.image || "/logo.jpeg";
                           const quantity = item.quantity || 1;
                           const price = Number(item.price || 0);
 
                           return (
                             <div key={idx} className="flex gap-3 items-center">
-                              <img
+                              <Image
+                                width={40}
+                                height={40}
                                 src={displayImage}
                                 className="w-10 h-10 rounded-lg object-cover border border-gray-200 bg-white flex-shrink-0"
                                 alt={item.name || "Ürün"}
                               />
 
                               <div className="flex-1 overflow-hidden">
-                                <p className="text-[9px] font-bold uppercase truncate text-black">{item.name || "Bilinmeyen Ürün"}</p>
+                                <p className="text-[9px] font-bold uppercase truncate text-black">
+                                  {item.name || "Bilinmeyen Ürün"}
+                                </p>
                                 <p className="text-[9px] font-black text-gray-500 mt-0.5">
-                                  {quantity} Adet x {price.toLocaleString("tr-TR")} ₺
+                                  {quantity} Adet x{" "}
+                                  {price.toLocaleString("tr-TR")} ₺
                                 </p>
                               </div>
                             </div>
@@ -499,7 +620,9 @@ export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: P
 
                     <div className="mt-4 border-t border-gray-200 pt-3 space-y-2">
                       <div className="flex justify-between items-center">
-                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Ara Toplam</span>
+                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                          Ara Toplam
+                        </span>
                         <span className="text-xs font-black text-gray-700">
                           {formatMoney(subtotalAmount)} ₺
                         </span>
@@ -508,7 +631,9 @@ export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: P
                       {couponInfo && (
                         <div className="flex justify-between items-center bg-emerald-50 border border-emerald-100 rounded-xl p-2">
                           <div>
-                            <span className="block text-[10px] font-black text-emerald-700 uppercase tracking-widest">Kupon</span>
+                            <span className="block text-[10px] font-black text-emerald-700 uppercase tracking-widest">
+                              Kupon
+                            </span>
                             <span className="block text-[9px] font-black text-emerald-700 uppercase tracking-widest mt-0.5">
                               {couponInfo.code}
                             </span>
@@ -520,7 +645,9 @@ export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: P
                       )}
 
                       <div className="flex justify-between items-end pt-2 border-t border-gray-200">
-                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Ödenen Tutar</span>
+                        <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
+                          Ödenen Tutar
+                        </span>
 
                         <span className="text-lg font-black text-black">
                           {formatMoney(paidAmount)} ₺
@@ -533,6 +660,13 @@ export default function OrdersModal({ open, onClose, orders, onUpdateStatus }: P
             })
           )}
         </div>
+        <AdminPagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          loading={loading}
+          onPageChange={onPageChange}
+        />
       </div>
     </div>
   );

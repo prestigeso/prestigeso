@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import type { Question } from "@/types";
 
 export default function QuestionsTab({ questions }: { questions: Question[] }) {
@@ -19,15 +20,21 @@ export default function QuestionsTab({ questions }: { questions: Question[] }) {
         <div className="space-y-4">
           {questions.map((q) => {
             const prod = q.products;
-            const displayImage = prod?.images?.[0] || prod?.image || "/logo.jpeg";
+            const displayImage =
+              prod?.images?.[0] || prod?.image || "/logo.jpeg";
 
             return (
-              <div key={q.id} className="bg-white border border-gray-200 p-4 rounded-2xl flex flex-col md:flex-row gap-4 shadow-sm hover:border-black transition-all">
+              <div
+                key={q.id}
+                className="bg-white border border-gray-200 p-4 rounded-2xl flex flex-col md:flex-row gap-4 shadow-sm hover:border-black transition-all"
+              >
                 <Link
                   href={`/product/${q.product_id}`}
                   className="w-full md:w-20 h-20 bg-gray-50 rounded-xl border border-gray-100 flex-shrink-0 overflow-hidden group"
                 >
-                  <img
+                  <Image
+                    width={64}
+                    height={64}
                     src={displayImage}
                     alt=""
                     className="w-full h-full object-cover mix-blend-multiply group-hover:scale-110 transition-transform"
@@ -40,24 +47,36 @@ export default function QuestionsTab({ questions }: { questions: Question[] }) {
                   </h4>
 
                   <div className="mb-3">
-                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Sorunuz:</p>
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
+                      Sorunuz:
+                    </p>
                     <p className="text-sm font-bold text-black">{q.question}</p>
                   </div>
 
                   {q.answer ? (
                     <div className="pl-4 border-l-2 border-green-500 bg-green-50/50 p-3 rounded-r-xl mt-2">
                       <div className="flex items-center gap-2 mb-1">
-                        <p className="text-[10px] font-black text-green-700 uppercase tracking-widest">Satıcı Cevabı</p>
+                        <p className="text-[10px] font-black text-green-700 uppercase tracking-widest">
+                          Satıcı Cevabı
+                        </p>
                         <span className="text-[9px] text-gray-400 font-bold">
-                          {q.answered_at ? new Date(q.answered_at).toLocaleDateString("tr-TR") : ""}
+                          {q.answered_at
+                            ? new Date(q.answered_at).toLocaleDateString(
+                                "tr-TR",
+                              )
+                            : ""}
                         </span>
                       </div>
-                      <p className="text-sm font-medium text-gray-700">{q.answer}</p>
+                      <p className="text-sm font-medium text-gray-700">
+                        {q.answer}
+                      </p>
                     </div>
                   ) : (
                     <div className="inline-flex items-center gap-2 bg-orange-50 text-orange-600 px-3 py-1.5 rounded-lg border border-orange-100 mt-2">
                       <span className="animate-pulse">⏳</span>
-                      <p className="text-[10px] font-black uppercase tracking-widest">Satıcı Cevabı Bekleniyor...</p>
+                      <p className="text-[10px] font-black uppercase tracking-widest">
+                        Satıcı Cevabı Bekleniyor...
+                      </p>
                     </div>
                   )}
                 </div>

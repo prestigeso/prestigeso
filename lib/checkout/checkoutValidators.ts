@@ -4,7 +4,11 @@ import {
   MAX_NAME_LENGTH,
   type AddressForm,
 } from "./checkoutTypes";
-import { isValidEmail, isValidTurkishPhone, normalizeText } from "./checkoutFormatters";
+import {
+  isValidEmail,
+  isValidTurkishPhone,
+  normalizeText,
+} from "./checkoutFormatters";
 
 export function validateAddressForm(data: AddressForm) {
   if (!isValidEmail(data.email)) {

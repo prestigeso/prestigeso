@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import type { Slide, CategoryRow } from "../types";
 import { revokeUrls } from "../utils";
+import { getErrorMessage } from "@/lib/utils";
 
 type Props = {
   open: boolean;
@@ -15,7 +17,6 @@ type Props = {
   dbSlides: Slide[];
   setDbSlides: (updater: (prev: Slide[]) => Slide[]) => void;
 
-  newSlideFiles: File[];
   setNewSlideFiles: (files: File[]) => void;
 
   newSlidePreviews: string[];
@@ -24,20 +25,29 @@ type Props = {
   dbCategories: CategoryRow[];
 
   newSlide: { title: string; subtitle: string; category_slug: string };
-  setNewSlide: (v: { title: string; subtitle: string; category_slug: string }) => void;
+  setNewSlide: (v: {
+    title: string;
+    subtitle: string;
+    category_slug: string;
+  }) => void;
 
   onAddSlide: () => void;
   onUpdateSlide: (slide: Slide) => void;
-  onDeleteSlide: (id: number) => void;
+  onDeleteSlide: (slide: Slide) => void;
 };
 
 function toMoneyInput(value: unknown) {
   const numberValue = Number(value || 0);
-  return Number.isFinite(numberValue) && numberValue > 0 ? String(numberValue) : "";
+  return Number.isFinite(numberValue) && numberValue > 0
+    ? String(numberValue)
+    : "";
 }
 
 function sanitizeMoneyInput(value: string) {
-  return value.replace(/[^0-9.,]/g, "").replace(",", ".").slice(0, 12);
+  return value
+    .replace(/[^0-9.,]/g, "")
+    .replace(",", ".")
+    .slice(0, 12);
 }
 
 export default function SettingsModal({
@@ -51,7 +61,6 @@ export default function SettingsModal({
   dbSlides,
   setDbSlides,
 
-  newSlideFiles,
   setNewSlideFiles,
 
   newSlidePreviews,
@@ -85,7 +94,9 @@ export default function SettingsModal({
         const shipping = result?.shipping || {};
 
         setShippingFee(toMoneyInput(shipping.shipping_fee));
-        setFreeShippingThreshold(toMoneyInput(shipping.free_shipping_threshold));
+        setFreeShippingThreshold(
+          toMoneyInput(shipping.free_shipping_threshold),
+        );
         setShippingEnabled(shipping.shipping_enabled !== false);
       } catch {
         setShippingStatus("Kargo ayarları yüklenemedi.");
@@ -114,7 +125,10 @@ export default function SettingsModal({
       return;
     }
 
-    if (!Number.isFinite(freeShippingThresholdValue) || freeShippingThresholdValue < 0) {
+    if (
+      !Number.isFinite(freeShippingThresholdValue) ||
+      freeShippingThresholdValue < 0
+    ) {
       setShippingStatus("Ücretsiz kargo alt limiti geçerli değil.");
       return;
     }
@@ -143,8 +157,10 @@ export default function SettingsModal({
       }
 
       setShippingStatus("Kargo ayarları kaydedildi.");
-    } catch (error: any) {
-      setShippingStatus(error?.message || "Kargo ayarları kaydedilemedi.");
+    } catch (error: unknown) {
+      setShippingStatus(
+        getErrorMessage(error, "Kargo ayarları kaydedilemedi."),
+      );
     } finally {
       setShippingSaving(false);
     }
@@ -209,7 +225,9 @@ export default function SettingsModal({
                 type="text"
                 inputMode="decimal"
                 value={shippingFee}
-                onChange={(event) => setShippingFee(sanitizeMoneyInput(event.target.value))}
+                onChange={(event) =>
+                  setShippingFee(sanitizeMoneyInput(event.target.value))
+                }
                 placeholder="Örn: 69.90"
                 className="w-full p-3 bg-white border border-gray-200 rounded-xl font-bold outline-none focus:border-black"
               />
@@ -223,7 +241,11 @@ export default function SettingsModal({
                 type="text"
                 inputMode="decimal"
                 value={freeShippingThreshold}
-                onChange={(event) => setFreeShippingThreshold(sanitizeMoneyInput(event.target.value))}
+                onChange={(event) =>
+                  setFreeShippingThreshold(
+                    sanitizeMoneyInput(event.target.value),
+                  )
+                }
                 placeholder="Örn: 750"
                 className="w-full p-3 bg-white border border-gray-200 rounded-xl font-bold outline-none focus:border-black"
               />
@@ -268,7 +290,10 @@ export default function SettingsModal({
 
             {newSlidePreviews.length > 0 && (
               <div className="flex gap-2 overflow-x-auto mt-3 pb-2">
-                <img
+                <Image
+                  unoptimized
+                  width={64}
+                  height={64}
                   src={newSlidePreviews[0]}
                   className="w-16 h-16 object-cover rounded-lg border border-gray-200"
                   alt=""
@@ -280,7 +305,9 @@ export default function SettingsModal({
               type="text"
               placeholder="Başlık"
               value={newSlide.title}
-              onChange={(e) => setNewSlide({ ...newSlide, title: e.target.value })}
+              onChange={(e) =>
+                setNewSlide({ ...newSlide, title: e.target.value })
+              }
               className="w-full p-3 bg-white border border-gray-200 rounded-xl font-medium text-sm mt-3"
             />
 
@@ -288,18 +315,24 @@ export default function SettingsModal({
               type="text"
               placeholder="Alt Yazı"
               value={newSlide.subtitle}
-              onChange={(e) => setNewSlide({ ...newSlide, subtitle: e.target.value })}
+              onChange={(e) =>
+                setNewSlide({ ...newSlide, subtitle: e.target.value })
+              }
               className="w-full p-3 bg-white border border-gray-200 rounded-xl font-medium text-sm mt-3"
             />
 
             <select
               value={newSlide.category_slug || ""}
-              onChange={(e) => setNewSlide({ ...newSlide, category_slug: e.target.value })}
+              onChange={(e) =>
+                setNewSlide({ ...newSlide, category_slug: e.target.value })
+              }
               className="w-full p-3 bg-white border border-gray-200 rounded-xl font-medium text-sm mt-3 outline-none focus:border-black text-gray-700"
             >
               <option value="">Tüm Ürünler (Kategori Seçilmedi)</option>
-              {dbCategories.map(c => (
-                <option key={c.slug} value={c.slug}>{c.name}</option>
+              {dbCategories.map((c) => (
+                <option key={c.slug} value={c.slug}>
+                  {c.name}
+                </option>
               ))}
             </select>
 
@@ -318,7 +351,9 @@ export default function SettingsModal({
                 key={s.id}
                 className="bg-white border border-gray-200 rounded-2xl p-3 flex gap-3"
               >
-                <img
+                <Image
+                  width={64}
+                  height={64}
                   src={s.image_url}
                   alt="slide"
                   className="w-16 h-16 rounded-xl object-cover"
@@ -331,8 +366,8 @@ export default function SettingsModal({
                     onChange={(e) =>
                       setDbSlides((prev) =>
                         prev.map((x) =>
-                          x.id === s.id ? { ...x, title: e.target.value } : x
-                        )
+                          x.id === s.id ? { ...x, title: e.target.value } : x,
+                        ),
                       )
                     }
                     placeholder="Başlık"
@@ -345,8 +380,10 @@ export default function SettingsModal({
                     onChange={(e) =>
                       setDbSlides((prev) =>
                         prev.map((x) =>
-                          x.id === s.id ? { ...x, subtitle: e.target.value } : x
-                        )
+                          x.id === s.id
+                            ? { ...x, subtitle: e.target.value }
+                            : x,
+                        ),
                       )
                     }
                     placeholder="Alt Yazı"
@@ -358,15 +395,19 @@ export default function SettingsModal({
                     onChange={(e) =>
                       setDbSlides((prev) =>
                         prev.map((x) =>
-                          x.id === s.id ? { ...x, category_slug: e.target.value } : x
-                        )
+                          x.id === s.id
+                            ? { ...x, category_slug: e.target.value }
+                            : x,
+                        ),
                       )
                     }
                     className="w-full p-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 outline-none"
                   >
                     <option value="">Tüm Ürünler (Kategori Seçilmedi)</option>
-                    {dbCategories.map(c => (
-                      <option key={c.slug} value={c.slug}>{c.name}</option>
+                    {dbCategories.map((c) => (
+                      <option key={c.slug} value={c.slug}>
+                        {c.name}
+                      </option>
                     ))}
                   </select>
 
@@ -380,7 +421,7 @@ export default function SettingsModal({
                     </button>
                     <button
                       type="button"
-                      onClick={() => onDeleteSlide(s.id)}
+                      onClick={() => onDeleteSlide(s)}
                       className="flex-1 bg-red-50 text-red-600 py-1.5 rounded-lg text-xs font-bold border border-red-100"
                     >
                       Sil

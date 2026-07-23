@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect } from "react";
@@ -7,6 +6,7 @@ import { useSearch } from "@/context/SearchContext";
 import { useCart } from "@/context/CartContext";
 import { supabase } from "@/lib/supabase";
 import Link from "next/link";
+import Image from "next/image";
 
 export default function Navbar() {
   const router = useRouter();
@@ -29,9 +29,12 @@ export default function Navbar() {
 
   useEffect(() => {
     const fetchCategories = async () => {
-      const { data } = await supabase.from("categories").select("name").order("name");
+      const { data } = await supabase
+        .from("categories")
+        .select("name")
+        .order("name");
       if (data && data.length > 0) {
-        setCategories(data.map((c: any) => c.name));
+        setCategories(data.map((category: { name: string }) => category.name));
       }
     };
     fetchCategories();
@@ -39,7 +42,7 @@ export default function Navbar() {
 
   const totalItemsInCart = (items || []).reduce(
     (total, item) => total + Number(item.quantity || 0),
-    0
+    0,
   );
 
   const goHome = () => {
@@ -68,22 +71,21 @@ export default function Navbar() {
     setSelectedCategory(category);
     setSearchQuery("");
     setIsMobileMenuOpen(false);
-    router.push("/");
+    router.push(
+      category === "Tümü"
+        ? "/shop"
+        : `/shop?category=${encodeURIComponent(category)}`,
+    );
   };
 
   const handleDesktopCategorySelect = (category: string) => {
     setSelectedCategory(category);
     setSearchQuery("");
-    router.push("/");
+    router.push(`/shop?category=${encodeURIComponent(category)}`);
   };
 
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
-
-    if (value.trim() !== "") {
-      setSelectedCategory("Tümü");
-      router.push("/");
-    }
   };
 
   const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -91,7 +93,7 @@ export default function Navbar() {
 
     if (searchQuery.trim() !== "") {
       setSelectedCategory("Tümü");
-      router.push("/");
+      router.push(`/shop?q=${encodeURIComponent(searchQuery.trim())}`);
     }
   };
 
@@ -130,9 +132,12 @@ export default function Navbar() {
             className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 font-black text-2xl tracking-widest cursor-pointer z-10"
             aria-label="Ana sayfa"
           >
-            <img
+            <Image
+              width={128}
+              height={32}
               src="/logo.jpeg"
               alt="PrestigeSO"
+              priority
               className="h-8 object-contain pointer-events-none"
             />
           </Link>
@@ -158,9 +163,12 @@ export default function Navbar() {
             className="font-black text-2xl tracking-widest cursor-pointer flex-shrink-0 relative z-10"
             aria-label="Ana sayfa"
           >
-            <img
+            <Image
+              width={160}
+              height={40}
               src="/logo.jpeg"
               alt="PrestigeSO"
+              priority
               className="h-10 object-contain pointer-events-none"
             />
           </Link>
@@ -228,7 +236,6 @@ export default function Navbar() {
               aria-label="Sepet"
             >
               🛒
-
               {totalItemsInCart > 0 && (
                 <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[10px] font-bold w-5 h-5 flex items-center justify-center rounded-full shadow-sm">
                   {totalItemsInCart}
@@ -273,7 +280,12 @@ export default function Navbar() {
 
               <button
                 type="button"
-                onClick={() => handleCategorySelect("İndirimler")}
+                onClick={() => {
+                  setSelectedCategory("Tümü");
+                  setSearchQuery("");
+                  setIsMobileMenuOpen(false);
+                  router.push("/shop?discounted=1");
+                }}
                 className="w-full text-left px-6 py-4 font-black uppercase tracking-widest text-sm text-red-600 border-b border-gray-50 hover:bg-red-50 transition-colors"
               >
                 % İndirimler

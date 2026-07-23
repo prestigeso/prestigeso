@@ -23,6 +23,17 @@ export interface Product {
   created_at?: string;
 }
 
+export interface ProductVariant {
+  id: number;
+  product_id: number;
+  sku: string;
+  barcode?: string | null;
+  option_values: Record<string, string>;
+  price?: number | null;
+  stock: number;
+  is_active: boolean;
+}
+
 /* ─── Kampanya ─── */
 export interface Campaign {
   id: number;
@@ -40,26 +51,48 @@ export interface CartItem {
   name: string;
   price: number;
   quantity: number;
-  image?: string;
+  image: string;
   images?: string[];
   category?: string;
   stock?: number;
   SKU?: string;
+  discount_price?: number;
+  variant_id?: number;
+  variant_label?: string;
+  variant_options?: Record<string, string>;
 }
 
 /* ─── Kupon ─── */
 export interface CouponRow {
   id: number;
   code: string;
+  name: string;
+  description?: string | null;
   discount_type: "fixed" | "percent";
-  discount_value: number;
-  min_order_amount?: number;
-  max_discount_amount?: number;
-  usage_limit?: number;
-  used_count?: number;
-  is_active?: boolean;
-  starts_at?: string;
-  ends_at?: string;
+  discount_value: number | string;
+  min_order_amount: number | string;
+  max_discount_amount?: number | string | null;
+  usage_limit_total?: number | null;
+  usage_limit_per_user: number;
+  used_count: number | string;
+  is_active: boolean;
+  is_member_only: boolean;
+  starts_at?: string | null;
+  ends_at?: string | null;
+  created_at?: string;
+}
+
+export interface CouponUsageRow {
+  id: number;
+  coupon_id: number;
+  order_id: number;
+  user_id: string;
+  coupon_code: string;
+  discount_amount: number | string;
+  reserved_at?: string | null;
+  consumed_at?: string | null;
+  released_at?: string | null;
+  created_at?: string;
 }
 
 /* ─── Sipariş ─── */
@@ -68,9 +101,13 @@ export interface OrderItem {
   name: string;
   price: number;
   quantity: number;
+  discount_price?: number | string;
   image?: string;
   images?: string[];
   SKU?: string;
+  variant_id?: number;
+  variant_sku?: string;
+  variant_options?: Record<string, string>;
 }
 
 export interface Order {
@@ -116,6 +153,7 @@ export interface Review {
   product_id: number;
   rating: number;
   comment?: string;
+  user_name?: string;
   images?: string[];
   is_approved?: boolean;
   created_at?: string;
@@ -128,6 +166,7 @@ export interface Question {
   user_id: string;
   product_id: number;
   question: string;
+  user_name?: string;
   answer?: string | null;
   is_approved?: boolean;
   answered_at?: string | null;
@@ -162,13 +201,13 @@ export interface HeroSlide {
 /* ─── Müşteri Profili ─── */
 export interface CustomerProfile {
   id: string;
-  email?: string;
-  first_name?: string;
-  last_name?: string;
-  full_name?: string;
-  phone?: string;
-  gender?: string;
-  birth_date?: string;
+  email?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  full_name?: string | null;
+  phone?: string | null;
+  gender?: string | null;
+  birth_date?: string | null;
 }
 
 /* ─── Favori (join ile) ─── */

@@ -2,26 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useAppAlert } from "@/context/AppAlertContext";
-import { formatMoney } from "@/lib/utils";
-
-type CouponRow = {
-  id: string;
-  code: string;
-  name: string;
-  description?: string | null;
-  discount_type: "percent" | "fixed";
-  discount_value: number | string;
-  min_order_amount: number | string;
-  max_discount_amount?: number | string | null;
-  starts_at?: string | null;
-  ends_at?: string | null;
-  usage_limit_total?: number | null;
-  usage_limit_per_user?: number | null;
-  used_count?: number | null;
-  is_active: boolean;
-  is_member_only: boolean;
-  created_at?: string;
-};
+import { formatMoney, getErrorMessage } from "@/lib/utils";
+import type { CouponRow } from "@/types";
 
 type Props = {
   open: boolean;
@@ -72,7 +54,6 @@ function normalizeCouponCode(value: string) {
     .slice(0, MAX_CODE_LENGTH);
 }
 
-
 function formatDate(value?: string | null) {
   if (!value) return "Süresiz";
 
@@ -112,21 +93,40 @@ function validateCouponForm(form: CouponForm) {
   const name = form.name.trim();
   const discountValue = Number(form.discountValue);
   const minOrderAmount = Number(form.minOrderAmount || 0);
-  const maxDiscountAmount = form.maxDiscountAmount ? Number(form.maxDiscountAmount) : null;
-  const usageLimitTotal = form.usageLimitTotal ? Number(form.usageLimitTotal) : null;
+  const maxDiscountAmount = form.maxDiscountAmount
+    ? Number(form.maxDiscountAmount)
+    : null;
+  const usageLimitTotal = form.usageLimitTotal
+    ? Number(form.usageLimitTotal)
+    : null;
   const usageLimitPerUser = Number(form.usageLimitPerUser || 1);
 
   if (!code) return "Kupon kodu zorunludur.";
   if (!name) return "Kupon adı zorunludur.";
-  if (name.length > MAX_NAME_LENGTH) return `Kupon adı en fazla ${MAX_NAME_LENGTH} karakter olabilir.`;
-  if (form.description.length > MAX_DESCRIPTION_LENGTH) return `Açıklama en fazla ${MAX_DESCRIPTION_LENGTH} karakter olabilir.`;
-  if (!Number.isFinite(discountValue) || discountValue <= 0) return "İndirim değeri 0'dan büyük olmalıdır.";
-  if (form.discountType === "percent" && discountValue > 89) return "Yüzde indirim 1-89 arası olmalıdır.";
-  if (!Number.isFinite(minOrderAmount) || minOrderAmount < 0) return "Minimum sepet tutarı 0 veya daha büyük olmalıdır.";
-  if (maxDiscountAmount !== null && (!Number.isFinite(maxDiscountAmount) || maxDiscountAmount < 0)) return "Maksimum indirim tutarı 0 veya daha büyük olmalıdır.";
-  if (usageLimitTotal !== null && (!Number.isFinite(usageLimitTotal) || usageLimitTotal < 0)) return "Toplam kullanım limiti 0 veya daha büyük olmalıdır.";
-  if (!Number.isFinite(usageLimitPerUser) || usageLimitPerUser < 1) return "Kullanıcı başı kullanım limiti en az 1 olmalıdır.";
-  if (form.startsAt && form.endsAt && form.endsAt < form.startsAt) return "Bitiş tarihi başlangıç tarihinden önce olamaz.";
+  if (name.length > MAX_NAME_LENGTH)
+    return `Kupon adı en fazla ${MAX_NAME_LENGTH} karakter olabilir.`;
+  if (form.description.length > MAX_DESCRIPTION_LENGTH)
+    return `Açıklama en fazla ${MAX_DESCRIPTION_LENGTH} karakter olabilir.`;
+  if (!Number.isFinite(discountValue) || discountValue <= 0)
+    return "İndirim değeri 0'dan büyük olmalıdır.";
+  if (form.discountType === "percent" && discountValue > 89)
+    return "Yüzde indirim 1-89 arası olmalıdır.";
+  if (!Number.isFinite(minOrderAmount) || minOrderAmount < 0)
+    return "Minimum sepet tutarı 0 veya daha büyük olmalıdır.";
+  if (
+    maxDiscountAmount !== null &&
+    (!Number.isFinite(maxDiscountAmount) || maxDiscountAmount < 0)
+  )
+    return "Maksimum indirim tutarı 0 veya daha büyük olmalıdır.";
+  if (
+    usageLimitTotal !== null &&
+    (!Number.isFinite(usageLimitTotal) || usageLimitTotal < 0)
+  )
+    return "Toplam kullanım limiti 0 veya daha büyük olmalıdır.";
+  if (!Number.isFinite(usageLimitPerUser) || usageLimitPerUser < 1)
+    return "Kullanıcı başı kullanım limiti en az 1 olmalıdır.";
+  if (form.startsAt && form.endsAt && form.endsAt < form.startsAt)
+    return "Bitiş tarihi başlangıç tarihinden önce olamaz.";
 
   return null;
 }
@@ -139,10 +139,14 @@ function buildPayload(form: CouponForm) {
     discount_type: form.discountType,
     discount_value: Number(form.discountValue),
     min_order_amount: Number(form.minOrderAmount || 0),
-    max_discount_amount: form.maxDiscountAmount ? Number(form.maxDiscountAmount) : null,
+    max_discount_amount: form.maxDiscountAmount
+      ? Number(form.maxDiscountAmount)
+      : null,
     starts_at: inputDateToIso(form.startsAt),
     ends_at: inputDateToIso(form.endsAt, true),
-    usage_limit_total: form.usageLimitTotal ? Number(form.usageLimitTotal) : null,
+    usage_limit_total: form.usageLimitTotal
+      ? Number(form.usageLimitTotal)
+      : null,
     usage_limit_per_user: Number(form.usageLimitPerUser || 1),
     is_active: form.isActive,
     is_member_only: form.isMemberOnly,
@@ -157,7 +161,7 @@ export default function CouponsModal({ open, onClose }: Props) {
   const [coupons, setCoupons] = useState<CouponRow[]>([]);
   const [search, setSearch] = useState("");
   const [form, setForm] = useState<CouponForm>(initialForm);
-  const [editingCouponId, setEditingCouponId] = useState<string | null>(null);
+  const [editingCouponId, setEditingCouponId] = useState<number | null>(null);
 
   const loadCoupons = async () => {
     setLoading(true);
@@ -175,8 +179,8 @@ export default function CouponsModal({ open, onClose }: Props) {
       }
 
       setCoupons((result?.coupons || []) as CouponRow[]);
-    } catch (error: any) {
-      showToast(error?.message || "Kuponlar yüklenemedi.", "error");
+    } catch (error: unknown) {
+      showToast(getErrorMessage(error, "Kuponlar yüklenemedi."), "error");
     } finally {
       setLoading(false);
     }
@@ -197,11 +201,18 @@ export default function CouponsModal({ open, onClose }: Props) {
       const name = (coupon.name || "").toLocaleLowerCase("tr-TR");
       const description = (coupon.description || "").toLocaleLowerCase("tr-TR");
 
-      return code.includes(query) || name.includes(query) || description.includes(query);
+      return (
+        code.includes(query) ||
+        name.includes(query) ||
+        description.includes(query)
+      );
     });
   }, [coupons, search]);
 
-  const resetForm = () => { setForm(initialForm); setEditingCouponId(null); };
+  const resetForm = () => {
+    setForm(initialForm);
+    setEditingCouponId(null);
+  };
 
   const handleClose = () => {
     resetForm();
@@ -230,20 +241,30 @@ export default function CouponsModal({ open, onClose }: Props) {
         method: isEditing ? "PATCH" : "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(isEditing ? { ...buildPayload(form), id: editingCouponId } : buildPayload(form)),
+        body: JSON.stringify(
+          isEditing
+            ? { ...buildPayload(form), id: editingCouponId }
+            : buildPayload(form),
+        ),
       });
 
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result?.error || (isEditing ? "Kupon güncellenemedi." : "Kupon oluşturulamadı."));
+        throw new Error(
+          result?.error ||
+            (isEditing ? "Kupon güncellenemedi." : "Kupon oluşturulamadı."),
+        );
       }
 
-      showToast(isEditing ? "Kupon güncellendi." : "Kupon oluşturuldu.", "success");
+      showToast(
+        isEditing ? "Kupon güncellendi." : "Kupon oluşturuldu.",
+        "success",
+      );
       resetForm();
       await loadCoupons();
-    } catch (error: any) {
-      showToast(error?.message || "Kupon kaydedilemedi.", "error");
+    } catch (error: unknown) {
+      showToast(getErrorMessage(error, "Kupon kaydedilemedi."), "error");
     } finally {
       setSaving(false);
     }
@@ -258,11 +279,17 @@ export default function CouponsModal({ open, onClose }: Props) {
       discountType: coupon.discount_type || "fixed",
       discountValue: String(coupon.discount_value || ""),
       minOrderAmount: String(coupon.min_order_amount || "0"),
-      maxDiscountAmount: coupon.max_discount_amount ? String(coupon.max_discount_amount) : "",
+      maxDiscountAmount: coupon.max_discount_amount
+        ? String(coupon.max_discount_amount)
+        : "",
       startsAt: coupon.starts_at ? String(coupon.starts_at).slice(0, 10) : "",
       endsAt: coupon.ends_at ? String(coupon.ends_at).slice(0, 10) : "",
-      usageLimitTotal: coupon.usage_limit_total ? String(coupon.usage_limit_total) : "",
-      usageLimitPerUser: coupon.usage_limit_per_user ? String(coupon.usage_limit_per_user) : "1",
+      usageLimitTotal: coupon.usage_limit_total
+        ? String(coupon.usage_limit_total)
+        : "",
+      usageLimitPerUser: coupon.usage_limit_per_user
+        ? String(coupon.usage_limit_per_user)
+        : "1",
       isActive: coupon.is_active ?? true,
       isMemberOnly: coupon.is_member_only ?? true,
     });
@@ -286,12 +313,22 @@ export default function CouponsModal({ open, onClose }: Props) {
       }
 
       setCoupons((prev) =>
-        prev.map((item) => (item.id === coupon.id ? (result.coupon as CouponRow) : item))
+        prev.map((item) =>
+          item.id === coupon.id ? (result.coupon as CouponRow) : item,
+        ),
       );
 
-      showToast(result.coupon?.is_active ? "Kupon aktif edildi." : "Kupon pasif edildi.", "success");
-    } catch (error: any) {
-      showToast(error?.message || "Kupon durumu güncellenemedi.", "error");
+      showToast(
+        result.coupon?.is_active
+          ? "Kupon aktif edildi."
+          : "Kupon pasif edildi.",
+        "success",
+      );
+    } catch (error: unknown) {
+      showToast(
+        getErrorMessage(error, "Kupon durumu güncellenemedi."),
+        "error",
+      );
     }
   };
 
@@ -322,8 +359,8 @@ export default function CouponsModal({ open, onClose }: Props) {
 
       setCoupons((prev) => prev.filter((item) => item.id !== coupon.id));
       showToast("Kupon silindi.", "success");
-    } catch (error: any) {
-      showToast(error?.message || "Kupon silinemedi.", "error");
+    } catch (error: unknown) {
+      showToast(getErrorMessage(error, "Kupon silinemedi."), "error");
     }
   };
 
@@ -394,7 +431,9 @@ export default function CouponsModal({ open, onClose }: Props) {
                 <input
                   value={form.code}
                   maxLength={MAX_CODE_LENGTH}
-                  onChange={(event) => updateForm("code", normalizeCouponCode(event.target.value))}
+                  onChange={(event) =>
+                    updateForm("code", normalizeCouponCode(event.target.value))
+                  }
                   placeholder="Örn: PRESTIGE50"
                   className="w-full p-3 bg-white border border-gray-200 rounded-xl font-black uppercase tracking-widest outline-none focus:border-black"
                 />
@@ -420,7 +459,9 @@ export default function CouponsModal({ open, onClose }: Props) {
                 <textarea
                   value={form.description}
                   maxLength={MAX_DESCRIPTION_LENGTH}
-                  onChange={(event) => updateForm("description", event.target.value)}
+                  onChange={(event) =>
+                    updateForm("description", event.target.value)
+                  }
                   placeholder="Checkout ve profil sayfasında görünür."
                   rows={3}
                   className="w-full p-3 bg-white border border-gray-200 rounded-xl font-medium resize-none outline-none focus:border-black"
@@ -434,7 +475,12 @@ export default function CouponsModal({ open, onClose }: Props) {
                   </label>
                   <select
                     value={form.discountType}
-                    onChange={(event) => updateForm("discountType", event.target.value as "percent" | "fixed")}
+                    onChange={(event) =>
+                      updateForm(
+                        "discountType",
+                        event.target.value as "percent" | "fixed",
+                      )
+                    }
                     className="w-full p-3 bg-white border border-gray-200 rounded-xl font-bold outline-none focus:border-black"
                   >
                     <option value="fixed">TL İndirim</option>
@@ -452,7 +498,9 @@ export default function CouponsModal({ open, onClose }: Props) {
                     max={form.discountType === "percent" ? 89 : 999999}
                     step="0.01"
                     value={form.discountValue}
-                    onChange={(event) => updateForm("discountValue", event.target.value)}
+                    onChange={(event) =>
+                      updateForm("discountValue", event.target.value)
+                    }
                     placeholder={form.discountType === "fixed" ? "50" : "10"}
                     className="w-full p-3 bg-white border border-gray-200 rounded-xl font-bold outline-none focus:border-black"
                   />
@@ -469,7 +517,9 @@ export default function CouponsModal({ open, onClose }: Props) {
                     min="0"
                     step="0.01"
                     value={form.minOrderAmount}
-                    onChange={(event) => updateForm("minOrderAmount", event.target.value)}
+                    onChange={(event) =>
+                      updateForm("minOrderAmount", event.target.value)
+                    }
                     className="w-full p-3 bg-white border border-gray-200 rounded-xl font-bold outline-none focus:border-black"
                   />
                 </div>
@@ -483,7 +533,9 @@ export default function CouponsModal({ open, onClose }: Props) {
                     min="0"
                     step="0.01"
                     value={form.maxDiscountAmount}
-                    onChange={(event) => updateForm("maxDiscountAmount", event.target.value)}
+                    onChange={(event) =>
+                      updateForm("maxDiscountAmount", event.target.value)
+                    }
                     placeholder="Opsiyonel"
                     className="w-full p-3 bg-white border border-gray-200 rounded-xl font-bold outline-none focus:border-black"
                   />
@@ -498,7 +550,9 @@ export default function CouponsModal({ open, onClose }: Props) {
                   <input
                     type="date"
                     value={form.startsAt}
-                    onChange={(event) => updateForm("startsAt", event.target.value)}
+                    onChange={(event) =>
+                      updateForm("startsAt", event.target.value)
+                    }
                     className="w-full p-3 bg-white border border-gray-200 rounded-xl font-bold outline-none focus:border-black"
                   />
                 </div>
@@ -511,7 +565,9 @@ export default function CouponsModal({ open, onClose }: Props) {
                     type="date"
                     value={form.endsAt}
                     min={form.startsAt || undefined}
-                    onChange={(event) => updateForm("endsAt", event.target.value)}
+                    onChange={(event) =>
+                      updateForm("endsAt", event.target.value)
+                    }
                     className="w-full p-3 bg-white border border-gray-200 rounded-xl font-bold outline-none focus:border-black"
                   />
                 </div>
@@ -527,7 +583,9 @@ export default function CouponsModal({ open, onClose }: Props) {
                     min="0"
                     step="1"
                     value={form.usageLimitTotal}
-                    onChange={(event) => updateForm("usageLimitTotal", event.target.value)}
+                    onChange={(event) =>
+                      updateForm("usageLimitTotal", event.target.value)
+                    }
                     placeholder="Sınırsız"
                     className="w-full p-3 bg-white border border-gray-200 rounded-xl font-bold outline-none focus:border-black"
                   />
@@ -542,7 +600,9 @@ export default function CouponsModal({ open, onClose }: Props) {
                     min="1"
                     step="1"
                     value={form.usageLimitPerUser}
-                    onChange={(event) => updateForm("usageLimitPerUser", event.target.value)}
+                    onChange={(event) =>
+                      updateForm("usageLimitPerUser", event.target.value)
+                    }
                     className="w-full p-3 bg-white border border-gray-200 rounded-xl font-bold outline-none focus:border-black"
                   />
                 </div>
@@ -553,20 +613,28 @@ export default function CouponsModal({ open, onClose }: Props) {
                   <input
                     type="checkbox"
                     checked={form.isActive}
-                    onChange={(event) => updateForm("isActive", event.target.checked)}
+                    onChange={(event) =>
+                      updateForm("isActive", event.target.checked)
+                    }
                     className="w-4 h-4 accent-black"
                   />
-                  <span className="text-xs font-black uppercase tracking-widest">Aktif</span>
+                  <span className="text-xs font-black uppercase tracking-widest">
+                    Aktif
+                  </span>
                 </label>
 
                 <label className="flex items-center gap-3 bg-white border border-gray-200 rounded-xl p-3 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={form.isMemberOnly}
-                    onChange={(event) => updateForm("isMemberOnly", event.target.checked)}
+                    onChange={(event) =>
+                      updateForm("isMemberOnly", event.target.checked)
+                    }
                     className="w-4 h-4 accent-black"
                   />
-                  <span className="text-xs font-black uppercase tracking-widest">Üyeye Özel</span>
+                  <span className="text-xs font-black uppercase tracking-widest">
+                    Üyeye Özel
+                  </span>
                 </label>
               </div>
 
@@ -576,7 +644,13 @@ export default function CouponsModal({ open, onClose }: Props) {
                 disabled={saving}
                 className="w-full bg-black text-white py-4 rounded-xl font-black uppercase tracking-widest text-xs shadow-lg disabled:opacity-50 active:scale-95 transition-all"
               >
-                {saving ? (editingCouponId ? "Güncelleniyor..." : "Oluşturuluyor...") : (editingCouponId ? "Kuponu Güncelle" : "Kupon Oluştur")}
+                {saving
+                  ? editingCouponId
+                    ? "Güncelleniyor..."
+                    : "Oluşturuluyor..."
+                  : editingCouponId
+                    ? "Kuponu Güncelle"
+                    : "Kupon Oluştur"}
               </button>
             </div>
           </div>
@@ -628,7 +702,9 @@ export default function CouponsModal({ open, onClose }: Props) {
                 {filteredCoupons.map((coupon) => {
                   const usedCount = Number(coupon.used_count || 0);
                   const totalLimit = coupon.usage_limit_total ?? null;
-                  const isExpired = coupon.ends_at ? new Date(coupon.ends_at).getTime() < Date.now() : false;
+                  const isExpired = coupon.ends_at
+                    ? new Date(coupon.ends_at).getTime() < Date.now()
+                    : false;
 
                   return (
                     <div
@@ -652,7 +728,11 @@ export default function CouponsModal({ open, onClose }: Props) {
                                   : "bg-gray-200 text-gray-500"
                               }`}
                             >
-                              {isExpired ? "Süresi Bitti" : coupon.is_active ? "Aktif" : "Pasif"}
+                              {isExpired
+                                ? "Süresi Bitti"
+                                : coupon.is_active
+                                  ? "Aktif"
+                                  : "Pasif"}
                             </span>
                           </div>
 
@@ -662,7 +742,9 @@ export default function CouponsModal({ open, onClose }: Props) {
                         </div>
 
                         <div className="bg-black text-white rounded-2xl px-4 py-3 text-center shrink-0">
-                          <p className="text-base font-black leading-none">{getDiscountLabel(coupon)}</p>
+                          <p className="text-base font-black leading-none">
+                            {getDiscountLabel(coupon)}
+                          </p>
                           <p className="text-[9px] font-black uppercase tracking-widest mt-1 opacity-70">
                             {coupon.discount_type === "fixed" ? "TL" : "Yüzde"}
                           </p>
@@ -690,7 +772,9 @@ export default function CouponsModal({ open, onClose }: Props) {
                             Maks. İndirim
                           </p>
                           <p className="text-xs font-black text-black mt-1">
-                            {coupon.max_discount_amount ? `${formatMoney(coupon.max_discount_amount)} TL` : "Yok"}
+                            {coupon.max_discount_amount
+                              ? `${formatMoney(coupon.max_discount_amount)} TL`
+                              : "Yok"}
                           </p>
                         </div>
 
@@ -699,7 +783,8 @@ export default function CouponsModal({ open, onClose }: Props) {
                             Kullanım
                           </p>
                           <p className="text-xs font-black text-black mt-1">
-                            {usedCount} / {totalLimit === null ? "∞" : totalLimit}
+                            {usedCount} /{" "}
+                            {totalLimit === null ? "∞" : totalLimit}
                           </p>
                         </div>
 

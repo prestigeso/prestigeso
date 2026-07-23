@@ -1,20 +1,30 @@
 "use client";
 
 import type { ChangeEvent, FormEvent } from "react";
+import Image from "next/image";
 import { useAppAlert } from "@/context/AppAlertContext";
 import { revokeUrls } from "../utils";
+import type { ProductRow } from "../types";
+import ProductVariantsEditor from "../ProductVariantsEditor";
 
 const MAX_ADDED_IMAGE_COUNT = 8;
-const MAX_IMAGE_SIZE_MB = 50;
+const MAX_IMAGE_SIZE_MB = 8;
 const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
-const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
+const ALLOWED_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/avif",
+];
 
 function validateImageFiles(files: File[]) {
   if (files.length > MAX_ADDED_IMAGE_COUNT) {
     return `Tek seferde en fazla ${MAX_ADDED_IMAGE_COUNT} fotoğraf seçebilirsiniz.`;
   }
 
-  const invalidType = files.find((file) => !ALLOWED_IMAGE_TYPES.includes(file.type));
+  const invalidType = files.find(
+    (file) => !ALLOWED_IMAGE_TYPES.includes(file.type),
+  );
 
   if (invalidType) {
     return "Sadece JPG, PNG, WEBP veya AVIF formatında görsel yükleyebilirsiniz. SVG/HTML kabul edilmez.";
@@ -33,8 +43,8 @@ type Props = {
   open: boolean;
   onClose: () => void;
   loading: boolean;
-  editingProduct: any | null;
-  setEditingProduct: (p: any | null) => void;
+  editingProduct: ProductRow | null;
+  setEditingProduct: (product: ProductRow | null) => void;
   onSubmit: (e: FormEvent<HTMLFormElement>) => void;
   saving: boolean;
   onDelete: (id: number) => void;
@@ -189,14 +199,21 @@ export default function EditProductModal({
                 📸 Fotoğrafları Sırala
               </p>
 
-              {Array.isArray(editingProduct.images) && editingProduct.images.length > 0 ? (
+              {Array.isArray(editingProduct.images) &&
+              editingProduct.images.length > 0 ? (
                 <div className="grid grid-cols-3 gap-2">
                   {editingProduct.images.map((url: string, idx: number) => (
                     <div
                       key={idx}
                       className="relative border border-gray-200 rounded-xl overflow-hidden bg-gray-50 group"
                     >
-                      <img src={url} className="w-full h-20 object-cover" alt="" />
+                      <Image
+                        width={160}
+                        height={80}
+                        src={url}
+                        className="w-full h-20 object-cover"
+                        alt=""
+                      />
 
                       {idx === 0 && (
                         <span className="absolute top-1 left-1 bg-black text-white text-[10px] px-2 py-0.5 rounded z-10">
@@ -226,7 +243,9 @@ export default function EditProductModal({
                         <button
                           type="button"
                           onClick={() => moveImage(idx, "right")}
-                          disabled={idx === editingProduct.images.length - 1}
+                          disabled={
+                            idx === (editingProduct.images?.length || 0) - 1
+                          }
                           className="w-6 h-6 bg-white text-black rounded-full flex items-center justify-center text-xs shadow-md disabled:opacity-30"
                           title="Sağa al"
                         >
@@ -242,7 +261,9 @@ export default function EditProductModal({
             </div>
 
             <div className="mt-4 bg-gray-50 border border-gray-200 rounded-2xl p-3">
-              <p className="text-xs font-black mb-2">➕ Galeriye Fotoğraf Ekle</p>
+              <p className="text-xs font-black mb-2">
+                ➕ Galeriye Fotoğraf Ekle
+              </p>
 
               <input
                 type="file"
@@ -253,13 +274,17 @@ export default function EditProductModal({
               />
 
               <p className="text-[10px] text-gray-400 font-bold mt-2">
-                Tek seferde en fazla {MAX_ADDED_IMAGE_COUNT} görsel. Her görsel en fazla {MAX_IMAGE_SIZE_MB} MB. SVG/HTML kabul edilmez.
+                Tek seferde en fazla {MAX_ADDED_IMAGE_COUNT} görsel. Her görsel
+                en fazla {MAX_IMAGE_SIZE_MB} MB. SVG/HTML kabul edilmez.
               </p>
 
               {addPreviews.length > 0 && (
                 <div className="flex gap-2 overflow-x-auto mt-3 pb-2">
                   {addPreviews.map((url, index) => (
-                    <img
+                    <Image
+                      unoptimized
+                      width={64}
+                      height={64}
                       key={index}
                       src={url}
                       className="w-16 h-16 object-cover rounded-lg border border-gray-200"
@@ -290,7 +315,10 @@ export default function EditProductModal({
                   maxLength={140}
                   value={editingProduct.name || ""}
                   onChange={(event) =>
-                    setEditingProduct({ ...editingProduct, name: event.target.value })
+                    setEditingProduct({
+                      ...editingProduct,
+                      name: event.target.value,
+                    })
                   }
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium"
                 />
@@ -308,7 +336,10 @@ export default function EditProductModal({
                   step="0.01"
                   value={editingProduct.price ?? ""}
                   onChange={(event) =>
-                    setEditingProduct({ ...editingProduct, price: event.target.value })
+                    setEditingProduct({
+                      ...editingProduct,
+                      price: event.target.value,
+                    })
                   }
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium"
                 />
@@ -335,7 +366,10 @@ export default function EditProductModal({
                   maxLength={80}
                   value={barcodeValue}
                   onChange={(event) =>
-                    setEditingProduct({ ...editingProduct, barcode: event.target.value })
+                    setEditingProduct({
+                      ...editingProduct,
+                      barcode: event.target.value,
+                    })
                   }
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium font-mono text-blue-600"
                 />
@@ -348,13 +382,18 @@ export default function EditProductModal({
                 <select
                   value={editingProduct.category || ""}
                   onChange={(event) =>
-                    setEditingProduct({ ...editingProduct, category: event.target.value })
+                    setEditingProduct({
+                      ...editingProduct,
+                      category: event.target.value,
+                    })
                   }
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium text-black focus:ring-2 focus:ring-black outline-none transition-all"
                 >
                   <option value="">Seçiniz...</option>
                   {categories.map((c) => (
-                    <option key={c.id} value={c.name}>{c.name}</option>
+                    <option key={c.id} value={c.name}>
+                      {c.name}
+                    </option>
                   ))}
                 </select>
               </div>
@@ -424,6 +463,8 @@ export default function EditProductModal({
                 {saving ? "Kaydediliyor..." : "KAYDET"}
               </button>
             </form>
+
+            <ProductVariantsEditor productId={editingProduct.id} />
 
             <div className="pt-4 border-t border-gray-100 mt-4">
               <button

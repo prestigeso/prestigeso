@@ -1,322 +1,211 @@
-"use client";
+import ShopClient from "@/components/storefront/ShopClient";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import type { Campaign, Product } from "@/types";
+import { redirect } from "next/navigation";
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import Image from "next/image";
-import { supabase } from "@/lib/supabase";
-import { useSearch } from "@/context/SearchContext";
-import { useAppAlert } from "@/context/AppAlertContext";
-import { safeParseIds, sanitizeImageUrl } from "@/lib/utils";
+export const revalidate = 60;
 
-import type { Product, Campaign } from "@/types";
+const PAGE_SIZE = 20;
 
-function getActiveCampaign(productId: number | string, campaigns: Campaign[]) {
-  const now = new Date();
+type ShopSearchParams = {
+  q?: string;
+  category?: string;
+  sort?: string;
+  page?: string;
+  minPrice?: string;
+  maxPrice?: string;
+  discounted?: string;
+  bestseller?: string;
+  minRating?: string;
+  availability?: string;
+  option?: string;
+};
 
-  return campaigns.find((campaign) => {
-    const ids = safeParseIds(campaign.product_ids);
-
-    return (
-      ids.includes(Number(productId)) &&
-      now >= new Date(campaign.start_date) &&
-      now <= new Date(campaign.end_date)
-    );
-  });
+function normalizeSearch(value: string | undefined) {
+  return (value || "")
+    .trim()
+    .slice(0, 80)
+    .replace(/[^\p{L}\p{N}\s-]/gu, "");
 }
 
-export default function ShopPage() {
-  const { searchQuery, selectedCategory, setSelectedCategory } = useSearch();
-  const { showToast } = useAppAlert();
-
-  const [dbProducts, setDbProducts] = useState<Product[]>([]);
-  const [dbCampaigns, setDbCampaigns] = useState<Campaign[]>([]);
-  const [favoriteIds, setFavoriteIds] = useState<Set<number>>(() => new Set());
-  const [authUserId, setAuthUserId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [visibleCount, setVisibleCount] = useState(20);
-
-  const categories = [
-    "Tümü",
-    "Setler",
-    "Masa Süsleri",
-    "Kolyeler",
-    "Yüzükler",
-    "Bilezikler",
-    "Küpeler",
-    "Tesbihler",
-  ];
-
-  useEffect(() => {
-    const fetchShopData = async () => {
-      setLoading(true);
-
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-
-      if (session) {
-        setAuthUserId(session.user.id);
-
-        const { data: favData } = await supabase
-          .from("favorites")
-          .select("product_id")
-          .eq("user_id", session.user.id);
-
-        setFavoriteIds(
-          () => new Set((favData || []).map((fav: any) => Number(fav.product_id)))
-        );
-      } else {
-        setAuthUserId(null);
-        setFavoriteIds(() => new Set());
-      }
-
-      const { data: productsData, error: productsError } = await supabase
-        .from("products")
-        .select("*")
-        .gt("stock", 0)
-        .order("created_at", { ascending: false });
-
-      if (!productsError && productsData) {
-        setDbProducts(productsData as Product[]);
-      } else {
-        setDbProducts([]);
-      }
-
-      const { data: campaignsData, error: campaignsError } = await supabase
-        .from("campaigns")
-        .select("*")
-        .gte("end_date", new Date().toISOString())
-        .order("created_at", { ascending: false });
-
-      if (!campaignsError && campaignsData) {
-        setDbCampaigns(campaignsData as Campaign[]);
-      } else {
-        setDbCampaigns([]);
-      }
-
-      setLoading(false);
-    };
-
-    fetchShopData();
-  }, []);
-
-  useEffect(() => {
-    setVisibleCount(20);
-  }, [selectedCategory, searchQuery]);
-
-  const filteredProducts = useMemo(() => {
-    return dbProducts.filter((product) => {
-      const matchCategory =
-        selectedCategory === "Tümü" || product.category === selectedCategory;
-
-      const query = (searchQuery || "").toLowerCase().trim();
-
-      const matchSearch =
-        query === "" ||
-        (product.name || "").toLowerCase().includes(query) ||
-        (product.category || "").toLowerCase().includes(query);
-
-      return matchCategory && matchSearch;
-    });
-  }, [dbProducts, selectedCategory, searchQuery]);
-
-  const paginatedProducts = filteredProducts.slice(0, visibleCount);
-  const hasMore = visibleCount < filteredProducts.length;
-
-  const handleToggleFavorite = async (
-    productId: number,
-    isCurrentlyFavorite: boolean
-  ) => {
-    if (!authUserId) {
-      showToast("Ürünleri favorilemek için lütfen önce giriş yapın.", "warning");
-      return;
-    }
-
-    if (isCurrentlyFavorite) {
-      const { error } = await supabase
-        .from("favorites")
-        .delete()
-        .eq("user_id", authUserId)
-        .eq("product_id", productId);
-
-      if (error) {
-        showToast("Favorilerden kaldırılırken bir hata oluştu.", "error");
-        return;
-      }
-
-      setFavoriteIds((prev) => {
-        const next = new Set(prev);
-        next.delete(productId);
-        return next;
-      });
-
-      showToast("Ürün favorilerden kaldırıldı.", "success");
-      return;
-    }
-
-    const { error } = await supabase
-      .from("favorites")
-      .insert([{ user_id: authUserId, product_id: productId }]);
-
-    if (error) {
-      showToast("Favorilere eklenirken bir hata oluştu.", "error");
-      return;
-    }
-
-    setFavoriteIds((prev) => {
-      const next = new Set(prev);
-      next.add(productId);
-      return next;
-    });
-
-    showToast("Ürün favorilere eklendi.", "success");
-  };
-
-  return (
-    <div className="min-h-screen bg-white pt-24 pb-20 px-4 md:px-10">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex flex-col md:flex-row justify-between items-center mb-10 border-b border-gray-100 pb-8 gap-6">
-          <h1 className="text-3xl font-black uppercase tracking-tighter text-black">
-            TÜM ÜRÜNLER{" "}
-            <span className="text-gray-300 ml-2">[{filteredProducts.length}]</span>
-          </h1>
-
-          <div className="flex gap-2 overflow-x-auto hide-scrollbar w-full md:w-auto">
-            {categories.map((cat) => (
-              <button
-                type="button"
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-5 py-2 rounded-full text-xs font-black uppercase tracking-widest transition-all border-2 ${
-                  selectedCategory === cat
-                    ? "bg-black text-white border-black"
-                    : "bg-white text-gray-400 border-gray-100 hover:border-black hover:text-black"
-                }`}
-              >
-                {cat}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="py-20 text-center font-bold text-gray-300 uppercase tracking-widest">
-            Koleksiyon Hazırlanıyor...
-          </div>
-        ) : filteredProducts.length === 0 ? (
-          <div className="py-20 text-center font-bold text-gray-300 uppercase tracking-widest">
-            Ürün bulunamadı.
-          </div>
-        ) : (
-          <>
-            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
-              {paginatedProducts.map((product) => (
-                <ShopCard
-                  key={product.id}
-                  product={product}
-                  campaigns={dbCampaigns}
-                  isFavorite={favoriteIds.has(Number(product.id))}
-                  onToggleFavorite={handleToggleFavorite}
-                />
-              ))}
-            </div>
-            {hasMore && (
-              <div className="flex justify-center mt-10">
-                <button
-                  type="button"
-                  onClick={() => setVisibleCount((prev) => prev + 20)}
-                  className="bg-black text-white px-10 py-3.5 rounded-full font-black text-xs uppercase tracking-widest hover:bg-gray-800 transition-all shadow-lg active:scale-95"
-                >
-                  Daha Fazla Göster ({filteredProducts.length - visibleCount} ürün kaldı)
-                </button>
-              </div>
-            )}
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ShopCard({
-  product,
-  campaigns,
-  isFavorite,
-  onToggleFavorite,
+export default async function ShopPage({
+  searchParams,
 }: {
-  product: Product;
-  campaigns: Campaign[];
-  isFavorite: boolean;
-  onToggleFavorite: (productId: number, isCurrentlyFavorite: boolean) => void;
+  searchParams?: Promise<ShopSearchParams>;
 }) {
-  const displayImage = sanitizeImageUrl(product.images?.[0] || product.image);
-  const activeCampaign = getActiveCampaign(product.id, campaigns);
+  const params = searchParams ? await searchParams : {};
+  const query = normalizeSearch(params.q);
+  const category = (params.category || "").trim().slice(0, 100);
+  const sort = ["newest", "price-asc", "price-desc", "name"].includes(
+    params.sort || "",
+  )
+    ? String(params.sort)
+    : "newest";
+  const requestedPage = Number.parseInt(params.page || "1", 10);
+  const page = Number.isFinite(requestedPage) ? Math.max(1, requestedPage) : 1;
+  const parsedMinPrice = Number(params.minPrice);
+  const parsedMaxPrice = Number(params.maxPrice);
+  const minPrice = Number.isFinite(parsedMinPrice) && parsedMinPrice >= 0 ? parsedMinPrice : null;
+  const maxPrice = Number.isFinite(parsedMaxPrice) && parsedMaxPrice >= 0 ? parsedMaxPrice : null;
+  const discounted = params.discounted === "1";
+  const bestseller = params.bestseller === "1";
+  const parsedMinRating = Number(params.minRating);
+  const minRating = [1, 2, 3, 4, 5].includes(parsedMinRating)
+    ? parsedMinRating
+    : null;
+  const availability = ["all", "in-stock", "out-of-stock"].includes(
+    params.availability || "",
+  )
+    ? String(params.availability)
+    : "in-stock";
+  const [optionName = "", optionValue = ""] = String(params.option || "")
+    .slice(0, 180)
+    .split(":", 2)
+    .map((value) => value.trim());
+  const from = (page - 1) * PAGE_SIZE;
 
-  const originalPrice = Number(product.price || 0);
-  const activePrice = activeCampaign
-    ? originalPrice * (1 - Number(activeCampaign.discount_percent || 0) / 100)
-    : originalPrice;
+  let ratingProductIds: number[] | null = null;
+  if (minRating !== null) {
+    const { data: ratingRows, error: ratingError } = await supabaseAdmin
+      .from("product_review_stats")
+      .select("product_id")
+      .gte("rating_avg", minRating)
+      .limit(10000);
+    if (ratingError) console.error("Puan filtresi yüklenemedi:", ratingError);
+    ratingProductIds = (ratingRows || [])
+      .map((row) => Number(row.product_id))
+      .filter((id) => Number.isSafeInteger(id) && id > 0);
+  }
+  let optionProductIds: number[] | null = null;
+  if (optionName && optionValue) {
+    const { data: optionRows, error: optionError } = await supabaseAdmin
+      .from("product_variants")
+      .select("product_id")
+      .eq("is_active", true)
+      .contains("option_values", { [optionName]: optionValue })
+      .limit(10000);
+    if (optionError) console.error("Özellik filtresi yüklenemedi:", optionError);
+    optionProductIds = [
+      ...new Set((optionRows || []).map((row) => Number(row.product_id))),
+    ];
+  }
 
-  const handleFavoriteClick = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    onToggleFavorite(Number(product.id), isFavorite);
-  };
+  let productsQuery = supabaseAdmin
+    .from("products")
+    .select(
+      "id,name,price,image,images,category,stock,SKU,barcode,description,is_bestseller,discount_price,created_at",
+      { count: "exact" },
+    );
+
+  if (availability === "in-stock") productsQuery = productsQuery.gt("stock", 0);
+  if (availability === "out-of-stock") productsQuery = productsQuery.eq("stock", 0);
+  if (ratingProductIds)
+    productsQuery = productsQuery.in(
+      "id",
+      ratingProductIds.length > 0 ? ratingProductIds : [-1],
+    );
+  if (optionProductIds)
+    productsQuery = productsQuery.in(
+      "id",
+      optionProductIds.length > 0 ? optionProductIds : [-1],
+    );
+
+  if (query) {
+    productsQuery = productsQuery.or(
+      `name.ilike.%${query}%,category.ilike.%${query}%`,
+    );
+  }
+  if (category) productsQuery = productsQuery.eq("category", category);
+  if (minPrice !== null) productsQuery = productsQuery.gte("price", minPrice);
+  if (maxPrice !== null) productsQuery = productsQuery.lte("price", maxPrice);
+  if (discounted) productsQuery = productsQuery.gt("discount_price", 0);
+  if (bestseller) productsQuery = productsQuery.eq("is_bestseller", true);
+
+  if (sort === "price-asc")
+    productsQuery = productsQuery.order("price", { ascending: true });
+  else if (sort === "price-desc")
+    productsQuery = productsQuery.order("price", { ascending: false });
+  else if (sort === "name")
+    productsQuery = productsQuery.order("name", { ascending: true });
+  else productsQuery = productsQuery.order("created_at", { ascending: false });
+
+  const [productsResult, campaignsResult, categoriesResult, variantOptionsResult] = await Promise.all(
+    [
+      productsQuery.range(from, from + PAGE_SIZE - 1),
+      supabaseAdmin
+        .from("campaigns")
+        .select(
+          "id,name,discount_percent,product_ids,start_date,end_date,created_at",
+        )
+        .gte("end_date", new Date().toISOString())
+        .order("created_at", { ascending: false })
+        .limit(100),
+      supabaseAdmin.from("categories").select("name").order("name").limit(100),
+      supabaseAdmin
+        .from("product_variants")
+        .select("option_values")
+        .eq("is_active", true)
+        .limit(1000),
+    ],
+  );
+
+  const failures = [productsResult, campaignsResult, categoriesResult]
+    .map((result) => result.error)
+    .filter(Boolean);
+  if (failures.length > 0)
+    console.error("Mağaza verisi kısmen yüklenemedi:", failures);
+
+  const total = productsResult.count || 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (page > totalPages) {
+    const canonical = new URLSearchParams();
+    if (query) canonical.set("q", query);
+    if (category) canonical.set("category", category);
+    if (sort !== "newest") canonical.set("sort", sort);
+    if (minPrice !== null) canonical.set("minPrice", String(minPrice));
+    if (maxPrice !== null) canonical.set("maxPrice", String(maxPrice));
+    if (discounted) canonical.set("discounted", "1");
+    if (bestseller) canonical.set("bestseller", "1");
+    if (minRating !== null) canonical.set("minRating", String(minRating));
+    if (availability !== "in-stock") canonical.set("availability", availability);
+    if (optionName && optionValue) canonical.set("option", `${optionName}:${optionValue}`);
+    if (totalPages > 1) canonical.set("page", String(totalPages));
+    redirect(canonical.size ? `/shop?${canonical}` : "/shop");
+  }
 
   return (
-    <Link href={`/product/${product.id}`} className="group block relative">
-      <div className="aspect-[3/4] rounded-2xl overflow-hidden bg-gray-50 border border-gray-100 relative mb-3">
-        <button
-          type="button"
-          onClick={handleFavoriteClick}
-          className="absolute top-3 right-3 z-20 w-8 h-8 bg-white/90 backdrop-blur rounded-full flex items-center justify-center shadow-md hover:scale-110 active:scale-95 transition-transform text-lg"
-          title={isFavorite ? "Favorilerden çıkar" : "Favorilere ekle"}
-          aria-label={isFavorite ? "Favorilerden çıkar" : "Favorilere ekle"}
-        >
-          {isFavorite ? "❤️" : "🤍"}
-        </button>
-
-        <Image
-          src={displayImage}
-          alt={product.name || "Ürün"}
-          fill
-          sizes="(max-width: 768px) 50vw, 25vw"
-          className="object-cover mix-blend-multiply group-hover:scale-110 transition-transform duration-700"
-        />
-
-        {activeCampaign ? (
-          <div className="absolute bottom-0 w-full bg-red-600 text-white text-[10px] font-black text-center py-1.5 uppercase tracking-widest z-10">
-            %{activeCampaign.discount_percent} İNDİRİM
-          </div>
-        ) : product.is_bestseller ? (
-          <div className="absolute bottom-0 w-full bg-black text-white text-[10px] font-black text-center py-1.5 uppercase tracking-widest z-10">
-            Çok Satan
-          </div>
-        ) : null}
-      </div>
-
-      <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
-        {product.category}
-      </p>
-
-      <h3 className="text-sm font-bold text-black line-clamp-1 mb-1">
-        {product.name}
-      </h3>
-
-      {activeCampaign ? (
-        <div className="flex flex-col gap-1">
-          <p className="text-xs font-bold text-gray-400 line-through leading-none">
-            {originalPrice.toLocaleString("tr-TR")} ₺
-          </p>
-          <p className="text-lg font-black text-red-600 leading-none">
-            {activePrice.toLocaleString("tr-TR")} ₺
-          </p>
-        </div>
-      ) : (
-        <p className="text-lg font-black text-black">
-          {activePrice.toLocaleString("tr-TR")} ₺
-        </p>
-      )}
-    </Link>
+    <ShopClient
+      key={`${query}\u0000${category}\u0000${sort}\u0000${page}`}
+      initialProducts={(productsResult.data || []) as Product[]}
+      initialCampaigns={(campaignsResult.data || []) as Campaign[]}
+      initialCategories={[
+        "Tümü",
+        ...(categoriesResult.data || []).map((category) =>
+          String(category.name),
+        ),
+      ]}
+      query={query}
+      category={category}
+      sort={sort}
+      page={page}
+      pageSize={PAGE_SIZE}
+      total={productsResult.count || 0}
+      minPrice={minPrice}
+      maxPrice={maxPrice}
+      discounted={discounted}
+      bestseller={bestseller}
+      minRating={minRating}
+      availability={availability}
+      option={optionName && optionValue ? `${optionName}:${optionValue}` : ""}
+      variantOptions={[
+        ...new Set(
+          (variantOptionsResult.data || []).flatMap((row) =>
+            row.option_values && typeof row.option_values === "object" && !Array.isArray(row.option_values)
+              ? Object.entries(row.option_values).map(([name, value]) => `${name}:${String(value)}`)
+              : [],
+          ),
+        ),
+      ].sort((a, b) => a.localeCompare(b, "tr"))}
+    />
   );
 }

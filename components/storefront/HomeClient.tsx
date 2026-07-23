@@ -1,0 +1,778 @@
+"use client";
+
+import { useCart } from "@/context/CartContext";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { useSearch } from "@/context/SearchContext";
+import { useAppAlert } from "@/context/AppAlertContext";
+import { supabase } from "@/lib/supabase";
+import { safeParseIds, sanitizeImageUrl } from "@/lib/utils";
+import { getEffectiveUnitPrice } from "@/lib/commerce/pricing";
+import type { Product, Campaign, HeroSlide } from "@/types";
+
+export type HomepageProduct = Partial<Product> & {
+  id: number;
+  ratingAvg?: number;
+  reviewCount?: number;
+};
+
+export type HomeClientProps = {
+  initialProducts: HomepageProduct[];
+  initialCampaigns: Campaign[];
+  initialHeroSlides: HeroSlide[];
+  initialCategories: Array<{ name: string; slug: string }>;
+  initialMarquee: string;
+};
+
+export default function Home({
+  initialProducts,
+  initialCampaigns,
+  initialHeroSlides,
+  initialCategories,
+  initialMarquee,
+}: HomeClientProps) {
+  const { searchQuery, setSearchQuery, selectedCategory, setSelectedCategory } =
+    useSearch();
+
+  const { items, setIsCartOpen } = useCart();
+  const { showToast } = useAppAlert();
+
+  const totalItemsInCart = (items || []).reduce(
+    (total: number, item) => total + Number(item.quantity || 0),
+    0,
+  );
+
+  const dbProducts = initialProducts;
+  const dbCampaigns = initialCampaigns;
+  const heroSlides = initialHeroSlides;
+  const [currentSlide, setCurrentSlide] = useState(0);
+  const [showAllRequested, setShowAll] = useState(false);
+  const showAll =
+    showAllRequested ||
+    Boolean(searchQuery?.trim()) ||
+    Boolean(selectedCategory && selectedCategory !== "Tümü");
+  const localCampaign = initialMarquee;
+  const [authUserId, setAuthUserId] = useState<string | null>(null);
+  const [favoriteIds, setFavoriteIds] = useState<Set<number>>(() => new Set());
+  const dbCategories = initialCategories;
+
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+
+  const baseCategories = [
+    "Setler",
+    "Masa Süsleri",
+    "Kolyeler",
+    "Yüzükler",
+    "Bilezikler",
+    "Küpeler",
+    "Tesbihler",
+  ];
+
+  const handleCloseShowcase = () => {
+    setShowAll(false);
+    setSelectedCategory("Tümü");
+    if (setSearchQuery) setSearchQuery("");
+  };
+
+  useEffect(() => {
+    const loadAccountAndCount = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+
+      if (session) {
+        setAuthUserId(session.user.id);
+
+        const { data: favData } = await supabase
+          .from("favorites")
+          .select("product_id")
+          .eq("user_id", session.user.id);
+
+        setFavoriteIds(
+          () =>
+            new Set(
+              (favData || []).map((fav: { product_id: number }) =>
+                Number(fav.product_id),
+              ),
+            ),
+        );
+      } else {
+        setAuthUserId(null);
+        setFavoriteIds(() => new Set());
+      }
+
+      try {
+        const isHere = sessionStorage.getItem("prestige_session_active");
+        const lastView = Number(
+          localStorage.getItem("prestige_last_view") || 0,
+        );
+        const now = Date.now();
+        const THROTTLE_MS = 30 * 60 * 1000; // 30 dakika
+
+        if (!isHere && now - lastView > THROTTLE_MS) {
+          sessionStorage.setItem("prestige_session_active", "true");
+          localStorage.setItem("prestige_last_view", String(now));
+
+          await fetch("/api/page_views", { method: "POST" });
+        }
+      } catch (error) {
+        console.error("Sayfa görüntüleme kaydı oluşturulamadı:", error);
+      }
+    };
+
+    void loadAccountAndCount();
+  }, []);
+
+  useEffect(() => {
+    if (heroSlides.length <= 1) return;
+
+    const interval = setInterval(() => {
+      setCurrentSlide((prev) => (prev + 1) % heroSlides.length);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [heroSlides.length]);
+
+  const discountedFull = useMemo(() => {
+    const now = new Date();
+    return dbProducts.filter((p) => {
+      const manualDiscount =
+        Number(p.discount_price || 0) > 0 &&
+        Number(p.discount_price) < Number(p.price || 0);
+      return manualDiscount || dbCampaigns.some((c) => {
+        const ids = safeParseIds(c.product_ids);
+
+        return (
+          ids.includes(Number(p.id)) &&
+          now >= new Date(c.start_date) &&
+          now <= new Date(c.end_date)
+        );
+      });
+    });
+  }, [dbProducts, dbCampaigns]);
+
+  const bestsellersFull = useMemo(
+    () => dbProducts.filter((p) => p.is_bestseller).slice(0, 20),
+    [dbProducts],
+  );
+
+  const newArrivalsFull = useMemo(() => dbProducts.slice(0, 15), [dbProducts]);
+
+  const filteredProducts = useMemo(() => {
+    let result = dbProducts;
+
+    if (selectedCategory === "En Çok Satanlar") {
+      result = bestsellersFull;
+    } else if (selectedCategory === "Yeni Gelenler") {
+      result = newArrivalsFull;
+    } else if (selectedCategory === "İndirimler") {
+      result = discountedFull;
+    } else if (selectedCategory !== "Tümü") {
+      result = dbProducts.filter((p) => p.category === selectedCategory);
+    }
+
+    if (searchQuery && searchQuery.trim() !== "") {
+      const query = searchQuery.toLowerCase();
+
+      result = result.filter(
+        (product) =>
+          (product.name || "").toLowerCase().includes(query) ||
+          (product.category || "").toLowerCase().includes(query),
+      );
+    }
+
+    return result;
+  }, [
+    dbProducts,
+    selectedCategory,
+    searchQuery,
+    bestsellersFull,
+    newArrivalsFull,
+    discountedFull,
+  ]);
+
+  const handleSeeAll = (cat: string) => {
+    setSelectedCategory(cat);
+    setShowAll(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleToggleFavorite = async (
+    productId: number,
+    isCurrentlyFavorite: boolean,
+  ) => {
+    if (!authUserId) {
+      showToast("Favorilemek için lütfen önce giriş yapın.", "warning");
+      return;
+    }
+
+    if (isCurrentlyFavorite) {
+      const { error } = await supabase
+        .from("favorites")
+        .delete()
+        .eq("user_id", authUserId)
+        .eq("product_id", productId);
+
+      if (error) {
+        showToast("Favorilerden kaldırılırken bir hata oluştu.", "error");
+        return;
+      }
+
+      setFavoriteIds((prev) => {
+        const next = new Set(prev);
+        next.delete(productId);
+        return next;
+      });
+
+      showToast("Ürün favorilerden kaldırıldı.", "success");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("favorites")
+      .insert([{ user_id: authUserId, product_id: productId }]);
+
+    if (error) {
+      showToast("Favorilere eklenirken bir hata oluştu.", "error");
+      return;
+    }
+
+    setFavoriteIds((prev) => {
+      const next = new Set(prev);
+      next.add(productId);
+      return next;
+    });
+
+    showToast("Ürün favorilere eklendi.", "success");
+  };
+
+  return (
+    <div className="min-h-screen bg-white font-sans text-black pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-24">
+      {localCampaign && (
+        <div className="bg-black text-white text-[10px] md:text-xs font-bold uppercase tracking-[0.2em] py-2.5 overflow-hidden w-full sticky top-0 z-40">
+          <div className="flex animate-marquee whitespace-nowrap">
+            <span className="mx-4">
+              {Array(20).fill(localCampaign).join(" ✦ ")}
+            </span>
+            <span className="mx-4">
+              {Array(20).fill(localCampaign).join(" ✦ ")}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {!showAll && (
+        <div
+          className="relative w-full aspect-video md:h-[75vh] flex items-center justify-center overflow-hidden bg-gray-900 group cursor-pointer"
+          onClick={() => {
+            const activeSlide = heroSlides[currentSlide];
+            if (activeSlide && activeSlide.category_slug) {
+              const matched = dbCategories.find(
+                (c) => c.slug === activeSlide.category_slug,
+              );
+              handleSeeAll(matched ? matched.name : "Tümü");
+            } else {
+              handleSeeAll("Tümü");
+            }
+          }}
+        >
+          {heroSlides.length === 0 ? (
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-white bg-black">
+              <h1 className="text-3xl md:text-7xl font-black uppercase tracking-tight">
+                PRESTIGESO
+              </h1>
+              <p className="text-gray-300 text-xs md:text-lg uppercase tracking-widest mt-3">
+                Yeni Sezon
+              </p>
+            </div>
+          ) : (
+            heroSlides
+              .filter((_, index) => {
+                // PERF-13: Sadece aktif ve sonraki slide'ı render et
+                const next = (currentSlide + 1) % heroSlides.length;
+                return index === currentSlide || index === next;
+              })
+              .map((slide) => {
+                const index = heroSlides.indexOf(slide);
+                return (
+                  <div
+                    key={slide.id}
+                    className={`absolute inset-0 transition-opacity duration-1000 ${
+                      index === currentSlide
+                        ? "opacity-100 z-10"
+                        : "opacity-0 z-0"
+                    }`}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent z-10 transition-colors duration-500" />
+
+                    <Image
+                      src={slide.image_url}
+                      alt={slide.title || "PrestigeSO"}
+                      fill
+                      priority={index === 0}
+                      sizes="100vw"
+                      className="object-cover transition-transform duration-[10s] group-hover:scale-105"
+                    />
+
+                    <div className="absolute inset-0 z-20 flex flex-col items-center justify-end md:justify-center pb-6 md:pb-0 text-center px-4">
+                      <h1 className="text-2xl md:text-7xl font-black text-white mb-1 md:mb-4 uppercase tracking-tight drop-shadow-2xl">
+                        {slide.title || "Yeni Sezon"}
+                      </h1>
+                      <p className="text-gray-200 text-[10px] md:text-lg uppercase tracking-widest drop-shadow-md">
+                        {slide.subtitle}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })
+          )}
+        </div>
+      )}
+
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
+        {showAll ? (
+          <div className="animate-in fade-in duration-500">
+            <div className="flex items-center justify-between mb-6 md:mb-8 border-b-2 border-black pb-3 md:pb-4">
+              <h2 className="text-lg md:text-2xl font-black uppercase tracking-tight truncate pr-4">
+                {searchQuery ? `Arama: "${searchQuery}"` : selectedCategory}
+              </h2>
+
+              <button
+                type="button"
+                onClick={handleCloseShowcase}
+                className="text-[10px] md:text-xs font-bold text-gray-500 hover:text-black uppercase border border-gray-200 px-3 md:px-4 py-1.5 md:py-2 rounded-full flex-shrink-0"
+              >
+                ✕ Geri
+              </button>
+            </div>
+
+            {filteredProducts.length === 0 ? (
+              <div className="text-center py-20">
+                <p className="text-gray-400 font-bold uppercase tracking-widest text-sm">
+                  Ürün Bulunamadı.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-x-3 gap-y-8 md:gap-6 px-4 md:px-0">
+                {(() => {
+                  const now = new Date();
+                  return filteredProducts.map((p) => (
+                    <PrestigeCard
+                      key={p.id}
+                      product={p}
+                      campaigns={dbCampaigns}
+                      isFavorite={favoriteIds.has(Number(p.id))}
+                      onToggleFavorite={handleToggleFavorite}
+                      now={now}
+                    />
+                  ));
+                })()}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-10 md:space-y-16">
+            <ProductCarousel
+              title="En Çok Satanlar"
+              products={bestsellersFull.slice(0, 5)}
+              campaigns={dbCampaigns}
+              badgeLabel="🔥 Çok Satan"
+              onSeeAll={() => handleSeeAll("En Çok Satanlar")}
+              favoriteIds={favoriteIds}
+              onToggleFavorite={handleToggleFavorite}
+            />
+
+            <ProductCarousel
+              title="Yeni Gelenler"
+              products={newArrivalsFull.slice(0, 5)}
+              campaigns={dbCampaigns}
+              badgeLabel="Yeni"
+              onSeeAll={() => handleSeeAll("Yeni Gelenler")}
+              favoriteIds={favoriteIds}
+              onToggleFavorite={handleToggleFavorite}
+            />
+
+            <ProductCarousel
+              title="İndirimdekiler"
+              products={discountedFull.slice(0, 5)}
+              campaigns={dbCampaigns}
+              badgeLabel="İndirim"
+              onSeeAll={() => handleSeeAll("İndirimler")}
+              favoriteIds={favoriteIds}
+              onToggleFavorite={handleToggleFavorite}
+            />
+
+            {(dbCategories.length > 0
+              ? dbCategories.map((category) => category.name)
+              : baseCategories
+            ).map((cat) => {
+              const catProducts = dbProducts
+                .filter((p) => p.category === cat)
+                .slice(0, 5);
+
+              return catProducts.length > 0 ? (
+                <ProductCarousel
+                  key={cat}
+                  title={cat}
+                  products={catProducts}
+                  campaigns={dbCampaigns}
+                  onSeeAll={() => handleSeeAll(cat)}
+                  favoriteIds={favoriteIds}
+                  onToggleFavorite={handleToggleFavorite}
+                />
+              ) : null;
+            })}
+          </div>
+        )}
+      </div>
+
+      {isMobileSearchOpen && (
+        <div className="md:hidden fixed inset-0 bg-white z-[999] flex flex-col animate-in slide-in-from-bottom-full duration-300">
+          <div className="flex items-center gap-3 p-4 border-b border-gray-100 bg-white">
+            <button
+              type="button"
+              onClick={() => setIsMobileSearchOpen(false)}
+              className="text-2xl p-2 text-gray-500 hover:text-black"
+            >
+              ←
+            </button>
+
+            <input
+              autoFocus
+              type="text"
+              placeholder="Ürün, kategori veya koleksiyon ara..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="flex-1 bg-gray-100 text-sm font-medium py-3 px-4 rounded-xl outline-none focus:ring-2 focus:ring-black"
+            />
+
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileSearchOpen(false);
+                  setShowAll(true);
+                }}
+                className="bg-black text-white text-xs font-bold px-4 py-3 rounded-xl uppercase tracking-widest"
+              >
+                Ara
+              </button>
+            )}
+          </div>
+
+          <div className="flex-1 bg-gray-50 p-6">
+            <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4">
+              Popüler Aramalar
+            </h3>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("Kolye");
+                  setIsMobileSearchOpen(false);
+                  setShowAll(true);
+                }}
+                className="bg-white border border-gray-200 px-4 py-2 rounded-full text-xs font-bold text-gray-600"
+              >
+                Kolye
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery("Yüzük");
+                  setIsMobileSearchOpen(false);
+                  setShowAll(true);
+                }}
+                className="bg-white border border-gray-200 px-4 py-2 rounded-full text-xs font-bold text-gray-600"
+              >
+                Yüzük
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedCategory("İndirimler");
+                  setIsMobileSearchOpen(false);
+                  setShowAll(true);
+                }}
+                className="bg-red-50 border border-red-100 px-4 py-2 rounded-full text-xs font-black text-red-600"
+              >
+                % İndirimler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className="md:hidden fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-md border-t border-gray-200 flex justify-around items-center pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] z-[100] shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
+        <button
+          type="button"
+          onClick={() => {
+            setShowAll(false);
+            window.scrollTo(0, 0);
+          }}
+          className={`flex flex-col items-center p-2 transition-transform active:scale-95 w-16 ${
+            !showAll && !searchQuery ? "text-black" : "text-gray-400"
+          }`}
+        >
+          <span className="text-xl mb-0.5">🏠</span>
+          <span className="text-[9px] font-black uppercase tracking-widest">
+            Ana Sayfa
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setSelectedCategory("Tümü");
+            setShowAll(true);
+            window.scrollTo(0, 0);
+          }}
+          className={`flex flex-col items-center p-2 transition-transform active:scale-95 w-16 ${
+            showAll && !searchQuery ? "text-black" : "text-gray-400"
+          }`}
+        >
+          <span className="text-xl mb-0.5">🛍️</span>
+          <span className="text-[9px] font-black uppercase tracking-widest">
+            Vitrin
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setIsMobileSearchOpen(true)}
+          className="flex flex-col items-center p-2 text-gray-400 transition-transform active:scale-95 w-16"
+        >
+          <span className="text-xl mb-0.5">🔍</span>
+          <span className="text-[9px] font-black uppercase tracking-widest">
+            Arama
+          </span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setIsCartOpen(true)}
+          className="flex flex-col items-center p-2 text-gray-400 hover:text-black transition-transform active:scale-95 w-16"
+        >
+          <span className="text-xl mb-0.5 relative">
+            🛒
+            {totalItemsInCart > 0 && (
+              <span className="absolute -top-1 -right-1 bg-red-600 text-white text-[9px] font-bold w-4 h-4 flex items-center justify-center rounded-full shadow-sm">
+                {totalItemsInCart}
+              </span>
+            )}
+          </span>
+
+          <span className="text-[9px] font-black uppercase tracking-widest">
+            Sepet
+          </span>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ProductCarousel({
+  title,
+  products,
+  campaigns,
+  badgeLabel,
+  onSeeAll,
+  favoriteIds,
+  onToggleFavorite,
+}: {
+  title: string;
+  products: (Partial<Product> & {
+    id: number;
+    ratingAvg?: number;
+    reviewCount?: number;
+  })[];
+  campaigns: Campaign[];
+  badgeLabel?: string;
+  onSeeAll?: () => void;
+  favoriteIds?: Set<number>;
+  onToggleFavorite: (productId: number, isCurrentlyFavorite: boolean) => void;
+}) {
+  if (!products || products.length === 0) return null;
+
+  return (
+    <div className="relative">
+      <div className="flex justify-between items-end mb-4 md:mb-6 border-b pb-2 md:pb-3 px-1">
+        <h2 className="text-base md:text-xl font-black uppercase border-l-4 border-black pl-2 md:pl-3">
+          {title}
+        </h2>
+
+        {onSeeAll && (
+          <button
+            type="button"
+            onClick={onSeeAll}
+            className="text-[9px] md:text-xs font-black text-gray-400 hover:text-black transition-colors uppercase flex items-center gap-1"
+          >
+            TÜMÜ <span className="text-sm">›</span>
+          </button>
+        )}
+      </div>
+
+      <div className="flex overflow-x-auto md:grid md:grid-cols-5 gap-3 md:gap-4 px-4 hide-scrollbar pb-4 snap-x snap-mandatory">
+        {(() => {
+          const now = new Date();
+          return products.map((p) => (
+            <div
+              key={p.id}
+              className="min-w-[130px] md:min-w-0 w-[40vw] md:w-auto snap-start"
+            >
+              <PrestigeCard
+                product={p}
+                campaigns={campaigns}
+                badgeLabel={badgeLabel}
+                isFavorite={favoriteIds?.has?.(Number(p.id)) || false}
+                onToggleFavorite={onToggleFavorite}
+                now={now}
+              />
+            </div>
+          ));
+        })()}
+      </div>
+    </div>
+  );
+}
+
+function PrestigeCard({
+  product,
+  campaigns,
+  badgeLabel,
+  isFavorite,
+  onToggleFavorite,
+  now,
+}: {
+  product: Partial<Product> & {
+    id: number;
+    ratingAvg?: number;
+    reviewCount?: number;
+  };
+  campaigns: Campaign[];
+  badgeLabel?: string;
+  isFavorite: boolean;
+  onToggleFavorite: (productId: number, isCurrentlyFavorite: boolean) => void;
+  now: Date;
+}) {
+  const displayImage = sanitizeImageUrl(product.images?.[0] || product.image);
+  const ratingCount = product.reviewCount || 0;
+  const avgRating = product.ratingAvg || 0;
+
+  const activeCamp = campaigns?.find((c) => {
+    const ids = safeParseIds(c.product_ids);
+
+    return (
+      ids.includes(Number(product.id)) &&
+      now >= new Date(c.start_date) &&
+      now <= new Date(c.end_date)
+    );
+  });
+
+  const activePrice = getEffectiveUnitPrice({
+    basePrice: product.price,
+    discountPrice: product.discount_price,
+    campaignPercent: activeCamp?.discount_percent,
+  });
+  const hasPriceDiscount = activePrice < Number(product.price);
+
+  const handleFavoriteClick = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onToggleFavorite(Number(product.id), isFavorite);
+  };
+
+  return (
+    <Link
+      href={`/product/${product.id}`}
+      className="group relative flex flex-col h-full transition-all"
+    >
+      <div className="aspect-[4/5] w-full overflow-hidden bg-gray-50 relative mb-3 rounded-md">
+        <Image
+          src={displayImage}
+          alt={product.name || "Ürün"}
+          fill
+          sizes="(max-width: 768px) 45vw, 25vw"
+          className="object-cover mix-blend-multiply group-hover:scale-105 transition-transform duration-700"
+        />
+
+        <button
+          type="button"
+          onClick={handleFavoriteClick}
+          className="absolute top-2 right-2 w-7 h-7 md:w-8 md:h-8 bg-white/90 rounded-full shadow-sm flex items-center justify-center z-10 transition-transform hover:scale-110 active:scale-95"
+          aria-label="Favori"
+        >
+          <svg
+            viewBox="0 0 24 24"
+            fill={isFavorite ? "black" : "none"}
+            stroke="black"
+            strokeWidth={isFavorite ? "0" : "1.5"}
+            className="w-3 h-3 md:w-4 md:h-4"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"
+            />
+          </svg>
+        </button>
+
+        {hasPriceDiscount ? (
+          <div className="absolute bottom-0 w-full bg-red-600 text-white text-[9px] md:text-[10px] font-black text-center py-1.5 uppercase tracking-widest z-10 shadow-[0_-2px_10px_rgba(220,38,38,0.4)]">
+            {activeCamp ? `% ${activeCamp.discount_percent} İNDİRİM` : "İNDİRİM"}
+          </div>
+        ) : badgeLabel ? (
+          <div className="absolute bottom-0 w-full bg-black text-white text-[9px] md:text-[10px] font-black text-center py-1.5 uppercase tracking-widest z-10">
+            {badgeLabel}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="flex-1 flex flex-col">
+        <p className="text-[8px] md:text-[9px] font-black uppercase text-gray-400 tracking-widest truncate mb-0.5">
+          {product.category}
+        </p>
+
+        <h3 className="text-[11px] md:text-sm font-medium text-gray-900 line-clamp-2 leading-snug mb-1">
+          {product.name}
+        </h3>
+
+        <div className="flex items-center gap-1 mb-2">
+          <span
+            className={`text-[9px] md:text-[10px] ${
+              ratingCount > 0 ? "text-yellow-400" : "text-gray-300"
+            }`}
+          >
+            {"★".repeat(Math.min(5, Math.max(0, Math.round(avgRating))))}
+            {"☆".repeat(5 - Math.min(5, Math.max(0, Math.round(avgRating))))}
+          </span>
+
+          <span className="text-[8px] md:text-[9px] font-bold text-gray-400">
+            ({ratingCount})
+          </span>
+        </div>
+
+        <div className="flex flex-col mt-auto">
+          {hasPriceDiscount ? (
+            <>
+              <p className="text-[9px] md:text-[10px] text-gray-400 line-through leading-none mb-0.5">
+                {Number(product.price).toLocaleString("tr-TR")} ₺
+              </p>
+              <p className="text-sm md:text-base font-black text-red-600 leading-none">
+                {activePrice.toLocaleString("tr-TR")} ₺
+              </p>
+            </>
+          ) : (
+            <p className="text-sm md:text-base font-black text-black leading-none mt-3">
+              {activePrice.toLocaleString("tr-TR")} ₺
+            </p>
+          )}
+        </div>
+      </div>
+    </Link>
+  );
+}

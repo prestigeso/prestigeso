@@ -6,23 +6,28 @@ export const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
   shipping_enabled: true,
 };
 
-export function normalizeShippingSettings(value: any): ShippingSettings {
-  const shippingFee = Number(value?.shipping_fee || 0);
-  const freeShippingThreshold = Number(value?.free_shipping_threshold || 0);
+export function normalizeShippingSettings(value: unknown): ShippingSettings {
+  const source =
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {};
+  const shippingFee = Number(source.shipping_fee || 0);
+  const freeShippingThreshold = Number(source.free_shipping_threshold || 0);
 
   return {
-    shipping_fee: Number.isFinite(shippingFee) && shippingFee > 0 ? shippingFee : 0,
+    shipping_fee:
+      Number.isFinite(shippingFee) && shippingFee > 0 ? shippingFee : 0,
     free_shipping_threshold:
       Number.isFinite(freeShippingThreshold) && freeShippingThreshold > 0
         ? freeShippingThreshold
         : 0,
-    shipping_enabled: value?.shipping_enabled !== false,
+    shipping_enabled: source.shipping_enabled !== false,
   };
 }
 
 export function calculateShippingFee(
   settings: ShippingSettings,
-  subtotalAfterCoupon: number
+  subtotalAfterCoupon: number,
 ) {
   if (!settings.shipping_enabled) return 0;
 
@@ -36,7 +41,7 @@ export function calculateShippingFee(
 export function calculateRemainingForFreeShipping(
   settings: ShippingSettings,
   subtotalAfterCoupon: number,
-  shippingFee: number
+  shippingFee: number,
 ) {
   if (!settings.shipping_enabled) return 0;
   if (!settings.free_shipping_threshold) return 0;

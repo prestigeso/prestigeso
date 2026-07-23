@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState } from "react";
 import type { ProductRow, CampaignRow } from "../types";
 import { safeParseIds } from "../utils";
 import { useAppAlert } from "@/context/AppAlertContext";
@@ -48,7 +48,7 @@ function isValidDateInput(value: string) {
   return !Number.isNaN(date.getTime());
 }
 
-function getCampaignState(campaign: any) {
+function getCampaignState(campaign: CampaignRow) {
   const nowIso = new Date().toISOString();
 
   if (campaign.start_date && nowIso < campaign.start_date) {
@@ -81,19 +81,13 @@ export default function CampaignModal({
   const { showToast, showConfirm } = useAppAlert();
 
   const [productSearch, setProductSearch] = useState("");
-  const [isMounted, setIsMounted] = useState(false);
-
-  useEffect(() => {
-    setIsMounted(true);
-  }, []);
-
   const minDate = useMemo(() => todayAsInputDate(), []);
 
   const toggleCampaignProduct = (id: number) => {
     setSelectedCampaignProducts(
       selectedCampaignProducts.includes(id)
         ? selectedCampaignProducts.filter((x) => x !== id)
-        : [...selectedCampaignProducts, id]
+        : [...selectedCampaignProducts, id],
     );
   };
 
@@ -106,7 +100,7 @@ export default function CampaignModal({
     return dbProducts.filter((product) => {
       const name = (product.name || "").toLowerCase();
       const sku = (product["SKU"] || "").toLowerCase();
-      const barcode = ((product.barcode ?? "") as any).toString().toLowerCase();
+      const barcode = String(product.barcode ?? "").toLowerCase();
 
       return name.includes(q) || sku.includes(q) || barcode.includes(q);
     });
@@ -128,7 +122,8 @@ export default function CampaignModal({
       return `İndirim yüzdesi ${MIN_DISCOUNT_PERCENT} ile ${MAX_DISCOUNT_PERCENT} arasında olmalıdır.`;
     }
 
-    if (!isValidDateInput(campaignDates.start)) return "Başlangıç tarihi zorunludur.";
+    if (!isValidDateInput(campaignDates.start))
+      return "Başlangıç tarihi zorunludur.";
     if (!isValidDateInput(campaignDates.end)) return "Bitiş tarihi zorunludur.";
 
     if (campaignDates.end < campaignDates.start) {
@@ -165,7 +160,7 @@ export default function CampaignModal({
 
     const clamped = Math.min(
       Math.max(parsed, MIN_DISCOUNT_PERCENT),
-      MAX_DISCOUNT_PERCENT
+      MAX_DISCOUNT_PERCENT,
     );
 
     setDiscountPercent(clamped);
@@ -194,7 +189,7 @@ export default function CampaignModal({
     onDeleteCampaign(id);
   };
 
-  if (!isMounted || !open) return null;
+  if (!open) return null;
 
   return (
     <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
@@ -255,7 +250,8 @@ export default function CampaignModal({
               />
 
               <p className="text-[10px] text-blue-700 font-bold mt-2">
-                Geçerli aralık: %{MIN_DISCOUNT_PERCENT} – %{MAX_DISCOUNT_PERCENT}. Önerilen: 10–40 arası.
+                Geçerli aralık: %{MIN_DISCOUNT_PERCENT} – %
+                {MAX_DISCOUNT_PERCENT}. Önerilen: 10–40 arası.
               </p>
             </div>
 
@@ -270,7 +266,10 @@ export default function CampaignModal({
                   min={minDate}
                   value={campaignDates.start}
                   onChange={(e) =>
-                    setCampaignDates({ ...campaignDates, start: e.target.value })
+                    setCampaignDates({
+                      ...campaignDates,
+                      start: e.target.value,
+                    })
                   }
                   className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium"
                 />
@@ -318,7 +317,9 @@ export default function CampaignModal({
                   placeholder="Ürün / SKU / Barkod ara..."
                   className="w-full pl-10 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-black"
                 />
-                <span className="absolute left-3 top-2.5 text-gray-400">🔍</span>
+                <span className="absolute left-3 top-2.5 text-gray-400">
+                  🔍
+                </span>
 
                 {productSearch.trim() !== "" && (
                   <button
@@ -341,7 +342,9 @@ export default function CampaignModal({
                   </div>
                 ) : (
                   filteredProducts.map((product) => {
-                    const isSelected = selectedCampaignProducts.includes(product.id);
+                    const isSelected = selectedCampaignProducts.includes(
+                      product.id,
+                    );
 
                     return (
                       <button
@@ -356,7 +359,9 @@ export default function CampaignModal({
                         title={`SKU: ${product["SKU"] || "-"}`}
                       >
                         <div className="flex items-center gap-2">
-                          <p className="font-bold text-xs truncate flex-1">{product.name}</p>
+                          <p className="font-bold text-xs truncate flex-1">
+                            {product.name}
+                          </p>
                           <span
                             className={`px-2 py-0.5 rounded text-[9px] font-mono border ${
                               isSelected
@@ -369,8 +374,11 @@ export default function CampaignModal({
                         </div>
 
                         <div className="flex items-center justify-between mt-1 gap-2">
-                          <p className={`text-[10px] ${isSelected ? "text-gray-300" : "text-gray-500"}`}>
-                            {Number(product.price || 0).toLocaleString("tr-TR")} ₺
+                          <p
+                            className={`text-[10px] ${isSelected ? "text-gray-300" : "text-gray-500"}`}
+                          >
+                            {Number(product.price || 0).toLocaleString("tr-TR")}{" "}
+                            ₺
                           </p>
 
                           {product.barcode && (
@@ -421,7 +429,7 @@ export default function CampaignModal({
               </div>
             ) : (
               <div className="space-y-4">
-                {dbCampaigns.map((campaign: any) => {
+                {dbCampaigns.map((campaign) => {
                   const campaignState = getCampaignState(campaign);
                   const isActive = campaignState === "active";
                   const isExpired = campaignState === "expired";
@@ -434,12 +442,14 @@ export default function CampaignModal({
                         isActive
                           ? "border-green-400 bg-green-50/30"
                           : isExpired
-                          ? "border-gray-200 bg-gray-50 opacity-70"
-                          : "border-orange-300 bg-orange-50/30"
+                            ? "border-gray-200 bg-gray-50 opacity-70"
+                            : "border-orange-300 bg-orange-50/30"
                       }`}
                     >
                       <div className="flex justify-between items-start mb-2">
-                        <h4 className="font-black text-lg text-black">{campaign.name}</h4>
+                        <h4 className="font-black text-lg text-black">
+                          {campaign.name}
+                        </h4>
 
                         {isActive && (
                           <span className="bg-green-500 text-white px-2 py-1 rounded-lg text-[9px] font-black uppercase animate-pulse">
@@ -462,9 +472,21 @@ export default function CampaignModal({
                         % {campaign.discount_percent} İndirim
                       </p>
 
-                      <p suppressHydrationWarning className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3">
-                        {campaign.start_date ? new Date(campaign.start_date).toLocaleDateString("tr-TR") : ""} -{" "}
-                        {campaign.end_date ? new Date(campaign.end_date).toLocaleDateString("tr-TR") : ""}
+                      <p
+                        suppressHydrationWarning
+                        className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-3"
+                      >
+                        {campaign.start_date
+                          ? new Date(campaign.start_date).toLocaleDateString(
+                              "tr-TR",
+                            )
+                          : ""}{" "}
+                        -{" "}
+                        {campaign.end_date
+                          ? new Date(campaign.end_date).toLocaleDateString(
+                              "tr-TR",
+                            )
+                          : ""}
                       </p>
 
                       <div className="flex justify-between items-center border-t border-gray-200/50 pt-3">
@@ -474,7 +496,9 @@ export default function CampaignModal({
 
                         <button
                           type="button"
-                          onClick={() => handleDeleteCampaign(campaign.id, campaign.name)}
+                          onClick={() =>
+                            handleDeleteCampaign(campaign.id, campaign.name)
+                          }
                           className="text-[10px] font-black text-red-500 hover:text-red-700 uppercase tracking-widest bg-red-50 px-3 py-1.5 rounded-lg border border-red-100"
                         >
                           Sil / İptal Et

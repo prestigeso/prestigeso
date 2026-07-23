@@ -9,14 +9,16 @@ export default function DistanceSellingPage() {
           <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tighter text-black">
             Mesafeli Satış Sözleşmesi
           </h1>
-          <Link href="/" className="text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-black transition-colors">
+          <Link
+            href="/"
+            className="text-[10px] font-black uppercase tracking-widest text-gray-400 hover:text-black transition-colors"
+          >
             ← Ana Sayfaya Dön
           </Link>
         </div>
-        
+
         {/* Yazdığımız Bileşeni Buraya Çağırıyoruz! */}
         <DistanceSellingContract />
-        
       </div>
     </div>
   );

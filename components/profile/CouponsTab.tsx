@@ -1,39 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { useAppAlert } from "@/context/AppAlertContext";
 import { formatMoney } from "@/lib/utils";
-
-type CouponRow = {
-  id: string;
-  code: string;
-  name: string;
-  description?: string | null;
-  discount_type: "percent" | "fixed";
-  discount_value: number | string;
-  min_order_amount: number | string;
-  max_discount_amount?: number | string | null;
-  starts_at?: string | null;
-  ends_at?: string | null;
-  usage_limit_total?: number | null;
-  usage_limit_per_user?: number | null;
-  used_count?: number | null;
-  is_active: boolean;
-  is_member_only: boolean;
-  created_at?: string;
-};
-
-type CouponUsageRow = {
-  id: string;
-  coupon_id: string;
-  user_id: string;
-  order_id?: number | null;
-  coupon_code: string;
-  discount_amount: number | string;
-  created_at?: string;
-};
-
+import type { CouponRow, CouponUsageRow } from "@/types";
 
 function formatDate(value?: string | null) {
   if (!value) return "Süresiz";
@@ -77,10 +49,12 @@ export default function CouponsTab() {
   const { showToast } = useAppAlert();
 
   const [loading, setLoading] = useState(true);
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<User | null>(null);
   const [coupons, setCoupons] = useState<CouponRow[]>([]);
   const [usages, setUsages] = useState<CouponUsageRow[]>([]);
-  const [activeFilter, setActiveFilter] = useState<"available" | "used">("available");
+  const [activeFilter, setActiveFilter] = useState<"available" | "used">(
+    "available",
+  );
 
   useEffect(() => {
     const loadCoupons = async () => {
@@ -102,20 +76,24 @@ export default function CouponsTab() {
 
       const nowIso = new Date().toISOString();
 
-      const [{ data: couponData, error: couponError }, { data: usageData, error: usageError }] =
-        await Promise.all([
-          supabase
-            .from("coupons")
-            .select("id, code, name, description, discount_type, discount_value, min_order_amount, max_discount_amount, starts_at, ends_at, usage_limit_per_user, usage_limit_total, used_count, is_active, is_member_only, created_at")
-            .eq("is_active", true)
-            .or(`ends_at.is.null,ends_at.gte.${nowIso}`)
-            .order("created_at", { ascending: false }),
-          supabase
-            .from("coupon_usages")
-            .select("*")
-            .eq("user_id", session.user.id)
-            .order("created_at", { ascending: false }),
-        ]);
+      const [
+        { data: couponData, error: couponError },
+        { data: usageData, error: usageError },
+      ] = await Promise.all([
+        supabase
+          .from("coupons")
+          .select(
+            "id, code, name, description, discount_type, discount_value, min_order_amount, max_discount_amount, starts_at, ends_at, usage_limit_per_user, usage_limit_total, used_count, is_active, is_member_only, created_at",
+          )
+          .eq("is_active", true)
+          .or(`ends_at.is.null,ends_at.gte.${nowIso}`)
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("coupon_usages")
+          .select("*")
+          .eq("user_id", session.user.id)
+          .order("created_at", { ascending: false }),
+      ]);
 
       if (couponError) {
         console.error("Kuponlar yüklenemedi:", couponError);
@@ -217,7 +195,9 @@ export default function CouponsTab() {
             type="button"
             onClick={() => setActiveFilter("available")}
             className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-              activeFilter === "available" ? "bg-black text-white shadow-sm" : "text-gray-400"
+              activeFilter === "available"
+                ? "bg-black text-white shadow-sm"
+                : "text-gray-400"
             }`}
           >
             Kullanılabilir
@@ -226,7 +206,9 @@ export default function CouponsTab() {
             type="button"
             onClick={() => setActiveFilter("used")}
             className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-              activeFilter === "used" ? "bg-black text-white shadow-sm" : "text-gray-400"
+              activeFilter === "used"
+                ? "bg-black text-white shadow-sm"
+                : "text-gray-400"
             }`}
           >
             Kullanılmış
@@ -266,14 +248,18 @@ export default function CouponsTab() {
                     </div>
 
                     <div className="bg-black text-white rounded-2xl px-4 py-3 text-center shrink-0">
-                      <p className="text-lg font-black leading-none">{getCouponLabel(coupon)}</p>
+                      <p className="text-lg font-black leading-none">
+                        {getCouponLabel(coupon)}
+                      </p>
                       <p className="text-[9px] font-black uppercase tracking-widest mt-1 opacity-70">
                         İndirim
                       </p>
                     </div>
                   </div>
 
-                  <h5 className="text-sm font-black text-black mb-2">{coupon.name}</h5>
+                  <h5 className="text-sm font-black text-black mb-2">
+                    {coupon.name}
+                  </h5>
 
                   {coupon.description && (
                     <p className="text-xs text-gray-500 font-medium leading-relaxed mb-4">
@@ -303,7 +289,8 @@ export default function CouponsTab() {
 
                   <div className="flex items-center justify-between gap-3 border-t border-gray-100 pt-4">
                     <p className="text-[10px] font-bold text-gray-400 leading-relaxed">
-                      {getCouponLongLabel(coupon)} checkout aşamasında uygulanabilir.
+                      {getCouponLongLabel(coupon)} checkout aşamasında
+                      uygulanabilir.
                     </p>
 
                     <button

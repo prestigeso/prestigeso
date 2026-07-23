@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Inter, Playfair_Display } from "next/font/google";
+import { headers } from "next/headers";
 import "./globals.css";
 
 import { CartProvider } from "@/context/CartContext";
@@ -7,9 +7,6 @@ import { SearchProvider } from "@/context/SearchContext";
 import ConditionalLayout from "@/components/ConditionalUI";
 import AppAlertProvider from "@/components/ui/AppAlertProvider";
 import CookieConsent from "@/components/CookieConsent";
-
-const inter = Inter({ subsets: ["latin"] });
-const playfair = Playfair_Display({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-playfair" });
 
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "https://prestigeso.com.tr";
@@ -45,8 +42,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "PrestigeSO | Tarzını Yeniden Keşfet",
-    description:
-      "PrestigeSO’da özel aksesuar ve dekoratif ürünleri keşfedin.",
+    description: "PrestigeSO’da özel aksesuar ve dekoratif ürünleri keşfedin.",
     images: ["/logo.jpeg"],
   },
   robots: {
@@ -55,14 +51,16 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  // Nonce tabanlı CSP için her HTML yanıtı istek zamanında render edilir.
+  await headers();
   return (
     <html lang="tr">
-      <body className={`${inter.className} ${playfair.variable}`}>
+      <body className="font-sans">
         <AppAlertProvider>
           <SearchProvider>
             <CartProvider>

@@ -14,11 +14,13 @@ export default function NoticeToast({ notice }: NoticeToastProps) {
     notice.type === "success"
       ? "bg-green-600 text-white"
       : notice.type === "error"
-      ? "bg-black text-white"
-      : "bg-gray-900 text-white";
+        ? "bg-black text-white"
+        : "bg-gray-900 text-white";
 
   const iconTone =
-    notice.type === "success" ? "bg-white text-green-700" : "bg-white text-black";
+    notice.type === "success"
+      ? "bg-white text-green-700"
+      : "bg-white text-black";
 
   const icon = notice.type === "success" ? "✓" : "!";
 

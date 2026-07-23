@@ -24,7 +24,7 @@ type AppAlertContextValue = {
 };
 
 export const AppAlertContext = createContext<AppAlertContextValue | undefined>(
-  undefined
+  undefined,
 );
 
 export function useAppAlert() {

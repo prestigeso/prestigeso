@@ -8,14 +8,16 @@ export const runtime = "nodejs";
 // Defense-in-depth: Proxy atlatılsa bile supabaseAdmin erişimi güvende kalır.
 // Tüm admin DB operasyonları bu route üzerinden supabaseAdmin (service role) ile yapılır.
 
-async function getAdminErrorResponse(req: NextRequest): Promise<NextResponse | null> {
+async function getAdminErrorResponse(
+  req: NextRequest,
+): Promise<NextResponse | null> {
   const adminSecret = (process.env.ADMIN_COOKIE_SECRET || "").trim();
   const cookieValue = req.cookies.get(ADMIN_COOKIE_NAME)?.value || "";
 
   if (!adminSecret || adminSecret.length < 32) {
     return NextResponse.json(
       { error: "Admin oturum yapılandırması eksik." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
@@ -24,7 +26,7 @@ async function getAdminErrorResponse(req: NextRequest): Promise<NextResponse | n
   if (!isValid) {
     return NextResponse.json(
       { error: "Admin oturumu geçersiz veya süresi dolmuş." },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
@@ -32,47 +34,80 @@ async function getAdminErrorResponse(req: NextRequest): Promise<NextResponse | n
 }
 
 type AdminOperation = {
-  action: "select" | "insert" | "update" | "delete" | "upsert";
+  action: "insert" | "update" | "delete";
   table: string;
   data?: Record<string, unknown> | Record<string, unknown>[];
   filters?: { column: string; op: "eq" | "neq" | "in"; value: unknown }[];
-  select?: string;
-  order?: { column: string; ascending: boolean };
-  single?: boolean;
 };
 
-// İzin verilen tablolar — sadece bunlara erişim sağlanabilir
-const ALLOWED_TABLES = new Set([
-  "products",
-  "categories",
-  "campaigns",
-  "hero_slides",
-  "orders",
-  "messages",
-  "questions",
-  "reviews",
-  "favorites",
-  "product_views",
-  "page_views",
-  "coupons",
-  "coupon_usages",
-]);
+const WRITE_FIELDS: Record<string, Set<string>> = {
+  products: new Set([
+    "SKU",
+    "name",
+    "price",
+    "category",
+    "stock",
+    "barcode",
+    "is_bestseller",
+    "description",
+    "images",
+    "image",
+    "discount_price",
+  ]),
+  categories: new Set(["name", "slug"]),
+  campaigns: new Set([
+    "name",
+    "discount_percent",
+    "start_date",
+    "end_date",
+    "product_ids",
+  ]),
+  hero_slides: new Set(["image_url", "title", "subtitle", "category_slug"]),
+  orders: new Set(["status", "shipping_carrier", "tracking_number"]),
+  messages: new Set(["answer", "answered_at"]),
+  questions: new Set(["answer", "answered_at", "is_approved"]),
+  reviews: new Set(["is_approved"]),
+};
 
-// Güncelleme/silme için izin verilen tablolar (okuma hariç)
-const WRITE_ALLOWED_TABLES = new Set([
-  "products",
-  "categories",
-  "campaigns",
-  "hero_slides",
-  "orders",
-  "messages",
-  "questions",
-  "reviews",
-]);
+function validateData(table: string, value: Record<string, unknown>) {
+  const allowed = WRITE_FIELDS[table];
+  if (!allowed) return false;
+  const keys = Object.keys(value);
+  if (keys.length === 0 || !keys.every((key) => allowed.has(key))) return false;
 
-function isAllowedTable(table: string, isWrite: boolean): boolean {
-  if (isWrite) return WRITE_ALLOWED_TABLES.has(table);
-  return ALLOWED_TABLES.has(table);
+  const finiteNonNegative = (input: unknown) =>
+    Number.isFinite(Number(input)) && Number(input) >= 0;
+  if (table === "products") {
+    if ("price" in value && !finiteNonNegative(value.price)) return false;
+    if (
+      "stock" in value &&
+      (!Number.isInteger(Number(value.stock)) || Number(value.stock) < 0)
+    )
+      return false;
+    if (
+      "discount_price" in value &&
+      !finiteNonNegative(value.discount_price)
+    )
+      return false;
+    if ("name" in value && !String(value.name || "").trim().slice(0, 200))
+      return false;
+    if ("SKU" in value && !String(value.SKU || "").trim().slice(0, 100))
+      return false;
+  }
+  if (table === "orders" && "status" in value) {
+    const status = String(value.status);
+    const allowedStatuses = new Set([
+      "Bekliyor",
+      "İşleniyor",
+      "Hazırlanıyor",
+      "Kargolandı",
+      "Teslim Edildi",
+      "Tamamlandı",
+      "İade Talebi",
+    ]);
+    if (!allowedStatuses.has(status)) return false;
+  }
+  return true;
 }
 
 export async function POST(req: NextRequest) {
@@ -82,75 +117,96 @@ export async function POST(req: NextRequest) {
     if (adminErrorResponse) return adminErrorResponse;
 
     const body: AdminOperation = await req.json();
-    const { action, table, data, filters, select: selectFields, order, single } = body;
+    const { action, table, data, filters } = body;
 
     if (!action || !table) {
-      return NextResponse.json({ error: "action ve table zorunludur." }, { status: 400 });
+      return NextResponse.json(
+        { error: "action ve table zorunludur." },
+        { status: 400 },
+      );
     }
 
-    const isWrite = action !== "select";
-    if (!isAllowedTable(table, isWrite)) {
-      return NextResponse.json({ error: `Bu tabloda ${action} işlemi yapılamaz.` }, { status: 403 });
-    }
-
-    // SELECT
-    if (action === "select") {
-      let query = supabaseAdmin.from(table).select(selectFields || "*");
-
-      if (filters) {
-        for (const f of filters) {
-          if (f.op === "eq") query = query.eq(f.column, f.value);
-          else if (f.op === "neq") query = query.neq(f.column, f.value);
-          else if (f.op === "in" && Array.isArray(f.value)) query = query.in(f.column, f.value);
-        }
-      }
-
-      if (order) query = query.order(order.column, { ascending: order.ascending });
-
-      if (single) {
-        const { data: result, error } = await query.single();
-        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-        return NextResponse.json({ data: result });
-      }
-
-      const { data: result, error } = await query;
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      return NextResponse.json({ data: result });
+    if (!WRITE_FIELDS[table]) {
+      return NextResponse.json(
+        { error: `Bu tabloda ${action} işlemi yapılamaz.` },
+        { status: 403 },
+      );
     }
 
     // INSERT
     if (action === "insert") {
-      if (!data) return NextResponse.json({ error: "data zorunludur." }, { status: 400 });
+      if (!data)
+        return NextResponse.json(
+          { error: "data zorunludur." },
+          { status: 400 },
+        );
       const insertData = Array.isArray(data) ? data : [data];
+      if (
+        insertData.length > 20 ||
+        !insertData.every((row) => validateData(table, row))
+      ) {
+        return NextResponse.json(
+          { error: "Yazılabilir alanlar geçersiz." },
+          { status: 400 },
+        );
+      }
       const { data: result, error } = await supabaseAdmin
         .from(table)
         .insert(insertData)
-        .select(selectFields || "*");
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+        .select("id");
+      if (error)
+        return NextResponse.json({ error: error.message }, { status: 500 });
       return NextResponse.json({ data: result });
     }
 
     // UPDATE
     if (action === "update") {
       if (!data || !filters || filters.length === 0) {
-        return NextResponse.json({ error: "data ve filters zorunludur." }, { status: 400 });
+        return NextResponse.json(
+          { error: "data ve filters zorunludur." },
+          { status: 400 },
+        );
+      }
+      if (
+        Array.isArray(data) ||
+        !validateData(table, data) ||
+        filters.some((filter) => filter.column !== "id" || filter.op !== "eq")
+      ) {
+        return NextResponse.json(
+          { error: "Güncelleme alanları veya filtresi geçersiz." },
+          { status: 400 },
+        );
       }
 
-      let query = supabaseAdmin.from(table).update(data as Record<string, unknown>);
+      let query = supabaseAdmin
+        .from(table)
+        .update(data as Record<string, unknown>);
       for (const f of filters) {
         if (f.op === "eq") query = query.eq(f.column, f.value);
         else if (f.op === "neq") query = query.neq(f.column, f.value);
       }
 
-      const { data: result, error } = await query.select(selectFields || "*");
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      const { data: result, error } = await query.select("id");
+      if (error)
+        return NextResponse.json({ error: error.message }, { status: 500 });
       return NextResponse.json({ data: result });
     }
 
     // DELETE
     if (action === "delete") {
       if (!filters || filters.length === 0) {
-        return NextResponse.json({ error: "Filtresiz silme işlemi yapılamaz." }, { status: 400 });
+        return NextResponse.json(
+          { error: "Filtresiz silme işlemi yapılamaz." },
+          { status: 400 },
+        );
+      }
+      if (
+        filters.some((filter) => filter.column !== "id" || filter.op !== "eq")
+      ) {
+        return NextResponse.json(
+          { error: "Silme filtresi geçersiz." },
+          { status: 400 },
+        );
       }
 
       let query = supabaseAdmin.from(table).delete();
@@ -159,25 +215,17 @@ export async function POST(req: NextRequest) {
       }
 
       const { error } = await query;
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+      if (error)
+        return NextResponse.json({ error: error.message }, { status: 500 });
       return NextResponse.json({ success: true });
     }
 
-    // UPSERT
-    if (action === "upsert") {
-      if (!data) return NextResponse.json({ error: "data zorunludur." }, { status: 400 });
-      const upsertData = Array.isArray(data) ? data : [data];
-      const { data: result, error } = await supabaseAdmin
-        .from(table)
-        .upsert(upsertData)
-        .select(selectFields || "*");
-      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-      return NextResponse.json({ data: result });
-    }
-
     return NextResponse.json({ error: "Geçersiz action." }, { status: 400 });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Admin DB operation error:", err);
-    return NextResponse.json({ error: err?.message || "İşlem başarısız." }, { status: 500 });
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "İşlem başarısız." },
+      { status: 500 },
+    );
   }
 }

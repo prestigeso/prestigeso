@@ -1,6 +1,7 @@
 "use client";
 
 import type { MessageRow } from "../types";
+import AdminPagination from "../parts/AdminPagination";
 
 type Props = {
   open: boolean;
@@ -18,6 +19,11 @@ type Props = {
 
   // action
   onSendReply: (messageId: number) => void;
+  page: number;
+  pageSize: number;
+  total: number;
+  loading: boolean;
+  onPageChange: (page: number) => void;
 };
 
 export default function MessagesModal({
@@ -29,6 +35,11 @@ export default function MessagesModal({
   replyText,
   setReplyText,
   onSendReply,
+  page,
+  pageSize,
+  total,
+  loading,
+  onPageChange,
 }: Props) {
   if (!open) return null;
 
@@ -57,6 +68,11 @@ export default function MessagesModal({
         </div>
 
         <div className="overflow-y-auto space-y-4 flex-1 pr-2">
+          {loading && (
+            <p className="py-3 text-center text-[10px] font-black uppercase tracking-widest text-gray-400">
+              Mesajlar yükleniyor...
+            </p>
+          )}
           {messages.length === 0 ? (
             <p className="text-center text-gray-400 font-bold py-10 uppercase tracking-widest text-xs">
               Henüz mesaj yok.
@@ -97,7 +113,9 @@ export default function MessagesModal({
                     <p className="text-[9px] font-black uppercase text-green-600 tracking-widest mb-1">
                       Cevabınız:
                     </p>
-                    <p className="text-sm text-gray-700 font-medium">{msg.answer}</p>
+                    <p className="text-sm text-gray-700 font-medium">
+                      {msg.answer}
+                    </p>
                   </div>
                 ) : (
                   <div className="mt-4">
@@ -150,6 +168,13 @@ export default function MessagesModal({
             ))
           )}
         </div>
+        <AdminPagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          loading={loading}
+          onPageChange={onPageChange}
+        />
       </div>
     </div>
   );

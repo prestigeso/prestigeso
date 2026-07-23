@@ -87,7 +87,9 @@ function AppConfirmModal({
             type="button"
             onClick={() => onClose(true)}
             className={`rounded-xl py-3 text-xs font-black uppercase tracking-widest text-white active:scale-95 transition-all ${
-              danger ? "bg-red-600 hover:bg-red-700" : "bg-black hover:bg-gray-800"
+              danger
+                ? "bg-red-600 hover:bg-red-700"
+                : "bg-black hover:bg-gray-800"
             }`}
           >
             {confirm.confirmText || "Onayla"}
@@ -98,7 +100,11 @@ function AppConfirmModal({
   );
 }
 
-export default function AppAlertProvider({ children }: { children: ReactNode }) {
+export default function AppAlertProvider({
+  children,
+}: {
+  children: ReactNode;
+}) {
   const [toast, setToast] = useState<ToastState | null>(null);
   const [confirm, setConfirm] = useState<ConfirmState | null>(null);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -122,7 +128,7 @@ export default function AppAlertProvider({ children }: { children: ReactNode }) 
         setToast(null);
       }, normalizedOptions.durationMs || DEFAULT_TOAST_DURATION_MS);
     },
-    []
+    [],
   );
 
   const showConfirm = useCallback((options: ShowConfirmOptions) => {

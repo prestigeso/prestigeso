@@ -45,10 +45,14 @@ export default function UpdatePasswordPage() {
   return (
     <div className="min-h-[70vh] flex items-center justify-center bg-[#fcfcfc] px-4">
       <div className="w-full max-w-md bg-white p-6 rounded-3xl border border-gray-100 shadow-sm">
-        <h2 className="text-xl font-black uppercase tracking-tight text-center mb-6">Yeni Şifre Belirle</h2>
+        <h2 className="text-xl font-black uppercase tracking-tight text-center mb-6">
+          Yeni Şifre Belirle
+        </h2>
         <form onSubmit={handleUpdate} className="space-y-4">
           <div>
-            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Yeni Şifre</label>
+            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
+              Yeni Şifre
+            </label>
             <input
               type="password"
               value={password}

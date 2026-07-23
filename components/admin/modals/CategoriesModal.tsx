@@ -1,9 +1,11 @@
 import { useState } from "react";
 import type { CategoryRow } from "../types";
-import { supabaseAdmin } from "@/lib/supabaseAdmin"; // Using adminDb structure if needed, but since we are in client, let's use supabase client or adminDb
-// Wait, we should use adminDb because of SEC-07! 
 import { adminDb } from "../adminDb";
-import type { ShowConfirmOptions, ShowToastOptions, AppToastType } from "@/context/AppAlertContext";
+import type {
+  ShowConfirmOptions,
+  ShowToastOptions,
+  AppToastType,
+} from "@/context/AppAlertContext";
 
 type Props = {
   isOpen: boolean;
@@ -30,13 +32,21 @@ export default function CategoriesModal({
   if (!isOpen) return null;
 
   const handleAdd = async () => {
-    if (!newCatName.trim()) return showToast("Kategori adı boş olamaz.", "error");
+    if (!newCatName.trim())
+      return showToast("Kategori adı boş olamaz.", "error");
     setLoading(true);
-    const slug = newCatName.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
+    const slug = newCatName
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "-")
+      .replace(/-+/g, "-");
 
-    const { error } = await adminDb({ action: "insert", table: "categories", data: { name: newCatName.trim(), slug } });
+    const { error } = await adminDb({
+      action: "insert",
+      table: "categories",
+      data: { name: newCatName.trim(), slug },
+    });
     setLoading(false);
-    
+
     if (error) {
       showToast("Kategori eklenemedi.", "error");
     } else {
@@ -49,9 +59,17 @@ export default function CategoriesModal({
   const handleEdit = async (id: number) => {
     if (!editName.trim()) return;
     setLoading(true);
-    const slug = editName.toLowerCase().replace(/[^a-z0-9]/g, "-").replace(/-+/g, "-");
+    const slug = editName
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "-")
+      .replace(/-+/g, "-");
 
-    const { error } = await adminDb({ action: "update", table: "categories", data: { name: editName.trim(), slug }, filters: [{ column: "id", op: "eq", value: id }] });
+    const { error } = await adminDb({
+      action: "update",
+      table: "categories",
+      data: { name: editName.trim(), slug },
+      filters: [{ column: "id", op: "eq", value: id }],
+    });
     setLoading(false);
 
     if (error) {
@@ -69,15 +87,19 @@ export default function CategoriesModal({
       message: "Bu kategoriyi silmek istediğinize emin misiniz?",
       confirmText: "Sil",
       cancelText: "Vazgeç",
-      tone: "danger"
+      tone: "danger",
     });
-    
+
     if (!ok) return;
 
     setLoading(true);
-    const { error } = await adminDb({ action: "delete", table: "categories", filters: [{ column: "id", op: "eq", value: id }] });
+    const { error } = await adminDb({
+      action: "delete",
+      table: "categories",
+      filters: [{ column: "id", op: "eq", value: id }],
+    });
     setLoading(false);
-    
+
     if (error) {
       showToast("Kategori silinemedi.", "error");
     } else {
@@ -92,7 +114,9 @@ export default function CategoriesModal({
         <div className="p-6 border-b flex justify-between items-center bg-gray-50/50">
           <div>
             <h2 className="text-2xl font-black tracking-tight">Kategoriler</h2>
-            <p className="text-sm text-gray-500 mt-1">Dinamik kategori yönetimi</p>
+            <p className="text-sm text-gray-500 mt-1">
+              Dinamik kategori yönetimi
+            </p>
           </div>
           <button
             onClick={onClose}
@@ -122,11 +146,16 @@ export default function CategoriesModal({
 
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
             {categories.length === 0 ? (
-              <p className="p-6 text-center text-gray-500">Kayıtlı kategori bulunamadı.</p>
+              <p className="p-6 text-center text-gray-500">
+                Kayıtlı kategori bulunamadı.
+              </p>
             ) : (
               <ul className="divide-y divide-gray-100">
                 {categories.map((cat) => (
-                  <li key={cat.id} className="flex justify-between items-center p-4 hover:bg-gray-50 transition-colors">
+                  <li
+                    key={cat.id}
+                    className="flex justify-between items-center p-4 hover:bg-gray-50 transition-colors"
+                  >
                     {editingId === cat.id ? (
                       <div className="flex-1 flex gap-2">
                         <input
@@ -135,8 +164,18 @@ export default function CategoriesModal({
                           value={editName}
                           onChange={(e) => setEditName(e.target.value)}
                         />
-                        <button onClick={() => handleEdit(cat.id)} className="bg-black text-white px-4 py-2 rounded-lg text-sm font-bold">Kaydet</button>
-                        <button onClick={() => setEditingId(null)} className="bg-gray-200 px-4 py-2 rounded-lg text-sm font-bold text-gray-700">İptal</button>
+                        <button
+                          onClick={() => handleEdit(cat.id)}
+                          className="bg-black text-white px-4 py-2 rounded-lg text-sm font-bold"
+                        >
+                          Kaydet
+                        </button>
+                        <button
+                          onClick={() => setEditingId(null)}
+                          className="bg-gray-200 px-4 py-2 rounded-lg text-sm font-bold text-gray-700"
+                        >
+                          İptal
+                        </button>
                       </div>
                     ) : (
                       <>

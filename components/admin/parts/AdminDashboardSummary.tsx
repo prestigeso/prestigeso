@@ -61,7 +61,9 @@ export default function AdminDashboardSummary({
           <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">
             {card.label}
           </p>
-          <p className={`text-3xl font-black ${card.valueClassName}`}>{card.value}</p>
+          <p className={`text-3xl font-black ${card.valueClassName}`}>
+            {card.value}
+          </p>
         </div>
       ))}
     </section>

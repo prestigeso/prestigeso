@@ -8,21 +8,20 @@ type AdminDbFilter = {
 };
 
 type AdminDbOptions = {
-  action: "select" | "insert" | "update" | "delete" | "upsert";
+  action: "insert" | "update" | "delete";
   table: string;
   data?: Record<string, unknown> | Record<string, unknown>[];
   filters?: AdminDbFilter[];
-  select?: string;
-  order?: { column: string; ascending: boolean };
-  single?: boolean;
 };
 
-type AdminDbResult<T = any> = {
+type AdminDbResult<T = unknown> = {
   data: T | null;
   error: string | null;
 };
 
-export async function adminDb<T = any>(options: AdminDbOptions): Promise<AdminDbResult<T>> {
+export async function adminDb<T = unknown>(
+  options: AdminDbOptions,
+): Promise<AdminDbResult<T>> {
   try {
     const response = await fetch("/api/admin/db", {
       method: "POST",
@@ -31,14 +30,17 @@ export async function adminDb<T = any>(options: AdminDbOptions): Promise<AdminDb
       body: JSON.stringify(options),
     });
 
-    const result = await response.json();
+    const result = (await response.json()) as { data?: T; error?: string };
 
     if (!response.ok) {
       return { data: null, error: result?.error || "İşlem başarısız." };
     }
 
     return { data: result?.data ?? null, error: null };
-  } catch (err: any) {
-    return { data: null, error: err?.message || "Ağ hatası." };
+  } catch (error: unknown) {
+    return {
+      data: null,
+      error: error instanceof Error ? error.message : "Ağ hatası.",
+    };
   }
 }

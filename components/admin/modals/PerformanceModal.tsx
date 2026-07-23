@@ -1,6 +1,7 @@
 "use client";
 
 import type { ProductRow } from "../types";
+import Image from "next/image";
 
 type Tab = "favorites" | "reviews" | "views";
 
@@ -98,7 +99,7 @@ export default function PerformanceModal({
               </p>
             ) : (
               <div className="space-y-3">
-                {favoritesRank.map((p: any, i: number) => (
+                {favoritesRank.map((p, i) => (
                   <div
                     key={p.id}
                     className="flex items-center gap-4 bg-white border border-gray-100 p-4 rounded-2xl shadow-sm"
@@ -107,8 +108,14 @@ export default function PerformanceModal({
                       #{i + 1}
                     </div>
 
-                    <img
-                      src={Array.isArray(p.images) ? p.images[0] : p.image || "/logo.jpeg"}
+                    <Image
+                      width={48}
+                      height={48}
+                      src={
+                        Array.isArray(p.images)
+                          ? p.images[0]
+                          : p.image || "/logo.jpeg"
+                      }
                       className="w-12 h-12 rounded-xl object-cover"
                       alt=""
                     />
@@ -137,7 +144,7 @@ export default function PerformanceModal({
               </p>
             ) : (
               <div className="space-y-3">
-                {reviewsRank.map((p: any, i: number) => (
+                {reviewsRank.map((p, i) => (
                   <div
                     key={p.id}
                     className="flex items-center gap-4 bg-white border border-gray-100 p-4 rounded-2xl shadow-sm"
@@ -146,8 +153,14 @@ export default function PerformanceModal({
                       #{i + 1}
                     </div>
 
-                    <img
-                      src={Array.isArray(p.images) ? p.images[0] : p.image || "/logo.jpeg"}
+                    <Image
+                      width={48}
+                      height={48}
+                      src={
+                        Array.isArray(p.images)
+                          ? p.images[0]
+                          : p.image || "/logo.jpeg"
+                      }
                       className="w-12 h-12 rounded-xl object-cover"
                       alt=""
                     />
@@ -164,7 +177,8 @@ export default function PerformanceModal({
                         {"★".repeat(Math.round(p.ratingAvg || 0))}
                       </span>
                       <p className="text-[10px] font-bold text-gray-500">
-                        {(p.ratingAvg || 0).toFixed(1)} Puan ({p.ratingCount || 0} Yorum)
+                        {(p.ratingAvg || 0).toFixed(1)} Puan (
+                        {p.ratingCount || 0} Yorum)
                       </p>
                     </div>
                   </div>
@@ -180,7 +194,7 @@ export default function PerformanceModal({
               </p>
             ) : (
               <div className="space-y-3">
-                {viewsRank.map((p: any, i: number) => (
+                {viewsRank.map((p, i) => (
                   <div
                     key={p.id}
                     className="flex items-center gap-4 bg-white border border-gray-100 p-4 rounded-2xl shadow-sm"
@@ -189,8 +203,14 @@ export default function PerformanceModal({
                       #{i + 1}
                     </div>
 
-                    <img
-                      src={Array.isArray(p.images) ? p.images[0] : p.image || "/logo.jpeg"}
+                    <Image
+                      width={48}
+                      height={48}
+                      src={
+                        Array.isArray(p.images)
+                          ? p.images[0]
+                          : p.image || "/logo.jpeg"
+                      }
                       className="w-12 h-12 rounded-xl object-cover"
                       alt=""
                     />

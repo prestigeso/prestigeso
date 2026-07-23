@@ -1,20 +1,28 @@
 "use client";
 
 import type { ChangeEvent, FormEvent } from "react";
+import Image from "next/image";
 import { useAppAlert } from "@/context/AppAlertContext";
 import { revokeUrls } from "../utils";
 
 const MAX_IMAGE_COUNT = 8;
-const MAX_IMAGE_SIZE_MB = 50;
+const MAX_IMAGE_SIZE_MB = 8;
 const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
-const ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/avif"];
+const ALLOWED_IMAGE_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/avif",
+];
 
 function validateImageFiles(files: File[]) {
   if (files.length > MAX_IMAGE_COUNT) {
     return `En fazla ${MAX_IMAGE_COUNT} fotoğraf seçebilirsiniz.`;
   }
 
-  const invalidType = files.find((file) => !ALLOWED_IMAGE_TYPES.includes(file.type));
+  const invalidType = files.find(
+    (file) => !ALLOWED_IMAGE_TYPES.includes(file.type),
+  );
 
   if (invalidType) {
     return "Sadece JPG, PNG, WEBP veya AVIF formatında görsel yükleyebilirsiniz. SVG/HTML kabul edilmez.";
@@ -131,7 +139,8 @@ export default function AddProductModal({
               maxLength={64}
               placeholder="Örn: YUZUK-01, PRSTG-KOLYE veya 102938"
               onChange={(event) => {
-                event.currentTarget.value = event.currentTarget.value.toUpperCase();
+                event.currentTarget.value =
+                  event.currentTarget.value.toUpperCase();
               }}
               className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl mt-1 font-medium font-mono tracking-wider outline-none focus:ring-2 focus:ring-black transition-all"
             />
@@ -194,7 +203,9 @@ export default function AddProductModal({
             >
               <option value="">Seçiniz...</option>
               {categories.map((c) => (
-                <option key={c.id} value={c.name}>{c.name}</option>
+                <option key={c.id} value={c.name}>
+                  {c.name}
+                </option>
               ))}
             </select>
           </div>
@@ -226,7 +237,8 @@ export default function AddProductModal({
             />
 
             <p className="text-[10px] text-gray-400 font-bold mt-2">
-              En fazla {MAX_IMAGE_COUNT} görsel. Her görsel en fazla {MAX_IMAGE_SIZE_MB} MB. SVG/HTML kabul edilmez.
+              En fazla {MAX_IMAGE_COUNT} görsel. Her görsel en fazla{" "}
+              {MAX_IMAGE_SIZE_MB} MB. SVG/HTML kabul edilmez.
             </p>
 
             {previews.length > 0 && (
@@ -240,7 +252,10 @@ export default function AddProductModal({
                       {index + 1} {index === 0 && "(Kapak)"}
                     </span>
 
-                    <img
+                    <Image
+                      unoptimized
+                      width={160}
+                      height={80}
                       src={url}
                       className="w-full h-20 object-cover"
                       alt={`Ürün görseli ${index + 1}`}

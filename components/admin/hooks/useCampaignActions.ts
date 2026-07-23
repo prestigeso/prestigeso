@@ -14,7 +14,9 @@ export function useCampaignActions({
   showToast,
 }: UseCampaignActionsParams) {
   const [campaignName, setCampaignName] = useState("");
-  const [selectedCampaignProducts, setSelectedCampaignProducts] = useState<number[]>([]);
+  const [selectedCampaignProducts, setSelectedCampaignProducts] = useState<
+    number[]
+  >([]);
   const [campaignDates, setCampaignDates] = useState({ start: "", end: "" });
   const [discountPercent, setDiscountPercent] = useState<number>(20);
 
@@ -30,12 +32,20 @@ export function useCampaignActions({
     }
 
     if (!campaignDates.start || !campaignDates.end) {
-      showToast("Lütfen kampanya başlangıç ve bitiş tarihlerini seçin.", "warning");
+      showToast(
+        "Lütfen kampanya başlangıç ve bitiş tarihlerini seçin.",
+        "warning",
+      );
       return;
     }
 
-    if (new Date(campaignDates.start) >= new Date(campaignDates.end + "T23:59:59")) {
-      showToast("Bitiş tarihi, başlangıç tarihinden sonra olmalıdır.", "warning");
+    if (
+      new Date(campaignDates.start) >= new Date(campaignDates.end + "T23:59:59")
+    ) {
+      showToast(
+        "Bitiş tarihi, başlangıç tarihinden sonra olmalıdır.",
+        "warning",
+      );
       return;
     }
 
@@ -47,13 +57,17 @@ export function useCampaignActions({
     const startIso = new Date(campaignDates.start).toISOString();
     const endIso = new Date(campaignDates.end + "T23:59:59").toISOString();
 
-    const { error } = await adminDb({ action: "insert", table: "campaigns", data: {
+    const { error } = await adminDb({
+      action: "insert",
+      table: "campaigns",
+      data: {
         name: campaignName,
         discount_percent: discountPercent,
         start_date: startIso,
         end_date: endIso,
         product_ids: selectedCampaignProducts,
-      } });
+      },
+    });
 
     if (error) {
       showToast("Kampanya oluşturulamadı: " + error, "error");
@@ -69,7 +83,11 @@ export function useCampaignActions({
   };
 
   const handleDeleteCampaign = async (id: number) => {
-    const { error } = await adminDb({ action: "delete", table: "campaigns", filters: [{ column: "id", op: "eq", value: id }] });
+    const { error } = await adminDb({
+      action: "delete",
+      table: "campaigns",
+      filters: [{ column: "id", op: "eq", value: id }],
+    });
     if (error) {
       showToast("Kampanya silinemedi: " + error, "error");
       return;

@@ -8,5 +8,4 @@ export { default as QuestionsModal } from "./QuestionsModal";
 export { default as OrdersModal } from "./OrdersModal";
 export { default as ReviewsModal } from "./ReviewsModal";
 export { default as PerformanceModal } from "./PerformanceModal";
-export { default as AnalysisModal } from "./AnalysisModal";
 export { default as CategoriesModal } from "./CategoriesModal";

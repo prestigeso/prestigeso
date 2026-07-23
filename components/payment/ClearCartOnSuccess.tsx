@@ -3,11 +3,16 @@
 import { useEffect, useRef } from "react";
 import { useCart } from "@/context/CartContext";
 
-export default function ClearCartOnSuccess() {
+export default function ClearCartOnSuccess({
+  confirmed,
+}: {
+  confirmed: boolean;
+}) {
   const { clearCart, setIsCartOpen } = useCart();
   const didRunRef = useRef(false);
 
   useEffect(() => {
+    if (!confirmed) return;
     if (didRunRef.current) return;
     didRunRef.current = true;
 
@@ -19,7 +24,7 @@ export default function ClearCartOnSuccess() {
 
     setIsCartOpen(false);
     clearCart();
-  }, [clearCart, setIsCartOpen]);
+  }, [clearCart, confirmed, setIsCartOpen]);
 
   return null;
 }

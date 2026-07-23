@@ -1,24 +1,30 @@
 import Link from "next/link";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { formatMoney } from "@/lib/utils";
+import crypto from "crypto";
 
 type PaymentFailPageProps = {
   searchParams?: Promise<{
     oid?: string;
+    token?: string;
   }>;
 };
 
-function safeText(value: any) {
+function safeText(value: unknown) {
   return String(value || "").trim();
 }
 
-async function getFailedOrderSummary(oid: string) {
-  if (!oid) return null;
+async function getFailedOrderSummary(oid: string, token: string) {
+  if (!oid || !token) return null;
+  const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
   const { data, error } = await supabaseAdmin
     .from("orders")
-    .select("order_no, merchant_oid, total_amount, payment_status, status, failed_reason")
+    .select(
+      "order_no, merchant_oid, total_amount, payment_status, status, failed_reason",
+    )
     .eq("merchant_oid", oid)
+    .eq("tracking_token_hash", tokenHash)
     .maybeSingle();
 
   if (error || !data) return null;
@@ -32,15 +38,16 @@ async function getFailedOrderSummary(oid: string) {
   };
 }
 
-
 export default async function PaymentFailPage({
   searchParams,
 }: PaymentFailPageProps) {
   const params = searchParams ? await searchParams : undefined;
   const oid = params?.oid || "";
-  const orderSummary = await getFailedOrderSummary(oid);
-  const displayOrderNo = orderSummary?.orderNo || oid;
-  const failedReason = orderSummary?.failedReason || "Ödeme işlemi tamamlanamadı.";
+  const token = params?.token || "";
+  const orderSummary = await getFailedOrderSummary(oid, token);
+  const displayOrderNo = orderSummary?.orderNo || "";
+  const failedReason =
+    orderSummary?.failedReason || "Ödeme işlemi tamamlanamadı.";
 
   return (
     <div className="min-h-screen bg-white flex items-center justify-center px-4 py-16 font-sans">
@@ -100,7 +107,10 @@ export default async function PaymentFailPage({
           <ul className="space-y-1 text-xs font-bold text-red-700 leading-relaxed list-disc list-inside">
             <li>Kart bilgilerinizi kontrol edip tekrar deneyebilirsiniz.</li>
             <li>Farklı bir kart veya ödeme yöntemi deneyebilirsiniz.</li>
-            <li>Ücret çekildiğini düşünüyorsanız sipariş numarasıyla destek alabilirsiniz.</li>
+            <li>
+              Ücret çekildiğini düşünüyorsanız sipariş numarasıyla destek
+              alabilirsiniz.
+            </li>
           </ul>
         </div>
 

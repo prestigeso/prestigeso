@@ -29,7 +29,9 @@ export default function SelectPopover<T>({
 
         <div className="max-h-48 overflow-y-auto overscroll-contain">
           {items.length === 0 ? (
-            <div className="p-3 text-xs font-bold text-gray-400">{emptyText}</div>
+            <div className="p-3 text-xs font-bold text-gray-400">
+              {emptyText}
+            </div>
           ) : (
             items.map((item) => (
               <button

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import Link from "next/link";
 
 export default function GlobalError({
   error,
@@ -11,6 +12,16 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     console.error("Uygulama hatası:", error);
+    void fetch("/api/telemetry/client-error", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: error.message,
+        digest: error.digest,
+        path: window.location.pathname,
+      }),
+      keepalive: true,
+    }).catch(() => undefined);
   }, [error]);
 
   return (
@@ -38,12 +49,12 @@ export default function GlobalError({
             Tekrar Dene
           </button>
 
-          <a
+          <Link
             href="/"
             className="flex-1 bg-gray-50 border border-gray-200 text-black py-3.5 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-gray-100 transition-all active:scale-95 text-center"
           >
             Ana Sayfa
-          </a>
+          </Link>
         </div>
       </div>
     </div>

@@ -1,7 +1,6 @@
-
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAppAlert } from "@/context/AppAlertContext";
 
 import { useAdminData } from "./hooks/useAdminData";
@@ -50,8 +49,7 @@ export default function AdminPanel() {
     dbQuestions,
     dbOrders,
     dbReviews,
-    dbAllFavorites,
-    dbProductViews,
+    productMetrics,
     monthlyRevenue,
     monthlyOrders,
     monthlyVisits,
@@ -61,6 +59,9 @@ export default function AdminPanel() {
     setDbQuestions,
     setDbOrders,
     setDbReviews,
+    listMeta,
+    loadAdminList,
+    dashboardCounts,
   } = useAdminData();
 
   // ── UI state (modal open/close) ──────────────────────────────
@@ -83,7 +84,9 @@ export default function AdminPanel() {
   const [isReviewsOpen, setIsReviewsOpen] = useState(false);
 
   const [isPerformanceOpen, setIsPerformanceOpen] = useState(false);
-  const [perfTab, setPerfTab] = useState<"favorites" | "views" | "reviews">("favorites");
+  const [perfTab, setPerfTab] = useState<"favorites" | "views" | "reviews">(
+    "favorites",
+  );
 
   // ── Domain hooks ─────────────────────────────────────────────
   const {
@@ -99,6 +102,7 @@ export default function AdminPanel() {
     dbReviews,
     dbMessages,
     dbProducts,
+    exactCounts: dashboardCounts,
     onOpenOrders: () => {
       setIsNotificationsOpen(false);
       setIsOrdersOpen(true);
@@ -121,13 +125,42 @@ export default function AdminPanel() {
     },
   });
 
-  const productActions = useProductActions({ dbProducts, loadAllData, showToast, showConfirm });
+  const productActions = useProductActions({
+    dbProducts,
+    loadAllData,
+    showToast,
+    showConfirm,
+  });
   const campaignActions = useCampaignActions({ loadAllData, showToast });
-  const settingsActions = useSettingsActions({ loadAllData, showToast, showConfirm });
-  const messagingActions = useMessagingActions({ setDbMessages, setDbQuestions, showToast });
-  const orderActions = useOrderActions({ setDbOrders, showToast, dbOrders });
-  const reviewActions = useReviewActions({ setDbReviews, showToast, showConfirm });
-  const performanceData = usePerformanceData({ dbProducts, dbReviews, dbAllFavorites, dbProductViews });
+  const settingsActions = useSettingsActions({
+    loadAllData,
+    showToast,
+    showConfirm,
+  });
+  const messagingActions = useMessagingActions({
+    setDbMessages,
+    setDbQuestions,
+    showToast,
+  });
+  const orderActions = useOrderActions({ setDbOrders, showToast });
+  const reviewActions = useReviewActions({
+    setDbReviews,
+    showToast,
+    showConfirm,
+  });
+  const performanceData = usePerformanceData({ dbProducts, productMetrics });
+
+  useEffect(() => {
+    if (isMessagesOpen) void loadAdminList("messages", 1);
+  }, [isMessagesOpen, loadAdminList]);
+
+  useEffect(() => {
+    if (isQuestionsOpen) void loadAdminList("questions", 1);
+  }, [isQuestionsOpen, loadAdminList]);
+
+  useEffect(() => {
+    if (isOrdersOpen) void loadAdminList("orders", 1);
+  }, [isOrdersOpen, loadAdminList]);
 
   // ── handleAddProduct wrapper (closes modal on success) ──────
   const handleAddProduct = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -179,7 +212,7 @@ export default function AdminPanel() {
           monthlyRevenue={monthlyRevenue}
           monthlyOrders={monthlyOrders}
           monthlyVisits={monthlyVisits}
-          totalProducts={dbProducts.length}
+          totalProducts={dashboardCounts.products}
         />
 
         <AdminDashboardAlerts
@@ -187,6 +220,11 @@ export default function AdminPanel() {
           unansweredQuestionsCount={unansweredQuestionsCount}
           pendingReviewsCount={pendingReviewsCount}
           unreadMessagesCount={unreadMessagesCount}
+          paymentIssuesCount={
+            dashboardCounts.stalePayments +
+            dashboardCounts.failedPayments +
+            dashboardCounts.reconciliationIssues
+          }
           onOpenOrders={() => setIsOrdersOpen(true)}
           onOpenQuestions={() => setIsQuestionsOpen(true)}
           onOpenReviews={() => setIsReviewsOpen(true)}
@@ -195,9 +233,9 @@ export default function AdminPanel() {
 
         <ProductList
           loading={loading}
-          dbProducts={dbProducts as any}
-          dbCampaigns={dbCampaigns as any}
-          dbCategories={dbCategories as any}
+          dbProducts={dbProducts}
+          dbCampaigns={dbCampaigns}
+          dbCategories={dbCategories}
           stockTab={stockTab}
           setStockTab={setStockTab}
           searchTerm={searchTerm}
@@ -218,17 +256,158 @@ export default function AdminPanel() {
         onOpenCategories={() => setIsCategoriesOpen(true)}
       />
 
-      <AddProductModal open={isAddProductOpen} onClose={() => setIsAddProductOpen(false)} onSubmit={handleAddProduct} creating={productActions.creating} files={productActions.newProductFiles} setFiles={productActions.setNewProductFiles} previews={productActions.newProductPreviews} setPreviews={productActions.setNewProductPreviews} moveImage={productActions.moveNewImage} categories={dbCategories} />
-      <EditProductModal open={productActions.editLoading || !!productActions.editingProduct} onClose={() => productActions.setEditingProduct(null)} loading={productActions.editLoading} editingProduct={productActions.editingProduct} setEditingProduct={productActions.setEditingProduct} onSubmit={productActions.handleUpdateProduct} saving={productActions.saving} onDelete={productActions.handleDeleteProduct} moveImage={productActions.moveEditImage} removeImage={productActions.removeImageFromGallery} addFiles={productActions.editAddFiles} setAddFiles={productActions.setEditAddFiles} addPreviews={productActions.editAddPreviews} setAddPreviews={productActions.setEditAddPreviews} addUploading={productActions.editAddUploading} onAddMoreImages={productActions.handleAddMoreImagesToProduct} categories={dbCategories} />
-      <CampaignModal open={isCampaignOpen} onClose={() => setIsCampaignOpen(false)} campaignName={campaignActions.campaignName} setCampaignName={campaignActions.setCampaignName} discountPercent={campaignActions.discountPercent} setDiscountPercent={campaignActions.setDiscountPercent} campaignDates={campaignActions.campaignDates} setCampaignDates={campaignActions.setCampaignDates} selectedCampaignProducts={campaignActions.selectedCampaignProducts} setSelectedCampaignProducts={campaignActions.setSelectedCampaignProducts} dbProducts={dbProducts as any} dbCampaigns={dbCampaigns as any} onCreateCampaign={campaignActions.handleCreateCampaign} onDeleteCampaign={campaignActions.handleDeleteCampaign} />
-      <CouponsModal open={isCouponsOpen} onClose={() => setIsCouponsOpen(false)} />
-      <CategoriesModal isOpen={isCategoriesOpen} onClose={() => setIsCategoriesOpen(false)} categories={dbCategories} onRefresh={loadAllData} showToast={showToast} showConfirm={showConfirm} />
-      <SettingsModal open={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} marquee={settingsActions.marquee} setMarquee={settingsActions.setMarquee} onSaveMarquee={settingsActions.handleSaveMarquee} dbSlides={dbSlides as any} setDbSlides={(updater) => setDbSlides(updater)} newSlideFiles={settingsActions.newSlideFiles} setNewSlideFiles={settingsActions.setNewSlideFiles} newSlidePreviews={settingsActions.newSlidePreviews} setNewSlidePreviews={settingsActions.setNewSlidePreviews} newSlide={settingsActions.newSlide} setNewSlide={settingsActions.setNewSlide} onAddSlide={settingsActions.handleAddSlide} onUpdateSlide={settingsActions.handleUpdateSlide} onDeleteSlide={settingsActions.handleDeleteSlide} dbCategories={dbCategories as any} />
-      <MessagesModal open={isMessagesOpen} onClose={() => setIsMessagesOpen(false)} messages={dbMessages as any} replyingTo={messagingActions.replyingTo} setReplyingTo={messagingActions.setReplyingTo} replyText={messagingActions.replyText} setReplyText={messagingActions.setReplyText} onSendReply={messagingActions.handleSendMessageReply} />
-      <QuestionsModal open={isQuestionsOpen} onClose={() => setIsQuestionsOpen(false)} questions={dbQuestions as any} replyingToQ={messagingActions.replyingToQ} setReplyingToQ={messagingActions.setReplyingToQ} qReplyText={messagingActions.qReplyText} setQReplyText={messagingActions.setQReplyText} onSendReply={messagingActions.handleSendQuestionReply} onToggleApproval={messagingActions.handleToggleQuestionApproval} />
-      <OrdersModal open={isOrdersOpen} onClose={() => setIsOrdersOpen(false)} orders={dbOrders as any} onUpdateStatus={orderActions.handleUpdateOrderStatus} />
-      <ReviewsModal open={isReviewsOpen} onClose={() => setIsReviewsOpen(false)} reviews={dbReviews as any} onApprove={reviewActions.handleApproveReview} onDelete={reviewActions.handleDeleteReview} />
-      <PerformanceModal open={isPerformanceOpen} onClose={() => setIsPerformanceOpen(false)} tab={perfTab} setTab={setPerfTab} favoritesRank={performanceData.favoritesRank as any} reviewsRank={performanceData.reviewsRank as any} viewsRank={performanceData.viewsRank as any} />
+      <AddProductModal
+        open={isAddProductOpen}
+        onClose={() => setIsAddProductOpen(false)}
+        onSubmit={handleAddProduct}
+        creating={productActions.creating}
+        files={productActions.newProductFiles}
+        setFiles={productActions.setNewProductFiles}
+        previews={productActions.newProductPreviews}
+        setPreviews={productActions.setNewProductPreviews}
+        moveImage={productActions.moveNewImage}
+        categories={dbCategories}
+      />
+      <EditProductModal
+        open={productActions.editLoading || !!productActions.editingProduct}
+        onClose={() => productActions.setEditingProduct(null)}
+        loading={productActions.editLoading}
+        editingProduct={productActions.editingProduct}
+        setEditingProduct={productActions.setEditingProduct}
+        onSubmit={productActions.handleUpdateProduct}
+        saving={productActions.saving}
+        onDelete={productActions.handleDeleteProduct}
+        moveImage={productActions.moveEditImage}
+        removeImage={productActions.removeImageFromGallery}
+        addFiles={productActions.editAddFiles}
+        setAddFiles={productActions.setEditAddFiles}
+        addPreviews={productActions.editAddPreviews}
+        setAddPreviews={productActions.setEditAddPreviews}
+        addUploading={productActions.editAddUploading}
+        onAddMoreImages={productActions.handleAddMoreImagesToProduct}
+        categories={dbCategories}
+      />
+      <CampaignModal
+        open={isCampaignOpen}
+        onClose={() => setIsCampaignOpen(false)}
+        campaignName={campaignActions.campaignName}
+        setCampaignName={campaignActions.setCampaignName}
+        discountPercent={campaignActions.discountPercent}
+        setDiscountPercent={campaignActions.setDiscountPercent}
+        campaignDates={campaignActions.campaignDates}
+        setCampaignDates={campaignActions.setCampaignDates}
+        selectedCampaignProducts={campaignActions.selectedCampaignProducts}
+        setSelectedCampaignProducts={
+          campaignActions.setSelectedCampaignProducts
+        }
+        dbProducts={dbProducts}
+        dbCampaigns={dbCampaigns}
+        onCreateCampaign={campaignActions.handleCreateCampaign}
+        onDeleteCampaign={campaignActions.handleDeleteCampaign}
+      />
+      <CouponsModal
+        open={isCouponsOpen}
+        onClose={() => setIsCouponsOpen(false)}
+      />
+      <CategoriesModal
+        isOpen={isCategoriesOpen}
+        onClose={() => setIsCategoriesOpen(false)}
+        categories={dbCategories}
+        onRefresh={loadAllData}
+        showToast={showToast}
+        showConfirm={showConfirm}
+      />
+      <SettingsModal
+        open={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        marquee={settingsActions.marquee}
+        setMarquee={settingsActions.setMarquee}
+        onSaveMarquee={settingsActions.handleSaveMarquee}
+        dbSlides={dbSlides}
+        setDbSlides={(updater) => setDbSlides(updater)}
+        setNewSlideFiles={settingsActions.setNewSlideFiles}
+        newSlidePreviews={settingsActions.newSlidePreviews}
+        setNewSlidePreviews={settingsActions.setNewSlidePreviews}
+        newSlide={settingsActions.newSlide}
+        setNewSlide={settingsActions.setNewSlide}
+        onAddSlide={settingsActions.handleAddSlide}
+        onUpdateSlide={settingsActions.handleUpdateSlide}
+        onDeleteSlide={settingsActions.handleDeleteSlide}
+        dbCategories={dbCategories}
+      />
+      <MessagesModal
+        open={isMessagesOpen}
+        onClose={() => setIsMessagesOpen(false)}
+        messages={dbMessages}
+        replyingTo={messagingActions.replyingTo}
+        setReplyingTo={messagingActions.setReplyingTo}
+        replyText={messagingActions.replyText}
+        setReplyText={messagingActions.setReplyText}
+        onSendReply={messagingActions.handleSendMessageReply}
+        page={listMeta.messages.page}
+        total={listMeta.messages.total}
+        loading={listMeta.messages.loading}
+        pageSize={listMeta.messages.limit}
+        onPageChange={(page) => loadAdminList("messages", page)}
+      />
+      <QuestionsModal
+        open={isQuestionsOpen}
+        onClose={() => setIsQuestionsOpen(false)}
+        questions={dbQuestions}
+        replyingToQ={messagingActions.replyingToQ}
+        setReplyingToQ={messagingActions.setReplyingToQ}
+        qReplyText={messagingActions.qReplyText}
+        setQReplyText={messagingActions.setQReplyText}
+        onSendReply={messagingActions.handleSendQuestionReply}
+        onToggleApproval={messagingActions.handleToggleQuestionApproval}
+        page={listMeta.questions.page}
+        total={listMeta.questions.total}
+        loading={listMeta.questions.loading}
+        pageSize={listMeta.questions.limit}
+        onPageChange={(page) => loadAdminList("questions", page)}
+      />
+      <OrdersModal
+        open={isOrdersOpen}
+        onClose={() => setIsOrdersOpen(false)}
+        orders={dbOrders}
+        onUpdateStatus={orderActions.handleUpdateOrderStatus}
+        onReturnDecision={orderActions.handleReturnDecision}
+        onShippingSaved={(orderId, carrier, trackingNumber) =>
+          setDbOrders((orders) =>
+            orders.map((order) =>
+              order.id === orderId
+                ? {
+                    ...order,
+                    shipping_carrier: carrier,
+                    tracking_number: trackingNumber,
+                    status: "Kargolandı",
+                  }
+                : order,
+            ),
+          )
+        }
+        page={listMeta.orders.page}
+        total={listMeta.orders.total}
+        loading={listMeta.orders.loading}
+        pageSize={listMeta.orders.limit}
+        onPageChange={(page) => loadAdminList("orders", page)}
+      />
+      <ReviewsModal
+        open={isReviewsOpen}
+        onClose={() => setIsReviewsOpen(false)}
+        reviews={dbReviews}
+        onApprove={reviewActions.handleApproveReview}
+        onDelete={reviewActions.handleDeleteReview}
+      />
+      <PerformanceModal
+        open={isPerformanceOpen}
+        onClose={() => setIsPerformanceOpen(false)}
+        tab={perfTab}
+        setTab={setPerfTab}
+        favoritesRank={performanceData.favoritesRank}
+        reviewsRank={performanceData.reviewsRank}
+        viewsRank={performanceData.viewsRank}
+      />
     </div>
   );
 }

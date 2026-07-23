@@ -29,6 +29,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       priority: 0.6,
     },
     {
+      url: `${SITE_URL}/iletisim`,
+      lastModified: now,
+      changeFrequency: "yearly",
+      priority: 0.5,
+    },
+    {
       url: `${SITE_URL}/teslimat-bilgileri`,
       lastModified: now,
       changeFrequency: "monthly",
@@ -42,6 +48,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     },
     {
       url: `${SITE_URL}/gizlilik-politikasi`,
+      lastModified: now,
+      changeFrequency: "yearly",
+      priority: 0.4,
+    },
+    {
+      url: `${SITE_URL}/kvkk`,
       lastModified: now,
       changeFrequency: "yearly",
       priority: 0.4,
@@ -73,11 +85,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       .gt("stock", 0);
 
     const productRoutes: MetadataRoute.Sitemap =
-      products?.map((product: any) => ({
+      products?.map((product: { id: number; created_at?: string; stock?: number }) => ({
         url: `${SITE_URL}/product/${product.id}`,
-        lastModified: product.created_at
-          ? new Date(product.created_at)
-          : now,
+        lastModified: product.created_at ? new Date(product.created_at) : now,
         changeFrequency: "weekly",
         priority: 0.8,
       })) || [];

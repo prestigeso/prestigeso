@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder
+      SUPABASE_SERVICE_ROLE_KEY: ci-placeholder
+      ADMIN_PASSWORD: ci-placeholder
+      ADMIN_COOKIE_SECRET: ci-placeholder-secret-at-least-32-characters
+      RATE_LIMIT_SECRET: ci-placeholder-secret-at-least-32-characters
+      OTP_PROOF_SECRET: ci-placeholder-secret-at-least-32-characters
+      CRON_SECRET: ci-placeholder-secret-at-least-32-characters
+      PAYTR_MERCHANT_ID: ci-placeholder
+      PAYTR_MERCHANT_KEY: ci-placeholder
+      PAYTR_MERCHANT_SALT: ci-placeholder
+      PAYTR_TEST_MODE: "1"
+      RESEND_API_KEY: ci-placeholder
+      RESEND_FROM_EMAIL: ci@example.invalid
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:browser
+
+  database:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - run: supabase start
+      - run: supabase test db

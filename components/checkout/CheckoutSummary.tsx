@@ -59,20 +59,29 @@ export default function CheckoutSummary({
             </div>
           )}
 
-          <div className={`flex justify-between text-xs font-bold ${shippingFee > 0 ? "text-gray-500" : "text-green-600"}`}>
+          <div
+            className={`flex justify-between text-xs font-bold ${shippingFee > 0 ? "text-gray-500" : "text-green-600"}`}
+          >
             <span>Kargo</span>
-            <span>{shippingFee > 0 ? `${formatMoney(shippingFee)} ₺` : "ÜCRETSİZ"}</span>
+            <span>
+              {shippingFee > 0 ? `${formatMoney(shippingFee)} ₺` : "ÜCRETSİZ"}
+            </span>
           </div>
 
           {remainingForFreeShipping > 0 && (
             <div className="text-[10px] font-black text-gray-500 bg-gray-50 border border-gray-100 rounded-xl p-3 uppercase tracking-widest leading-relaxed">
-              Ücretsiz kargo için {formatMoney(remainingForFreeShipping)} ₺ daha alışveriş yapın.
+              Ücretsiz kargo için {formatMoney(remainingForFreeShipping)} ₺ daha
+              alışveriş yapın.
             </div>
           )}
 
           <div className="flex justify-between items-end pt-4 border-t border-gray-50">
-            <span className="text-sm font-black uppercase tracking-widest text-gray-400">Toplam</span>
-            <span className="text-3xl font-black">{formatMoney(finalTotal)} ₺</span>
+            <span className="text-sm font-black uppercase tracking-widest text-gray-400">
+              Toplam
+            </span>
+            <span className="text-3xl font-black">
+              {formatMoney(finalTotal)} ₺
+            </span>
           </div>
         </div>
 
@@ -103,10 +112,14 @@ export default function CheckoutSummary({
         <button
           type="button"
           onClick={handleCompleteOrder}
-          disabled={isProcessing || !!paytrIframeUrl || !checkoutMode}
+          disabled={isProcessing || !checkoutMode}
           className="w-full bg-black text-white font-black py-5 rounded-2xl shadow-xl active:scale-95 disabled:opacity-50 uppercase tracking-widest text-sm flex items-center justify-center gap-2"
         >
-          {isProcessing ? "Ödeme Başlatılıyor..." : paytrIframeUrl ? "Ödeme Formu Açıldı" : "Ödemeye Geç 💳"}
+          {isProcessing
+            ? "Ödeme Başlatılıyor..."
+            : paytrIframeUrl
+              ? "Ödemeye Devam Et 💳"
+              : "Ödemeye Geç 💳"}
         </button>
       </div>
     </div>

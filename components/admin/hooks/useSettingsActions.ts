@@ -2,10 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { adminDb } from "../adminDb";
-import { uploadToStorageAndGetPublicUrl, revokeUrls } from "../utils";
+import {
+  deleteStorageUrls,
+  uploadToStorageAndGetPublicUrl,
+  revokeUrls,
+} from "../utils";
 
 import type { Slide } from "../types";
-import type { ShowToastOptions, AppToastType, ShowConfirmOptions } from "@/context/AppAlertContext";
+import type {
+  ShowToastOptions,
+  AppToastType,
+  ShowConfirmOptions,
+} from "@/context/AppAlertContext";
 
 interface UseSettingsActionsParams {
   loadAllData: () => Promise<void>;
@@ -21,15 +29,38 @@ export function useSettingsActions({
   const [marquee, setMarquee] = useState("");
   const [newSlideFiles, setNewSlideFiles] = useState<File[]>([]);
   const [newSlidePreviews, setNewSlidePreviews] = useState<string[]>([]);
-  const [newSlide, setNewSlide] = useState({ title: "", subtitle: "", category_slug: "" });
+  const [newSlide, setNewSlide] = useState({
+    title: "",
+    subtitle: "",
+    category_slug: "",
+  });
 
   useEffect(() => {
-    setMarquee(localStorage.getItem("prestigeso_campaign") || "");
+    fetch("/api/site-settings")
+      .then((response) => response.json())
+      .then((result) => setMarquee(String(result?.marquee || "")))
+      .catch(() => setMarquee(""));
   }, []);
 
-  const handleSaveMarquee = () => {
-    localStorage.setItem("prestigeso_campaign", marquee);
-    showToast("Kayan yazı kaydedildi.", "success");
+  const handleSaveMarquee = async () => {
+    try {
+      const response = await fetch("/api/admin/site-settings", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ marquee }),
+      });
+      const result = await response.json();
+      if (!response.ok)
+        throw new Error(result?.error || "Kayan yazı kaydedilemedi.");
+      setMarquee(String(result.marquee || ""));
+      showToast("Kayan yazı kaydedildi.", "success");
+    } catch (error) {
+      showToast(
+        error instanceof Error ? error.message : "Kayan yazı kaydedilemedi.",
+        "error",
+      );
+    }
   };
 
   const handleAddSlide = async () => {
@@ -39,9 +70,22 @@ export function useSettingsActions({
     }
 
     try {
-      const urls = await Promise.all(newSlideFiles.map((file) => uploadToStorageAndGetPublicUrl(file, "hero")));
-      const inserts = urls.map((url) => ({ image_url: url, title: newSlide.title.trim(), subtitle: newSlide.subtitle.trim(), category_slug: newSlide.category_slug || null }));
-      const { error } = await adminDb({ action: "insert", table: "hero_slides", data: inserts });
+      const urls = await Promise.all(
+        newSlideFiles.map((file) =>
+          uploadToStorageAndGetPublicUrl(file, "hero"),
+        ),
+      );
+      const inserts = urls.map((url) => ({
+        image_url: url,
+        title: newSlide.title.trim(),
+        subtitle: newSlide.subtitle.trim(),
+        category_slug: newSlide.category_slug || null,
+      }));
+      const { error } = await adminDb({
+        action: "insert",
+        table: "hero_slides",
+        data: inserts,
+      });
       if (error) throw error;
 
       showToast("Slide'lar eklendi.", "success");
@@ -51,32 +95,52 @@ export function useSettingsActions({
       setNewSlide({ title: "", subtitle: "", category_slug: "" });
       loadAllData();
     } catch (err: unknown) {
-      showToast("Slide eklenemedi: " + (err instanceof Error ? err.message : "Bilinmeyen hata"), "error");
+      showToast(
+        "Slide eklenemedi: " +
+          (err instanceof Error ? err.message : "Bilinmeyen hata"),
+        "error",
+      );
     }
   };
 
-  const handleDeleteSlide = async (id: number) => {
+  const handleDeleteSlide = async (slide: Slide) => {
     const ok = await showConfirm({
       title: "Slide silinsin mi?",
-      message: "Bu slide'ı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.",
+      message:
+        "Bu slide'ı silmek istediğinize emin misiniz? Bu işlem geri alınamaz.",
       confirmText: "Sil",
       cancelText: "Vazgeç",
       tone: "danger",
     });
     if (!ok) return;
 
-    const { error } = await adminDb({ action: "delete", table: "hero_slides", filters: [{ column: "id", op: "eq", value: id }] });
+    const { error } = await adminDb({
+      action: "delete",
+      table: "hero_slides",
+      filters: [{ column: "id", op: "eq", value: slide.id }],
+    });
     if (error) {
       showToast("Slide silinemedi: " + error, "error");
       return;
     }
 
+    await deleteStorageUrls([slide.image_url]);
     showToast("Slide silindi.", "success");
     loadAllData();
   };
 
   const handleUpdateSlide = async (slide: Slide) => {
-    const { error } = await adminDb({ action: "update", table: "hero_slides", data: { image_url: slide.image_url, title: slide.title, subtitle: slide.subtitle, category_slug: slide.category_slug || null }, filters: [{ column: "id", op: "eq", value: slide.id }] });
+    const { error } = await adminDb({
+      action: "update",
+      table: "hero_slides",
+      data: {
+        image_url: slide.image_url,
+        title: slide.title,
+        subtitle: slide.subtitle,
+        category_slug: slide.category_slug || null,
+      },
+      filters: [{ column: "id", op: "eq", value: slide.id }],
+    });
     if (error) {
       showToast("Slide güncellenemedi: " + error, "error");
       return;

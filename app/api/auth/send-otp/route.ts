@@ -1,72 +1,112 @@
+import crypto from "crypto";
+import type { ReactElement } from "react";
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { OtpEmail } from "@/components/emails/OtpEmail";
+import { hashOtpCode, isOtpPurpose, normalizeOtpEmail } from "@/lib/otpProof";
+import { consumeRateLimit, getClientIp } from "@/lib/rateLimit";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 
-function generateOtp() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+function isValidEmail(email: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
+}
+
+function rateLimited(retryAfterSeconds: number) {
+  return NextResponse.json(
+    {
+      error: "Çok fazla kod isteği yapıldı. Lütfen daha sonra tekrar deneyin.",
+    },
+    { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } },
+  );
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const resend = new Resend(process.env.RESEND_API_KEY || "re_dummy");
-    const fromEmail = process.env.RESEND_FROM_EMAIL || "info@prestigeso.com.tr";
-
-    const { email } = await req.json();
-
-    if (!email || !email.includes("@")) {
-      return NextResponse.json({ error: "Geçerli bir e-posta adresi giriniz." }, { status: 400 });
+    const body = await req.json().catch(() => ({}));
+    const email = normalizeOtpEmail(body.email);
+    const purpose = body.purpose;
+    if (!isValidEmail(email) || !isOtpPurpose(purpose)) {
+      return NextResponse.json(
+        { error: "Geçersiz doğrulama isteği." },
+        { status: 400 },
+      );
     }
 
-    // Rate limiting: aynı maile son 1 dakikada kod gitmiş mi?
-    const oneMinuteAgo = new Date(Date.now() - 60 * 1000).toISOString();
-    const { data: recentOtp } = await supabaseAdmin
+    const ip = getClientIp(req);
+    const globalLimit = await consumeRateLimit({
+      bucket: "otp-send-global",
+      identifier: "otp-send",
+      maxRequests: 200,
+      windowSeconds: 3600,
+    });
+    if (!globalLimit.allowed) return rateLimited(globalLimit.retryAfterSeconds);
+    const ipLimit = await consumeRateLimit({
+      bucket: "otp-send-ip",
+      identifier: ip,
+      maxRequests: 10,
+      windowSeconds: 3600,
+    });
+    if (!ipLimit.allowed) return rateLimited(ipLimit.retryAfterSeconds);
+    const emailLimit = await consumeRateLimit({
+      bucket: "otp-send-email",
+      identifier: email,
+      maxRequests: 3,
+      windowSeconds: 900,
+    });
+    if (!emailLimit.allowed) return rateLimited(emailLimit.retryAfterSeconds);
+
+    const code = crypto.randomInt(100000, 1000000).toString();
+    const codeHash = hashOtpCode(email, purpose, code);
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const { data: inserted, error: dbError } = await supabaseAdmin
       .from("otp_verifications")
+      .insert({
+        email,
+        code: codeHash,
+        purpose,
+        expires_at: expiresAt,
+        is_used: false,
+        attempt_count: 0,
+      })
       .select("id")
-      .eq("email", email)
-      .gte("created_at", oneMinuteAgo)
-      .maybeSingle();
+      .single();
+    if (dbError || !inserted)
+      throw new Error(
+        `OTP kaydedilemedi: ${dbError?.message || "bilinmeyen hata"}`,
+      );
 
-    if (recentOtp) {
-      return NextResponse.json({ error: "Lütfen yeni bir kod istemeden önce 1 dakika bekleyin." }, { status: 429 });
+    if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL) {
+      return NextResponse.json(
+        { error: "E-posta servisi yapılandırılmamış." },
+        { status: 503 },
+      );
     }
-
-    const code = generateOtp();
-    const expiresAt = new Date(Date.now() + 3 * 60 * 1000).toISOString(); // 3 dakika geçerli
-
-    const { error: dbError } = await supabaseAdmin
-      .from("otp_verifications")
-      .insert([
-        {
-          email,
-          code,
-          expires_at: expiresAt,
-          is_used: false
-        }
-      ]);
-
-    if (dbError) {
-      console.error("OTP insert error:", dbError);
-      return NextResponse.json({ error: "Kod oluşturulamadı, veritabanı hatası." }, { status: 500 });
-    }
-
-    const { error: emailError } = await resend.emails.send({
-      from: `PrestigeSO <${fromEmail}>`,
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    const result = await resend.emails.send({
+      from: `PrestigeSO <${process.env.RESEND_FROM_EMAIL}>`,
       to: [email],
       subject: `${code} - Doğrulama Kodunuz`,
-      react: OtpEmail({ code }) as any,
+      react: OtpEmail({ code }) as ReactElement,
     });
-
-    if (emailError) {
-      console.error("OTP send error:", emailError);
-      return NextResponse.json({ error: "E-posta gönderilemedi." }, { status: 500 });
+    if (result.error) {
+      await supabaseAdmin
+        .from("otp_verifications")
+        .update({ is_used: true })
+        .eq("id", inserted.id);
+      throw new Error(`OTP e-postası gönderilemedi: ${result.error.message}`);
     }
 
-    return NextResponse.json({ success: true, message: "Doğrulama kodu gönderildi." });
-  } catch (error: any) {
+    return NextResponse.json({
+      success: true,
+      message: "Doğrulama kodu gönderildi.",
+    });
+  } catch (error) {
     console.error("send-otp unexpected error:", error);
-    return NextResponse.json({ error: "Bilinmeyen bir hata oluştu." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Doğrulama kodu gönderilemedi." },
+      { status: 500 },
+    );
   }
 }

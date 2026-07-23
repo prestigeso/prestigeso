@@ -17,12 +17,12 @@ export type CategoryRow = {
 export type ProductRow = {
   id: number;
   name: string;
-  price: number;
+  price: number | string;
   category: string | null;
-  stock: number;
+  stock: number | string;
 
   // DB kolon adı büyük harfli: "SKU"
-  "SKU": string;
+  SKU: string;
 
   // Barkod SKU'dan bağımsız ve opsiyonel
   barcode?: string | null;
@@ -73,12 +73,24 @@ export type OrderRow = {
   user_email: string;
 
   // Supabase JSONB bazen array, eski kayıtlar bazen string dönebilir
-  items: any[] | string;
+  items:
+    | Array<{
+        id?: number | string;
+        name?: string;
+        price?: number | string;
+        quantity?: number | string;
+        image?: string;
+        images?: string[];
+        variant_id?: number;
+        variant_sku?: string;
+        variant_options?: Record<string, string>;
+      }>
+    | string;
 
   total_amount: number;
 
   // Supabase JSONB bazen object, eski kayıtlar bazen string dönebilir
-  shipping_address: string | Record<string, any> | null;
+  shipping_address: string | Record<string, unknown> | null;
 
   status: string;
   created_at: string;
@@ -86,6 +98,16 @@ export type OrderRow = {
   // Admin kargo yönetimi alanları
   shipping_carrier?: string | null;
   tracking_number?: string | null;
+  return_requests?: Array<{
+    id: number;
+    reason: string;
+    items: unknown;
+    evidence_urls: unknown;
+    status: string;
+    admin_note?: string | null;
+    refund_amount?: number | null;
+    created_at: string;
+  }>;
 };
 
 export type ReviewRow = {

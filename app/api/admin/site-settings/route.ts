@@ -10,14 +10,16 @@ type ShippingSettings = {
   shipping_enabled: boolean;
 };
 
-async function getAdminErrorResponse(req: NextRequest): Promise<NextResponse | null> {
+async function getAdminErrorResponse(
+  req: NextRequest,
+): Promise<NextResponse | null> {
   const adminSecret = (process.env.ADMIN_COOKIE_SECRET || "").trim();
   const cookieValue = req.cookies.get(ADMIN_COOKIE_NAME)?.value || "";
 
   if (!adminSecret || adminSecret.length < 32) {
     return NextResponse.json(
       { error: "Admin oturum yapılandırması eksik." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
@@ -26,7 +28,7 @@ async function getAdminErrorResponse(req: NextRequest): Promise<NextResponse | n
   if (!isValid) {
     return NextResponse.json(
       { error: "Admin oturumu geçersiz veya süresi dolmuş." },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
@@ -35,10 +37,16 @@ async function getAdminErrorResponse(req: NextRequest): Promise<NextResponse | n
 
 function toPositiveNumber(value: unknown) {
   const numberValue = Number(value);
-  return Number.isFinite(numberValue) && numberValue > 0 ? Math.round(numberValue * 100) / 100 : 0;
+  return Number.isFinite(numberValue) && numberValue > 0
+    ? Math.round(numberValue * 100) / 100
+    : 0;
 }
 
-function normalizeShippingSettings(body: any): ShippingSettings {
+function normalizeShippingSettings(value: unknown): ShippingSettings {
+  const body =
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {};
   return {
     shipping_fee: toPositiveNumber(body?.shipping_fee),
     free_shipping_threshold: toPositiveNumber(body?.free_shipping_threshold),
@@ -51,24 +59,58 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   if (adminErrorResponse) return adminErrorResponse;
 
   const body = await req.json().catch(() => ({}));
-  const shipping = normalizeShippingSettings(body?.shipping || body);
+  const hasShipping = Boolean(body?.shipping);
+  const hasMarquee = Object.prototype.hasOwnProperty.call(body, "marquee");
+  if (!hasShipping && !hasMarquee) {
+    return NextResponse.json(
+      { error: "Kaydedilecek ayar bulunamadı." },
+      { status: 400 },
+    );
+  }
+
+  const shipping = hasShipping
+    ? normalizeShippingSettings(body.shipping)
+    : null;
+  const marquee = hasMarquee
+    ? String(body.marquee || "")
+        .trim()
+        .slice(0, 200)
+    : null;
+  const rows = [
+    ...(shipping
+      ? [
+          {
+            key: "shipping",
+            value: shipping,
+            updated_at: new Date().toISOString(),
+          },
+        ]
+      : []),
+    ...(hasMarquee
+      ? [
+          {
+            key: "marquee",
+            value: marquee,
+            updated_at: new Date().toISOString(),
+          },
+        ]
+      : []),
+  ];
 
   const { data, error } = await supabaseAdmin
     .from("site_settings")
-    .upsert(
-      {
-        key: "shipping",
-        value: shipping,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "key" }
-    )
-    .select("value")
-    .single();
+    .upsert(rows, { onConflict: "key" })
+    .select("key, value");
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
-  return NextResponse.json({ shipping: data?.value || shipping });
+  const values = new Map((data || []).map((row) => [row.key, row.value]));
+  return NextResponse.json({
+    ...(shipping ? { shipping: values.get("shipping") || shipping } : {}),
+    ...(hasMarquee
+      ? { marquee: String(values.get("marquee") ?? marquee) }
+      : {}),
+  });
 }

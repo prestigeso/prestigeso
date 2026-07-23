@@ -1,12 +1,21 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { adminDb } from "../adminDb";
-import { uploadToStorageAndGetPublicUrl, revokeUrls } from "../utils";
+import {
+  deleteStorageUrls,
+  uploadToStorageAndGetPublicUrl,
+  revokeUrls,
+} from "../utils";
+import { getErrorMessage } from "@/lib/utils";
 
 import type { ProductRow } from "../types";
-import type { ShowToastOptions, AppToastType, ShowConfirmOptions } from "@/context/AppAlertContext";
+import type {
+  ShowToastOptions,
+  AppToastType,
+  ShowConfirmOptions,
+} from "@/context/AppAlertContext";
 
 function normalizeSku(input: string | number | null | undefined) {
   return (input ?? "").toString().trim().toUpperCase();
@@ -36,6 +45,15 @@ export function useProductActions({
   const [editAddFiles, setEditAddFiles] = useState<File[]>([]);
   const [editAddPreviews, setEditAddPreviews] = useState<string[]>([]);
   const [editAddUploading, setEditAddUploading] = useState(false);
+  const [removedImageUrls, setRemovedImageUrls] = useState<string[]>([]);
+  const [pendingUploadedUrls, setPendingUploadedUrls] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (editingProduct || pendingUploadedUrls.length === 0) return;
+    const urls = pendingUploadedUrls;
+    setPendingUploadedUrls([]);
+    void deleteStorageUrls(urls).catch(() => undefined);
+  }, [editingProduct, pendingUploadedUrls]);
 
   // ── Image reorder (new product) ──────────────────────────────
   const moveNewImage = (index: number, direction: "left" | "right") => {
@@ -44,12 +62,18 @@ export function useProductActions({
 
     if (direction === "left" && index > 0) {
       [files[index], files[index - 1]] = [files[index - 1], files[index]];
-      [previews[index], previews[index - 1]] = [previews[index - 1], previews[index]];
+      [previews[index], previews[index - 1]] = [
+        previews[index - 1],
+        previews[index],
+      ];
     }
 
     if (direction === "right" && index < files.length - 1) {
       [files[index], files[index + 1]] = [files[index + 1], files[index]];
-      [previews[index], previews[index + 1]] = [previews[index + 1], previews[index]];
+      [previews[index], previews[index + 1]] = [
+        previews[index + 1],
+        previews[index],
+      ];
     }
 
     setNewProductFiles(files);
@@ -60,7 +84,9 @@ export function useProductActions({
   const moveEditImage = (index: number, direction: "left" | "right") => {
     if (!editingProduct) return;
 
-    const images: string[] = Array.isArray(editingProduct.images) ? [...editingProduct.images] : [];
+    const images: string[] = Array.isArray(editingProduct.images)
+      ? [...editingProduct.images]
+      : [];
 
     if (direction === "left" && index > 0) {
       [images[index], images[index - 1]] = [images[index - 1], images[index]];
@@ -70,14 +96,21 @@ export function useProductActions({
       [images[index], images[index + 1]] = [images[index + 1], images[index]];
     }
 
-    setEditingProduct((prev) => prev ? { ...prev, images, image: images[0] || "" } : null);
+    setEditingProduct((prev) =>
+      prev ? { ...prev, images, image: images[0] || "" } : null,
+    );
   };
 
   const removeImageFromGallery = (url: string) => {
     if (!editingProduct) return;
-    const images: string[] = Array.isArray(editingProduct.images) ? editingProduct.images : [];
+    const images: string[] = Array.isArray(editingProduct.images)
+      ? editingProduct.images
+      : [];
     const next = images.filter((x) => x !== url);
-    setEditingProduct((prev) => prev ? { ...prev, images: next, image: next[0] || "" } : null);
+    setRemovedImageUrls((current) => [...new Set([...current, url])]);
+    setEditingProduct((prev) =>
+      prev ? { ...prev, images: next, image: next[0] || "" } : null,
+    );
   };
 
   // ── Open edit ────────────────────────────────────────────────
@@ -87,8 +120,14 @@ export function useProductActions({
     revokeUrls(editAddPreviews);
     setEditAddFiles([]);
     setEditAddPreviews([]);
+    setRemovedImageUrls([]);
+    setPendingUploadedUrls([]);
 
-    const { data, error } = await supabase.from("products").select("*").eq("id", id).single();
+    const { data, error } = await supabase
+      .from("products")
+      .select("*")
+      .eq("id", id)
+      .single();
     setEditLoading(false);
 
     if (error) {
@@ -98,7 +137,8 @@ export function useProductActions({
 
     const row = data as ProductRow;
     const arr = Array.isArray(row.images) ? row.images : [];
-    const normalizedImages = arr.length > 0 ? arr : row.image ? [row.image] : [];
+    const normalizedImages =
+      arr.length > 0 ? arr : row.image ? [row.image] : [];
 
     setEditingProduct({
       ...row,
@@ -126,16 +166,28 @@ export function useProductActions({
         urls.push(url);
       }
 
-      const images: string[] = Array.isArray(editingProduct.images) ? editingProduct.images : [];
+      const images: string[] = Array.isArray(editingProduct.images)
+        ? editingProduct.images
+        : [];
       const next = [...images, ...urls];
+      setPendingUploadedUrls((current) => [...current, ...urls]);
 
-      setEditingProduct((prev) => prev ? { ...prev, images: next, image: next[0] || "" } : null);
+      setEditingProduct((prev) =>
+        prev ? { ...prev, images: next, image: next[0] || "" } : null,
+      );
       revokeUrls(editAddPreviews);
       setEditAddFiles([]);
       setEditAddPreviews([]);
-      showToast("Fotoğraflar eklendi. Kaydet butonuna basmayı unutmayın.", "success");
+      showToast(
+        "Fotoğraflar eklendi. Kaydet butonuna basmayı unutmayın.",
+        "success",
+      );
     } catch (err: unknown) {
-      showToast("Fotoğraf eklenemedi: " + (err instanceof Error ? err.message : "Bilinmeyen hata"), "error");
+      showToast(
+        "Fotoğraf eklenemedi: " +
+          (err instanceof Error ? err.message : "Bilinmeyen hata"),
+        "error",
+      );
     } finally {
       setEditAddUploading(false);
     }
@@ -152,14 +204,20 @@ export function useProductActions({
       return;
     }
 
-    const skuDuplicate = dbProducts.find((p: ProductRow) => normalizeSku(p["SKU"]) === sku && String(p.id) !== String(editingProduct.id));
+    const skuDuplicate = dbProducts.find(
+      (p: ProductRow) =>
+        normalizeSku(p["SKU"]) === sku &&
+        String(p.id) !== String(editingProduct.id),
+    );
     if (skuDuplicate) {
       showToast(`Bu SKU başka bir ürüne ait: ${skuDuplicate.name}`, "warning");
       return;
     }
 
     setSaving(true);
-    const images: string[] = Array.isArray(editingProduct.images) ? editingProduct.images : [];
+    const images: string[] = Array.isArray(editingProduct.images)
+      ? editingProduct.images
+      : [];
     const payload: Partial<ProductRow> = {
       ["SKU"]: sku,
       name: editingProduct.name,
@@ -173,7 +231,12 @@ export function useProductActions({
       barcode: (editingProduct.barcode ?? "").toString().trim() || null,
     };
 
-    const { error } = await adminDb({ action: "update", table: "products", data: payload, filters: [{ column: "id", op: "eq", value: editingProduct.id }] });
+    const { error } = await adminDb({
+      action: "update",
+      table: "products",
+      data: payload,
+      filters: [{ column: "id", op: "eq", value: editingProduct.id }],
+    });
     setSaving(false);
 
     if (error) {
@@ -182,28 +245,45 @@ export function useProductActions({
     }
 
     showToast("Ürün kaydedildi.", "success");
+    const deletedUrls = removedImageUrls;
+    setRemovedImageUrls([]);
+    setPendingUploadedUrls([]);
+    await deleteStorageUrls(deletedUrls).catch(() => undefined);
     setEditingProduct(null);
     loadAllData();
   };
 
   // ── Delete product ───────────────────────────────────────────
   const handleDeleteProduct = async (id: number) => {
+    const product = dbProducts.find((item) => item.id === id);
+    const productImages = product
+      ? [
+          ...(Array.isArray(product.images) ? product.images : []),
+          product.image || "",
+        ]
+      : [];
     const ok = await showConfirm({
       title: "Ürün silinsin mi?",
-      message: "Bu ürünü kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.",
+      message:
+        "Bu ürünü kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz.",
       confirmText: "Sil",
       cancelText: "Vazgeç",
       tone: "danger",
     });
     if (!ok) return;
 
-    const { error } = await adminDb({ action: "delete", table: "products", filters: [{ column: "id", op: "eq", value: id }] });
+    const { error } = await adminDb({
+      action: "delete",
+      table: "products",
+      filters: [{ column: "id", op: "eq", value: id }],
+    });
     if (error) {
       showToast("Silinemedi: " + error, "error");
       return;
     }
 
     showToast("Ürün silindi.", "success");
+    await deleteStorageUrls(productImages).catch(() => undefined);
     setEditingProduct(null);
     loadAllData();
   };
@@ -213,25 +293,39 @@ export function useProductActions({
     e.preventDefault();
     const form = e.target as HTMLFormElement;
     const name = (form.elements.namedItem("name") as HTMLInputElement).value;
-    const sku = normalizeSku((form.elements.namedItem("sku") as HTMLInputElement).value);
+    const sku = normalizeSku(
+      (form.elements.namedItem("sku") as HTMLInputElement).value,
+    );
 
     if (!sku) {
       showToast("SKU zorunludur.", "warning");
       return;
     }
 
-    const skuDuplicate = dbProducts.find((p: ProductRow) => normalizeSku(p["SKU"]) === sku);
+    const skuDuplicate = dbProducts.find(
+      (p: ProductRow) => normalizeSku(p["SKU"]) === sku,
+    );
     if (skuDuplicate) {
       showToast(`Bu SKU başka bir ürüne ait: ${skuDuplicate.name}`, "warning");
       return;
     }
 
-    const price = Number((form.elements.namedItem("price") as HTMLInputElement).value);
-    const category = (form.elements.namedItem("category") as HTMLSelectElement).value;
-    const stock = Number((form.elements.namedItem("stock") as HTMLInputElement).value);
-    const barcode = (form.elements.namedItem("barcode") as HTMLInputElement).value;
-    const description = (form.elements.namedItem("description") as HTMLTextAreaElement).value;
-    const is_bestseller = (form.elements.namedItem("is_bestseller") as HTMLInputElement).checked;
+    const price = Number(
+      (form.elements.namedItem("price") as HTMLInputElement).value,
+    );
+    const category = (form.elements.namedItem("category") as HTMLSelectElement)
+      .value;
+    const stock = Number(
+      (form.elements.namedItem("stock") as HTMLInputElement).value,
+    );
+    const barcode = (form.elements.namedItem("barcode") as HTMLInputElement)
+      .value;
+    const description = (
+      form.elements.namedItem("description") as HTMLTextAreaElement
+    ).value;
+    const is_bestseller = (
+      form.elements.namedItem("is_bestseller") as HTMLInputElement
+    ).checked;
 
     if (newProductFiles.length === 0) {
       showToast("Lütfen en az bir ürün görseli seçin.", "warning");
@@ -240,14 +334,17 @@ export function useProductActions({
 
     setCreating(true);
 
+    const urls: string[] = [];
     try {
-      const urls: string[] = [];
       for (const file of newProductFiles) {
         const url = await uploadToStorageAndGetPublicUrl(file, "product");
         urls.push(url);
       }
 
-      const { error } = await adminDb({ action: "insert", table: "products", data: {
+      const { error } = await adminDb({
+        action: "insert",
+        table: "products",
+        data: {
           ["SKU"]: sku,
           name,
           price,
@@ -259,7 +356,8 @@ export function useProductActions({
           images: urls,
           image: urls[0] || "",
           discount_price: 0,
-        } });
+        },
+      });
 
       if (error) throw error;
       revokeUrls(newProductPreviews);
@@ -270,28 +368,40 @@ export function useProductActions({
 
       return true; // signals caller to close modal
     } catch (err: unknown) {
-      showToast("Ürün eklenemedi: " + (err instanceof Error ? err.message : "Bilinmeyen hata"), "error");
+      await deleteStorageUrls(urls).catch(() => undefined);
+      showToast(
+        "Ürün eklenemedi: " +
+          (err instanceof Error ? err.message : "Bilinmeyen hata"),
+        "error",
+      );
       return false;
     } finally {
       setCreating(false);
     }
   };
 
-  const handleInlineUpdate = async (id: number, field: "price" | "stock", value: number) => {
+  const handleInlineUpdate = async (
+    id: number,
+    field: "price" | "stock",
+    value: number,
+  ) => {
     try {
       const { error } = await adminDb({
         action: "update",
         table: "products",
         data: { [field]: value },
-        filters: [{ column: "id", op: "eq", value: id }]
+        filters: [{ column: "id", op: "eq", value: id }],
       });
 
       if (error) throw new Error(error);
 
       await loadAllData();
-      showToast(`${field === "price" ? "Fiyat" : "Stok"} başarıyla güncellendi.`, "success");
-    } catch (err: any) {
-      showToast("Güncelleme hatası: " + (err?.message || "Bilinmeyen hata"), "error");
+      showToast(
+        `${field === "price" ? "Fiyat" : "Stok"} başarıyla güncellendi.`,
+        "success",
+      );
+    } catch (error: unknown) {
+      showToast("Güncelleme hatası: " + getErrorMessage(error), "error");
     }
   };
 

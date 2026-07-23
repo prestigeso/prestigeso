@@ -5,6 +5,7 @@ type AdminDashboardAlertsProps = {
   unansweredQuestionsCount: number;
   pendingReviewsCount: number;
   unreadMessagesCount: number;
+  paymentIssuesCount: number;
   onOpenOrders: () => void;
   onOpenQuestions: () => void;
   onOpenReviews: () => void;
@@ -29,6 +30,7 @@ export default function AdminDashboardAlerts({
   unansweredQuestionsCount,
   pendingReviewsCount,
   unreadMessagesCount,
+  paymentIssuesCount,
   onOpenOrders,
   onOpenQuestions,
   onOpenReviews,
@@ -38,7 +40,8 @@ export default function AdminDashboardAlerts({
     {
       icon: "📦",
       title: "Bekleyen Siparişler",
-      description: "İşlem veya kargo güncellemesi bekleyen siparişleri kontrol edin.",
+      description:
+        "İşlem veya kargo güncellemesi bekleyen siparişleri kontrol edin.",
       count: pendingOrdersCount,
       toneClassName: "bg-orange-50 text-orange-600 border-orange-100",
       onClick: onOpenOrders,
@@ -54,7 +57,8 @@ export default function AdminDashboardAlerts({
     {
       icon: "⭐",
       title: "Onay Bekleyen Yorumlar",
-      description: "Yayına alınmayı bekleyen ürün değerlendirmelerini inceleyin.",
+      description:
+        "Yayına alınmayı bekleyen ürün değerlendirmelerini inceleyin.",
       count: pendingReviewsCount,
       toneClassName: "bg-yellow-50 text-yellow-600 border-yellow-100",
       onClick: onOpenReviews,
@@ -62,14 +66,27 @@ export default function AdminDashboardAlerts({
     {
       icon: "📧",
       title: "Okunmamış Mesajlar",
-      description: "Müşteri mesajlarını görüntüleyin ve gerekli dönüşleri yapın.",
+      description:
+        "Müşteri mesajlarını görüntüleyin ve gerekli dönüşleri yapın.",
       count: unreadMessagesCount,
       toneClassName: "bg-emerald-50 text-emerald-600 border-emerald-100",
       onClick: onOpenMessages,
     },
+    {
+      icon: "⚠",
+      title: "Ödeme Mutabakatı",
+      description:
+        "Süresi dolan, başarısız veya yarım kalan ödeme/iade işlemlerini kontrol edin.",
+      count: paymentIssuesCount,
+      toneClassName: "bg-red-50 text-red-600 border-red-100",
+      onClick: onOpenOrders,
+    },
   ];
 
-  const totalAlerts = cards.reduce((total, card) => total + Number(card.count || 0), 0);
+  const totalAlerts = cards.reduce(
+    (total, card) => total + Number(card.count || 0),
+    0,
+  );
 
   return (
     <section className="bg-white border border-gray-100 rounded-3xl shadow-sm p-5 md:p-6">
@@ -110,7 +127,9 @@ export default function AdminDashboardAlerts({
                 <span className="text-2xl leading-none">{card.icon}</span>
                 <span
                   className={`min-w-8 h-8 px-2 rounded-full flex items-center justify-center text-xs font-black border ${
-                    hasAlert ? "bg-white/80 border-current/10" : "bg-white border-gray-100"
+                    hasAlert
+                      ? "bg-white/80 border-current/10"
+                      : "bg-white border-gray-100"
                   }`}
                 >
                   {formatCount(card.count)}

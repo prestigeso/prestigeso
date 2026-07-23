@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { getErrorMessage } from "@/lib/utils";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -30,8 +31,8 @@ export default function AdminLoginPage() {
       }
 
       router.replace("/admin");
-    } catch (err: any) {
-      setError("Bağlantı hatası: " + (err?.message || "Bilinmeyen hata"));
+    } catch (error: unknown) {
+      setError("Bağlantı hatası: " + getErrorMessage(error));
     } finally {
       setLoading(false);
     }

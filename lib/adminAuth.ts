@@ -65,7 +65,7 @@ const getHmacKey = async (secret: string): Promise<CryptoKey> => {
     toArrayBuffer(secretBytes),
     { name: "HMAC", hash: "SHA-256" },
     false,
-    ["sign", "verify"]
+    ["sign", "verify"],
   );
 
   keyCache.set(secret, key);
@@ -74,7 +74,7 @@ const getHmacKey = async (secret: string): Promise<CryptoKey> => {
 };
 
 export const createAdminSessionCookie = async (
-  secret: string
+  secret: string,
 ): Promise<string> => {
   const nonceBytes = new Uint8Array(16);
   crypto.getRandomValues(nonceBytes);
@@ -87,9 +87,7 @@ export const createAdminSessionCookie = async (
     nonce: toBase64Url(nonceBytes),
   };
 
-  const payloadEncoded = toBase64Url(
-    encoder.encode(JSON.stringify(payload))
-  );
+  const payloadEncoded = toBase64Url(encoder.encode(JSON.stringify(payload)));
 
   const key = await getHmacKey(secret);
 
@@ -98,7 +96,7 @@ export const createAdminSessionCookie = async (
   const signature = await crypto.subtle.sign(
     "HMAC",
     key,
-    toArrayBuffer(payloadBytes)
+    toArrayBuffer(payloadBytes),
   );
 
   const signatureEncoded = toBase64Url(new Uint8Array(signature));
@@ -108,7 +106,7 @@ export const createAdminSessionCookie = async (
 
 export const verifyAdminSessionCookie = async (
   secret: string,
-  cookieValue: string
+  cookieValue: string,
 ): Promise<boolean> => {
   if (!secret || !cookieValue) return false;
 
@@ -135,6 +133,6 @@ export const verifyAdminSessionCookie = async (
     "HMAC",
     key,
     toArrayBuffer(signatureBytes),
-    toArrayBuffer(payloadBytes)
+    toArrayBuffer(payloadBytes),
   );
 };

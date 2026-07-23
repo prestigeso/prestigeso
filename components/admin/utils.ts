@@ -1,11 +1,10 @@
-import { supabase } from "@/lib/supabase";
 import { safeParseIds } from "@/lib/utils";
 
 export { safeParseIds };
 
 export const STORAGE_BUCKET = "products";
 
-const MAX_IMAGE_SIZE_MB = 50;
+const MAX_IMAGE_SIZE_MB = 8;
 const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
 
 const ALLOWED_IMAGE_TYPES: Record<string, string> = {
@@ -26,28 +25,15 @@ export function revokeUrls(urls: string[]) {
 }
 
 function sanitizePrefix(prefix: string) {
-  return String(prefix || "product")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9-_]/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 48) || "product";
-}
-
-function createRandomFileName(file: File, prefix: string) {
-  const safePrefix = sanitizePrefix(prefix);
-  const ext = ALLOWED_IMAGE_TYPES[file.type];
-
-  if (!ext) {
-    throw new Error("Desteklenmeyen görsel formatı. Sadece JPG, PNG, WEBP veya AVIF yükleyebilirsiniz.");
-  }
-
-  const randomPart = crypto.randomUUID
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-
-  return `${safePrefix}/${Date.now()}-${randomPart}.${ext}`;
+  return (
+    String(prefix || "product")
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 48) || "product"
+  );
 }
 
 /**
@@ -56,8 +42,8 @@ function createRandomFileName(file: File, prefix: string) {
  */
 async function verifyMagicBytes(file: File): Promise<boolean> {
   const SIGNATURES: { type: string; bytes: number[] }[] = [
-    { type: "image/jpeg", bytes: [0xFF, 0xD8, 0xFF] },
-    { type: "image/png", bytes: [0x89, 0x50, 0x4E, 0x47] },
+    { type: "image/jpeg", bytes: [0xff, 0xd8, 0xff] },
+    { type: "image/png", bytes: [0x89, 0x50, 0x4e, 0x47] },
     { type: "image/webp", bytes: [0x52, 0x49, 0x46, 0x46] }, // RIFF header
     { type: "image/avif", bytes: [] }, // AVIF uses ftyp box, check separately
   ];
@@ -68,7 +54,12 @@ async function verifyMagicBytes(file: File): Promise<boolean> {
 
     // AVIF: bytes 4-8 should be "ftyp"
     if (file.type === "image/avif") {
-      const ftyp = String.fromCharCode(header[4], header[5], header[6], header[7]);
+      const ftyp = String.fromCharCode(
+        header[4],
+        header[5],
+        header[6],
+        header[7],
+      );
       return ftyp === "ftyp";
     }
 
@@ -87,7 +78,9 @@ async function validateImageFile(file: File) {
   }
 
   if (!ALLOWED_IMAGE_TYPES[file.type]) {
-    throw new Error("Sadece JPG, PNG, WEBP veya AVIF formatında görsel yükleyebilirsiniz. SVG/HTML kabul edilmez.");
+    throw new Error(
+      "Sadece JPG, PNG, WEBP veya AVIF formatında görsel yükleyebilirsiniz. SVG/HTML kabul edilmez.",
+    );
   }
 
   if (file.size > MAX_IMAGE_SIZE_BYTES) {
@@ -101,28 +94,45 @@ async function validateImageFile(file: File) {
   // SEC-20/21: Magic bytes doğrulaması — dosya içeriğinin gerçekten beyan edilen format olduğunu kontrol et
   const isReal = await verifyMagicBytes(file);
   if (!isReal) {
-    throw new Error("Dosya içeriği beyan edilen formatla uyuşmuyor. Lütfen geçerli bir görsel dosyası yükleyin.");
+    throw new Error(
+      "Dosya içeriği beyan edilen formatla uyuşmuyor. Lütfen geçerli bir görsel dosyası yükleyin.",
+    );
   }
 }
 
-export async function uploadToStorageAndGetPublicUrl(file: File, prefix: string) {
+export async function uploadToStorageAndGetPublicUrl(
+  file: File,
+  prefix: string,
+) {
   await validateImageFile(file);
 
-  const fileName = createRandomFileName(file, prefix);
+  const form = new FormData();
+  form.set("file", file);
+  form.set("prefix", sanitizePrefix(prefix));
+  const response = await fetch("/api/admin/uploads", {
+    method: "POST",
+    body: form,
+    credentials: "include",
+  });
+  const data = (await response.json()) as { url?: string; error?: string };
+  if (!response.ok || !data.url)
+    throw new Error(data.error || "Görsel yüklenemedi.");
+  return data.url;
+}
 
-  const { error: uploadError } = await supabase.storage
-    .from(STORAGE_BUCKET)
-    .upload(fileName, file, {
-      contentType: file.type,
-      cacheControl: "31536000",
-      upsert: false,
-    });
-
-  if (uploadError) throw uploadError;
-
-  const { data } = supabase.storage.from(STORAGE_BUCKET).getPublicUrl(fileName);
-
-  return data.publicUrl;
+export async function deleteStorageUrls(urls: string[]) {
+  const cleanUrls = [...new Set(urls.filter(Boolean))];
+  if (cleanUrls.length === 0) return;
+  const response = await fetch("/api/admin/uploads", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ urls: cleanUrls }),
+  });
+  if (!response.ok) {
+    const data = (await response.json().catch(() => ({}))) as { error?: string };
+    throw new Error(data.error || "Storage görselleri silinemedi.");
+  }
 }
 
 // "1 dk önce", "2 saat önce" gibi

@@ -1,6 +1,8 @@
 "use client";
 
 import type { QuestionRow } from "../types";
+import Image from "next/image";
+import AdminPagination from "../parts/AdminPagination";
 
 type Props = {
   open: boolean;
@@ -19,6 +21,11 @@ type Props = {
   // actions
   onSendReply: (questionId: number) => void;
   onToggleApproval: (questionId: number, currentStatus: boolean) => void;
+  page: number;
+  pageSize: number;
+  total: number;
+  loading: boolean;
+  onPageChange: (page: number) => void;
 };
 
 export default function QuestionsModal({
@@ -34,6 +41,11 @@ export default function QuestionsModal({
 
   onSendReply,
   onToggleApproval,
+  page,
+  pageSize,
+  total,
+  loading,
+  onPageChange,
 }: Props) {
   if (!open) return null;
 
@@ -62,6 +74,11 @@ export default function QuestionsModal({
         </div>
 
         <div className="overflow-y-auto space-y-4 flex-1 pr-2">
+          {loading && (
+            <p className="py-3 text-center text-[10px] font-black uppercase tracking-widest text-gray-400">
+              Sorular yükleniyor...
+            </p>
+          )}
           {questions.length === 0 ? (
             <p className="text-center text-gray-400 font-bold py-10 uppercase tracking-widest text-xs">
               Henüz soru yok.
@@ -83,7 +100,9 @@ export default function QuestionsModal({
                   {/* Product */}
                   <div className="w-full md:w-24 flex-shrink-0 flex flex-col items-center gap-2">
                     <div className="w-20 h-20 bg-white rounded-xl border border-gray-200 overflow-hidden">
-                      <img
+                      <Image
+                        width={80}
+                        height={80}
                         src={displayImage}
                         alt=""
                         className="w-full h-full object-cover mix-blend-multiply"
@@ -105,7 +124,9 @@ export default function QuestionsModal({
                         {q.answer ? (
                           <button
                             type="button"
-                            onClick={() => onToggleApproval(q.id, !!q.is_approved)}
+                            onClick={() =>
+                              onToggleApproval(q.id, !!q.is_approved)
+                            }
                             className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${
                               q.is_approved
                                 ? "bg-green-100 text-green-700 hover:bg-green-200 border border-green-200"
@@ -137,7 +158,9 @@ export default function QuestionsModal({
                         <p className="text-[9px] font-black uppercase text-green-700 tracking-widest mb-1">
                           Satıcı Cevabı:
                         </p>
-                        <p className="text-sm text-gray-700 font-medium">{q.answer}</p>
+                        <p className="text-sm text-gray-700 font-medium">
+                          {q.answer}
+                        </p>
                       </div>
                     ) : (
                       <div className="mt-4">
@@ -191,6 +214,13 @@ export default function QuestionsModal({
             })
           )}
         </div>
+        <AdminPagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          loading={loading}
+          onPageChange={onPageChange}
+        />
       </div>
     </div>
   );

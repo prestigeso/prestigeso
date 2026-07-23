@@ -39,14 +39,16 @@ function toNullableNumber(value: unknown) {
   return Number.isFinite(next) ? next : null;
 }
 
-async function getAdminErrorResponse(req: NextRequest): Promise<NextResponse | null> {
+async function getAdminErrorResponse(
+  req: NextRequest,
+): Promise<NextResponse | null> {
   const adminSecret = (process.env.ADMIN_COOKIE_SECRET || "").trim();
   const cookieValue = req.cookies.get(ADMIN_COOKIE_NAME)?.value || "";
 
   if (!adminSecret || adminSecret.length < 32) {
     return NextResponse.json(
       { error: "Admin oturum yapılandırması eksik." },
-      { status: 500 }
+      { status: 500 },
     );
   }
 
@@ -55,7 +57,7 @@ async function getAdminErrorResponse(req: NextRequest): Promise<NextResponse | n
   if (!isValid) {
     return NextResponse.json(
       { error: "Admin oturumu geçersiz veya süresi dolmuş." },
-      { status: 401 }
+      { status: 401 },
     );
   }
 
@@ -66,7 +68,8 @@ function validateCouponPayload(payload: CouponPayload) {
   const code = normalizeCouponCode(payload.code);
   const name = String(payload.name || "").trim();
   const description = String(payload.description || "").trim();
-  const discountType = payload.discount_type === "percent" ? "percent" : "fixed";
+  const discountType =
+    payload.discount_type === "percent" ? "percent" : "fixed";
   const discountValue = toNumber(payload.discount_value, 0);
   const minOrderAmount = toNumber(payload.min_order_amount, 0);
   const maxDiscountAmount = toNullableNumber(payload.max_discount_amount);
@@ -75,8 +78,10 @@ function validateCouponPayload(payload: CouponPayload) {
 
   if (!code) return { error: "Kupon kodu zorunludur." };
   if (!name) return { error: "Kupon adı zorunludur." };
-  if (name.length > 80) return { error: "Kupon adı en fazla 80 karakter olabilir." };
-  if (description.length > 250) return { error: "Açıklama en fazla 250 karakter olabilir." };
+  if (name.length > 80)
+    return { error: "Kupon adı en fazla 80 karakter olabilir." };
+  if (description.length > 250)
+    return { error: "Açıklama en fazla 250 karakter olabilir." };
 
   if (!Number.isFinite(discountValue) || discountValue <= 0) {
     return { error: "İndirim değeri 0'dan büyük olmalıdır." };
@@ -113,7 +118,11 @@ function validateCouponPayload(payload: CouponPayload) {
     return { error: "Bitiş tarihi geçersiz." };
   }
 
-  if (startsAt && endsAt && new Date(endsAt).getTime() < new Date(startsAt).getTime()) {
+  if (
+    startsAt &&
+    endsAt &&
+    new Date(endsAt).getTime() < new Date(startsAt).getTime()
+  ) {
     return { error: "Bitiş tarihi başlangıç tarihinden önce olamaz." };
   }
 
@@ -170,7 +179,10 @@ export async function POST(req: NextRequest): Promise<Response> {
     .single();
 
   if (error) {
-    const message = error.code === "23505" ? "Bu kupon kodu zaten kullanılıyor." : error.message;
+    const message =
+      error.code === "23505"
+        ? "Bu kupon kodu zaten kullanılıyor."
+        : error.message;
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
@@ -185,7 +197,10 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   const id = String(body.id || "").trim();
 
   if (!id) {
-    return NextResponse.json({ error: "Kupon ID zorunludur." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Kupon ID zorunludur." },
+      { status: 400 },
+    );
   }
 
   if (body.action === "toggle") {
@@ -227,7 +242,10 @@ export async function PATCH(req: NextRequest): Promise<Response> {
     .single();
 
   if (error) {
-    const message = error.code === "23505" ? "Bu kupon kodu zaten kullanılıyor." : error.message;
+    const message =
+      error.code === "23505"
+        ? "Bu kupon kodu zaten kullanılıyor."
+        : error.message;
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
@@ -242,7 +260,10 @@ export async function DELETE(req: NextRequest): Promise<Response> {
   const id = String(body.id || "").trim();
 
   if (!id) {
-    return NextResponse.json({ error: "Kupon ID zorunludur." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Kupon ID zorunludur." },
+      { status: 400 },
+    );
   }
 
   const { error } = await supabaseAdmin.from("coupons").delete().eq("id", id);

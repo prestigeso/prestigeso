@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import type { Review } from "@/types";
 
 export default function ReviewsTab({ reviews }: { reviews: Review[] }) {
@@ -19,15 +20,21 @@ export default function ReviewsTab({ reviews }: { reviews: Review[] }) {
         <div className="space-y-4">
           {reviews.map((rev) => {
             const prod = rev.products;
-            const displayImage = prod?.images?.[0] || prod?.image || "/logo.jpeg";
+            const displayImage =
+              prod?.images?.[0] || prod?.image || "/logo.jpeg";
 
             return (
-              <div key={rev.id} className="bg-gray-50 border border-gray-100 p-4 rounded-2xl flex flex-col md:flex-row gap-4">
+              <div
+                key={rev.id}
+                className="bg-gray-50 border border-gray-100 p-4 rounded-2xl flex flex-col md:flex-row gap-4"
+              >
                 <Link
                   href={`/product/${rev.product_id}`}
                   className="w-full md:w-24 h-24 bg-white rounded-xl border border-gray-200 flex-shrink-0 overflow-hidden group"
                 >
-                  <img
+                  <Image
+                    width={64}
+                    height={64}
                     src={displayImage}
                     alt=""
                     className="w-full h-full object-cover mix-blend-multiply group-hover:scale-110 transition-transform"
@@ -56,16 +63,22 @@ export default function ReviewsTab({ reviews }: { reviews: Review[] }) {
                       {"☆".repeat(5 - rev.rating)}
                     </span>
                     <span className="text-[9px] font-bold text-gray-400">
-                      {new Date(rev.created_at || "").toLocaleDateString("tr-TR")}
+                      {new Date(rev.created_at || "").toLocaleDateString(
+                        "tr-TR",
+                      )}
                     </span>
                   </div>
 
-                  <p className="text-sm text-gray-600 font-medium mb-3">{rev.comment}</p>
+                  <p className="text-sm text-gray-600 font-medium mb-3">
+                    {rev.comment}
+                  </p>
 
                   {rev.images && rev.images.length > 0 && (
                     <div className="flex gap-2">
                       {rev.images.map((img: string, i: number) => (
-                        <img
+                        <Image
+                          width={64}
+                          height={64}
                           key={i}
                           src={img}
                           className="w-12 h-12 rounded-lg object-cover border border-gray-200"

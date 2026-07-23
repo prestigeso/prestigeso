@@ -1,7 +1,10 @@
 import type { CouponRow } from "./checkoutTypes";
 import { formatMoney } from "./checkoutFormatters";
 
-export function calculateCouponDiscount(coupon: CouponRow | null, subtotal: number) {
+export function calculateCouponDiscount(
+  coupon: CouponRow | null,
+  subtotal: number,
+) {
   if (!coupon || subtotal <= 0) return 0;
 
   const minOrderAmount = Number(coupon.min_order_amount || 0);
@@ -16,7 +19,11 @@ export function calculateCouponDiscount(coupon: CouponRow | null, subtotal: numb
   }
 
   const maxDiscount = coupon.max_discount_amount;
-  if (maxDiscount !== null && maxDiscount !== undefined && Number(maxDiscount) > 0) {
+  if (
+    maxDiscount !== null &&
+    maxDiscount !== undefined &&
+    Number(maxDiscount) > 0
+  ) {
     discount = Math.min(discount, Number(maxDiscount));
   }
 

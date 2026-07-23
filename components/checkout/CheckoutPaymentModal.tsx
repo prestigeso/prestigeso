@@ -17,7 +17,7 @@ export default function CheckoutPaymentModal({
   const isValidPaytrUrl = (() => {
     try {
       const url = new URL(iframeUrl);
-      return url.protocol === "https:" && url.hostname.endsWith("paytr.com");
+      return url.protocol === "https:" && url.hostname === "www.paytr.com";
     } catch {
       return false;
     }
@@ -34,9 +34,7 @@ export default function CheckoutPaymentModal({
               Güvenli Ödeme
             </p>
 
-            <h2 className="text-lg font-black text-black">
-              PayTR Ödeme Formu
-            </h2>
+            <h2 className="text-lg font-black text-black">PayTR Ödeme Formu</h2>
 
             <p className="text-[11px] font-bold text-gray-500 mt-1">
               Sipariş No: {merchantOid}

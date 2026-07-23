@@ -1,11 +1,18 @@
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAppAlert } from "@/context/AppAlertContext";
 import type { AuthUser, Address } from "@/types";
-import { normalizeText, normalizePhone, isValidTurkishPhone } from "@/lib/utils";
+import {
+  normalizeText,
+  normalizePhone,
+  isValidTurkishPhone,
+} from "@/lib/utils";
+import type {
+  LocationOption,
+  ProvinceOption,
+} from "@/lib/checkout/checkoutTypes";
 
 type Props = {
   user: AuthUser | null;
@@ -37,18 +44,18 @@ const emptyAddressForm: AddressFormState = {
   is_default: false,
 };
 
-
 export default function AddressesTab({ user, addresses, setAddresses }: Props) {
   const { showToast, showConfirm } = useAppAlert();
 
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
   const [isSavingAddress, setIsSavingAddress] = useState(false);
-  const [addressForm, setAddressForm] = useState<AddressFormState>(emptyAddressForm);
+  const [addressForm, setAddressForm] =
+    useState<AddressFormState>(emptyAddressForm);
   const [editingAddressId, setEditingAddressId] = useState<number | null>(null);
 
-  const [cities, setCities] = useState<any[]>([]);
-  const [districts, setDistricts] = useState<any[]>([]);
-  const [neighborhoods, setNeighborhoods] = useState<any[]>([]);
+  const [cities, setCities] = useState<ProvinceOption[]>([]);
+  const [districts, setDistricts] = useState<LocationOption[]>([]);
+  const [neighborhoods, setNeighborhoods] = useState<LocationOption[]>([]);
 
   const [showCitySelect, setShowCitySelect] = useState(false);
   const [citySearch, setCitySearch] = useState("");
@@ -71,11 +78,19 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
           const json = await res.json();
 
           if (json.status === "OK") {
-            const sorted = json.data.sort((a: { name: string }, b: { name: string }) =>
-              a.name.localeCompare(b.name, "tr")
+            const sorted = json.data.sort(
+              (a: { name: string }, b: { name: string }) =>
+                a.name.localeCompare(b.name, "tr"),
             );
             setCities(sorted);
-            try { sessionStorage.setItem("prestige_provinces", JSON.stringify(sorted)); } catch { /* quota */ }
+            try {
+              sessionStorage.setItem(
+                "prestige_provinces",
+                JSON.stringify(sorted),
+              );
+            } catch {
+              /* quota */
+            }
           }
         }
       } catch (error) {
@@ -87,9 +102,12 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
     fetchCities();
   }, [showToast]);
 
-  const handleAddressInputChange = (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const handleAddressInputChange = (
+    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => {
     const { name, value, type } = event.target;
-    const checked = event.target instanceof HTMLInputElement ? event.target.checked : false;
+    const checked =
+      event.target instanceof HTMLInputElement ? event.target.checked : false;
 
     let nextValue = value;
     if (name === "phone") nextValue = normalizePhone(value);
@@ -104,8 +122,9 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
     const selectedCity = cities.find((city) => city.name === cityName);
 
     if (selectedCity) {
-      const sortedDistricts = selectedCity.districts.sort((a: { name: string }, b: { name: string }) =>
-        a.name.localeCompare(b.name, "tr")
+      const sortedDistricts = selectedCity.districts.sort(
+        (a: { name: string }, b: { name: string }) =>
+          a.name.localeCompare(b.name, "tr"),
       );
       setDistricts(sortedDistricts);
     } else {
@@ -124,7 +143,10 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
     setCitySearch("");
   };
 
-  const handleDistrictSelect = async (district: { id?: number | string; name: string }) => {
+  const handleDistrictSelect = async (district: {
+    id?: number | string;
+    name: string;
+  }) => {
     setAddressForm((prev) => ({
       ...prev,
       district: district.name,
@@ -137,13 +159,14 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
 
     try {
       const res = await fetch(
-        `/api/turkiyeapi/neighborhoods?districtId=${district.id}&limit=1000`
+        `/api/turkiyeapi/neighborhoods?districtId=${district.id}&limit=1000`,
       );
       const json = await res.json();
 
       if (json.status === "OK") {
-        const sortedNeighborhoods = json.data.sort((a: { name: string }, b: { name: string }) =>
-          a.name.localeCompare(b.name, "tr")
+        const sortedNeighborhoods = json.data.sort(
+          (a: { name: string }, b: { name: string }) =>
+            a.name.localeCompare(b.name, "tr"),
         );
         setNeighborhoods(sortedNeighborhoods);
       }
@@ -166,10 +189,15 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
     if (!isValidTurkishPhone(addressForm.phone)) {
       return "Lütfen geçerli bir Türkiye telefon numarası giriniz. Örn: 05XXXXXXXXX";
     }
-    if (!addressForm.city || !addressForm.district || !addressForm.neighborhood) {
+    if (
+      !addressForm.city ||
+      !addressForm.district ||
+      !addressForm.neighborhood
+    ) {
       return "Lütfen İl, İlçe ve Mahalle seçiminizi yapınız.";
     }
-    if (!normalizeText(addressForm.full_address)) return "Açık adres zorunludur.";
+    if (!normalizeText(addressForm.full_address))
+      return "Açık adres zorunludur.";
     if (normalizeText(addressForm.full_address).length < 10) {
       return "Açık adres en az 10 karakter olmalıdır.";
     }
@@ -203,13 +231,6 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
     setIsSavingAddress(true);
 
     try {
-      if (addressForm.is_default) {
-        await supabase
-          .from("addresses")
-          .update({ is_default: false })
-          .eq("user_id", user.id);
-      }
-
       const cleanedAddress = {
         title: normalizeText(addressForm.title),
         first_name: normalizeText(addressForm.first_name),
@@ -220,19 +241,19 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
         neighborhood: addressForm.neighborhood,
         full_address: normalizeText(addressForm.full_address),
         is_default: addressForm.is_default,
-        user_id: user.id,
       };
 
-      // FEAT-04: Düzenleme veya yeni ekleme
-      if (editingAddressId) {
-        const { error } = await supabase.from("addresses").update(cleanedAddress).eq("id", editingAddressId).eq("user_id", user.id);
-        if (error) throw error;
-        showToast("Adres başarıyla güncellendi.", "success");
-      } else {
-        const { error } = await supabase.from("addresses").insert([cleanedAddress]);
-        if (error) throw error;
-        showToast("Adres başarıyla eklendi.", "success");
-      }
+      const { error } = await supabase.rpc("save_my_address", {
+        p_address_id: editingAddressId || null,
+        p_address: cleanedAddress,
+      });
+      if (error) throw error;
+      showToast(
+        editingAddressId
+          ? "Adres başarıyla güncellendi."
+          : "Adres başarıyla eklendi.",
+        "success",
+      );
 
       setIsAddressModalOpen(false);
       setAddressForm(emptyAddressForm);
@@ -245,7 +266,11 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
 
       await refreshAddresses();
     } catch (err: unknown) {
-      showToast("Hata: " + (err instanceof Error ? err.message : "Adres kaydedilemedi."), "error");
+      showToast(
+        "Hata: " +
+          (err instanceof Error ? err.message : "Adres kaydedilemedi."),
+        "error",
+      );
     } finally {
       setIsSavingAddress(false);
     }
@@ -254,7 +279,8 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
   const handleDeleteAddress = async (id: number) => {
     const ok = await showConfirm({
       title: "Adres silinsin mi?",
-      message: "Bu adresi silmek istediğinize emin misiniz? Bu işlem geri alınamaz.",
+      message:
+        "Bu adresi silmek istediğinize emin misiniz? Bu işlem geri alınamaz.",
       confirmText: "Sil",
       cancelText: "Vazgeç",
       tone: "danger",
@@ -263,7 +289,11 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
     if (!ok || !user) return;
 
     // GÜVENLİK: user_id filtresi ile sadece kendi adresini silebilir
-    const { error } = await supabase.from("addresses").delete().eq("id", id).eq("user_id", user.id);
+    const { error } = await supabase
+      .from("addresses")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", user.id);
 
     if (error) {
       showToast("Adres silinemedi: " + error.message, "error");
@@ -277,21 +307,21 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
   const filteredCities = useMemo(() => {
     const query = citySearch.toLocaleLowerCase("tr-TR");
     return cities.filter((city) =>
-      city.name.toLocaleLowerCase("tr-TR").includes(query)
+      city.name.toLocaleLowerCase("tr-TR").includes(query),
     );
   }, [cities, citySearch]);
 
   const filteredDistricts = useMemo(() => {
     const query = districtSearch.toLocaleLowerCase("tr-TR");
     return districts.filter((district) =>
-      district.name.toLocaleLowerCase("tr-TR").includes(query)
+      district.name.toLocaleLowerCase("tr-TR").includes(query),
     );
   }, [districts, districtSearch]);
 
   const filteredNeighborhoods = useMemo(() => {
     const query = neighborhoodSearch.toLocaleLowerCase("tr-TR");
     return neighborhoods.filter((neighborhood) =>
-      neighborhood.name.toLocaleLowerCase("tr-TR").includes(query)
+      neighborhood.name.toLocaleLowerCase("tr-TR").includes(query),
     );
   }, [neighborhoods, neighborhoodSearch]);
 
@@ -343,7 +373,9 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
                 <p className="text-xs font-bold text-gray-800">
                   {addr.first_name} {addr.last_name}
                 </p>
-                <p className="text-xs font-medium text-gray-500">{addr.phone}</p>
+                <p className="text-xs font-medium text-gray-500">
+                  {addr.phone}
+                </p>
                 <p className="text-xs font-medium text-gray-500">
                   {addr.neighborhood} - {addr.district} / {addr.city}
                 </p>
@@ -390,17 +422,26 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
         <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
           <div className="bg-white w-full max-w-lg rounded-3xl p-6 md:p-8 shadow-2xl animate-in zoom-in duration-200 max-h-[90vh] flex flex-col relative z-10">
             <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4 shrink-0">
-              <h2 className="text-xl font-black uppercase tracking-tight">{editingAddressId ? "Adresi Düzenle" : "Yeni Adres Ekle"}</h2>
+              <h2 className="text-xl font-black uppercase tracking-tight">
+                {editingAddressId ? "Adresi Düzenle" : "Yeni Adres Ekle"}
+              </h2>
               <button
                 type="button"
-                onClick={() => { setIsAddressModalOpen(false); setEditingAddressId(null); setAddressForm(emptyAddressForm); }}
+                onClick={() => {
+                  setIsAddressModalOpen(false);
+                  setEditingAddressId(null);
+                  setAddressForm(emptyAddressForm);
+                }}
                 className="w-8 h-8 bg-gray-100 rounded-full font-bold hover:bg-gray-200"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSaveAddress} className="space-y-4 overflow-y-auto pr-2 pb-4 hide-scrollbar">
+            <form
+              onSubmit={handleSaveAddress}
+              className="space-y-4 overflow-y-auto pr-2 pb-4 hide-scrollbar"
+            >
               <div>
                 <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
                   Adres Başlığı *
@@ -478,24 +519,37 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
                     }}
                     className="w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium cursor-pointer flex justify-between items-center hover:border-black transition-all text-left"
                   >
-                    <span className={addressForm.city ? "text-black" : "text-gray-400"}>
+                    <span
+                      className={
+                        addressForm.city ? "text-black" : "text-gray-400"
+                      }
+                    >
                       {addressForm.city || "İl Seçiniz"}
                     </span>
                     <span className="text-[10px]">▼</span>
                   </button>
                   {showCitySelect && (
                     <>
-                      <div className="fixed inset-0 z-[40]" onClick={() => setShowCitySelect(false)} />
+                      <div
+                        className="fixed inset-0 z-[40]"
+                        onClick={() => setShowCitySelect(false)}
+                      />
                       <div className="absolute z-[50] w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-top-2">
                         <input
                           type="text"
                           placeholder="İl Ara..."
                           value={citySearch}
-                          onChange={(event) => setCitySearch(event.target.value)}
+                          onChange={(event) =>
+                            setCitySearch(event.target.value)
+                          }
                           className="p-3 border-b border-gray-100 outline-none text-sm font-bold bg-gray-50 text-black"
                           autoFocus
                         />
-                        <div className="max-h-48 overflow-y-auto overscroll-contain" onWheel={(event) => event.stopPropagation()} onTouchMove={(event) => event.stopPropagation()}>
+                        <div
+                          className="max-h-48 overflow-y-auto overscroll-contain"
+                          onWheel={(event) => event.stopPropagation()}
+                          onTouchMove={(event) => event.stopPropagation()}
+                        >
                           {filteredCities.map((city) => (
                             <button
                               type="button"
@@ -507,7 +561,9 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
                             </button>
                           ))}
                           {filteredCities.length === 0 && (
-                            <div className="p-3 text-xs font-bold text-gray-400">Sonuç bulunamadı.</div>
+                            <div className="p-3 text-xs font-bold text-gray-400">
+                              Sonuç bulunamadı.
+                            </div>
                           )}
                         </div>
                       </div>
@@ -529,27 +585,42 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
                       }
                     }}
                     className={`w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium flex justify-between items-center transition-all text-left ${
-                      !addressForm.city ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:border-black"
+                      !addressForm.city
+                        ? "opacity-50 cursor-not-allowed"
+                        : "cursor-pointer hover:border-black"
                     }`}
                   >
-                    <span className={addressForm.district ? "text-black" : "text-gray-400"}>
+                    <span
+                      className={
+                        addressForm.district ? "text-black" : "text-gray-400"
+                      }
+                    >
                       {addressForm.district || "İlçe Seçiniz"}
                     </span>
                     <span className="text-[10px]">▼</span>
                   </button>
                   {showDistrictSelect && (
                     <>
-                      <div className="fixed inset-0 z-[40]" onClick={() => setShowDistrictSelect(false)} />
+                      <div
+                        className="fixed inset-0 z-[40]"
+                        onClick={() => setShowDistrictSelect(false)}
+                      />
                       <div className="absolute z-[50] w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-top-2">
                         <input
                           type="text"
                           placeholder="İlçe Ara..."
                           value={districtSearch}
-                          onChange={(event) => setDistrictSearch(event.target.value)}
+                          onChange={(event) =>
+                            setDistrictSearch(event.target.value)
+                          }
                           className="p-3 border-b border-gray-100 outline-none text-sm font-bold bg-gray-50 text-black"
                           autoFocus
                         />
-                        <div className="max-h-48 overflow-y-auto overscroll-contain" onWheel={(event) => event.stopPropagation()} onTouchMove={(event) => event.stopPropagation()}>
+                        <div
+                          className="max-h-48 overflow-y-auto overscroll-contain"
+                          onWheel={(event) => event.stopPropagation()}
+                          onTouchMove={(event) => event.stopPropagation()}
+                        >
                           {filteredDistricts.map((district) => (
                             <button
                               type="button"
@@ -561,7 +632,9 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
                             </button>
                           ))}
                           {filteredDistricts.length === 0 && (
-                            <div className="p-3 text-xs font-bold text-gray-400">Sonuç bulunamadı.</div>
+                            <div className="p-3 text-xs font-bold text-gray-400">
+                              Sonuç bulunamadı.
+                            </div>
                           )}
                         </div>
                       </div>
@@ -583,42 +656,65 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
                       }
                     }}
                     className={`w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium flex justify-between items-center transition-all text-left ${
-                      !addressForm.district ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:border-black"
+                      !addressForm.district
+                        ? "opacity-50 cursor-not-allowed"
+                        : "cursor-pointer hover:border-black"
                     }`}
                   >
-                    <span className={addressForm.neighborhood ? "text-black line-clamp-1" : "text-gray-400"}>
+                    <span
+                      className={
+                        addressForm.neighborhood
+                          ? "text-black line-clamp-1"
+                          : "text-gray-400"
+                      }
+                    >
                       {addressForm.neighborhood || "Mahalle Seçiniz"}
                     </span>
                     <span className="text-[10px] ml-2">▼</span>
                   </button>
                   {showNeighborhoodSelect && (
                     <>
-                      <div className="fixed inset-0 z-[40]" onClick={() => setShowNeighborhoodSelect(false)} />
+                      <div
+                        className="fixed inset-0 z-[40]"
+                        onClick={() => setShowNeighborhoodSelect(false)}
+                      />
                       <div className="absolute z-[50] w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-top-2">
                         <input
                           type="text"
                           placeholder="Mahalle Ara..."
                           value={neighborhoodSearch}
-                          onChange={(event) => setNeighborhoodSearch(event.target.value)}
+                          onChange={(event) =>
+                            setNeighborhoodSearch(event.target.value)
+                          }
                           className="p-3 border-b border-gray-100 outline-none text-sm font-bold bg-gray-50 text-black"
                           autoFocus
                         />
-                        <div className="max-h-48 overflow-y-auto overscroll-contain" onWheel={(event) => event.stopPropagation()} onTouchMove={(event) => event.stopPropagation()}>
+                        <div
+                          className="max-h-48 overflow-y-auto overscroll-contain"
+                          onWheel={(event) => event.stopPropagation()}
+                          onTouchMove={(event) => event.stopPropagation()}
+                        >
                           {neighborhoods.length === 0 ? (
-                            <div className="p-3 text-xs font-bold text-gray-400 animate-pulse">Yükleniyor...</div>
+                            <div className="p-3 text-xs font-bold text-gray-400 animate-pulse">
+                              Yükleniyor...
+                            </div>
                           ) : filteredNeighborhoods.length > 0 ? (
                             filteredNeighborhoods.map((neighborhood) => (
                               <button
                                 type="button"
                                 key={neighborhood.id || neighborhood.name}
-                                onClick={() => handleNeighborhoodSelect(neighborhood.name)}
+                                onClick={() =>
+                                  handleNeighborhoodSelect(neighborhood.name)
+                                }
                                 className="w-full text-left p-3 text-sm font-medium hover:bg-gray-100 cursor-pointer border-b border-gray-50 last:border-0 transition-colors"
                               >
                                 {neighborhood.name}
                               </button>
                             ))
                           ) : (
-                            <div className="p-3 text-xs font-bold text-gray-400">Sonuç bulunamadı.</div>
+                            <div className="p-3 text-xs font-bold text-gray-400">
+                              Sonuç bulunamadı.
+                            </div>
                           )}
                         </div>
                       </div>
@@ -651,8 +747,12 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
                   className="w-5 h-5 rounded border-gray-300 text-black focus:ring-black"
                 />
                 <div>
-                  <span className="font-bold text-sm block text-gray-900">Varsayılan Adres Olarak Kaydet</span>
-                  <span className="text-[10px] text-gray-500">Sonraki siparişlerinizde otomatik seçilir.</span>
+                  <span className="font-bold text-sm block text-gray-900">
+                    Varsayılan Adres Olarak Kaydet
+                  </span>
+                  <span className="text-[10px] text-gray-500">
+                    Sonraki siparişlerinizde otomatik seçilir.
+                  </span>
                 </div>
               </label>
 
@@ -661,7 +761,11 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
                 disabled={isSavingAddress}
                 className="w-full bg-black text-white py-4 rounded-xl font-black text-xs uppercase tracking-widest disabled:opacity-50 shadow-md active:scale-95 transition-all mt-4"
               >
-                {isSavingAddress ? "Kaydediliyor..." : editingAddressId ? "Adresi Güncelle 📍" : "Adresi Kaydet 📍"}
+                {isSavingAddress
+                  ? "Kaydediliyor..."
+                  : editingAddressId
+                    ? "Adresi Güncelle 📍"
+                    : "Adresi Kaydet 📍"}
               </button>
             </form>
           </div>

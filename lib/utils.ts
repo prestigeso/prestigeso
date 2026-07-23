@@ -34,7 +34,10 @@ export function safeParseIds(ids: unknown): number[] {
 const SAFE_IMAGE_PROTOCOLS = ["https:", "http:"];
 const FALLBACK_IMAGE = "/logo.jpeg";
 
-export function sanitizeImageUrl(url: unknown, fallback = FALLBACK_IMAGE): string {
+export function sanitizeImageUrl(
+  url: unknown,
+  fallback = FALLBACK_IMAGE,
+): string {
   if (!url || typeof url !== "string") return fallback;
 
   const trimmed = url.trim();
@@ -68,15 +71,25 @@ export function formatMoney(value: unknown): string {
 /**
  * Adres JSON stringini güvenle nesneye çevirir.
  */
-export function safeParseAddress(address: unknown): Record<string, any> | null {
-  if (typeof address === "object" && address !== null) {
-    return address as Record<string, any>;
+export function safeParseAddress(
+  address: unknown,
+): Record<string, unknown> | null {
+  if (
+    typeof address === "object" &&
+    address !== null &&
+    !Array.isArray(address)
+  ) {
+    return address as Record<string, unknown>;
   }
   if (typeof address === "string") {
     try {
       const parsed = JSON.parse(address);
-      if (typeof parsed === "object" && parsed !== null) {
-        return parsed as Record<string, any>;
+      if (
+        typeof parsed === "object" &&
+        parsed !== null &&
+        !Array.isArray(parsed)
+      ) {
+        return parsed as Record<string, unknown>;
       }
     } catch {
       return null;
@@ -85,12 +98,23 @@ export function safeParseAddress(address: unknown): Record<string, any> | null {
   return null;
 }
 
+export function getErrorMessage(
+  error: unknown,
+  fallback = "Bilinmeyen hata",
+): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 export function normalizeText(value: unknown): string {
-  return String(value || "").replace(/\s+/g, " ").trim();
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 export function normalizePhone(value: unknown): string {
-  return String(value || "").replace(/[^0-9+]/g, "").slice(0, 20);
+  return String(value || "")
+    .replace(/[^0-9+]/g, "")
+    .slice(0, 20);
 }
 
 export function isValidTurkishPhone(value: unknown): boolean {

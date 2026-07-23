@@ -2,6 +2,8 @@
 
 import { useState, type FormEvent } from "react";
 import Link from "next/link";
+import { BUSINESS_INFO } from "@/lib/businessInfo";
+import { getErrorMessage } from "@/lib/utils";
 
 export default function ContactPage() {
   const [name, setName] = useState("");
@@ -45,8 +47,8 @@ export default function ContactPage() {
       setEmail("");
       setSubject("");
       setMessage("");
-    } catch (err: any) {
-      setErrorMsg(err?.message || "Mesaj gönderilemedi. Lütfen tekrar deneyin.");
+    } catch (error: unknown) {
+      setErrorMsg(getErrorMessage(error, "Mesaj gönderilemedi. Lütfen tekrar deneyin."));
     } finally {
       setIsSending(false);
     }
@@ -55,7 +57,6 @@ export default function ContactPage() {
   return (
     <div className="min-h-screen bg-[#fcfcfc] py-16 px-4 font-sans text-[#333]">
       <div className="max-w-4xl mx-auto bg-white p-8 md:p-12 rounded-3xl border border-gray-100 shadow-sm">
-        
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-10 border-b border-gray-100 pb-6 gap-4">
           <h1 className="text-2xl md:text-3xl font-black uppercase tracking-tighter text-black">
             İletişim
@@ -72,9 +73,9 @@ export default function ContactPage() {
         <div className="space-y-10">
           <section>
             <p className="text-sm md:text-base text-gray-600 leading-relaxed font-medium">
-              PrestigeSO ile ilgili soru, öneri, sipariş, teslimat, iade ve destek
-              talepleriniz için aşağıdaki iletişim kanallarından bize ulaşabilirsiniz.
-              En kısa sürede dönüş sağlamaya çalışırız.
+              PrestigeSO ile ilgili soru, öneri, sipariş, teslimat, iade ve
+              destek talepleriniz için aşağıdaki iletişim kanallarından bize
+              ulaşabilirsiniz. En kısa sürede dönüş sağlamaya çalışırız.
             </p>
           </section>
 
@@ -89,7 +90,7 @@ export default function ContactPage() {
               </h2>
 
               <p className="text-sm font-medium text-gray-600 leading-relaxed">
-                Sultangazi / İstanbul
+                {BUSINESS_INFO.address}
               </p>
             </div>
 
@@ -103,10 +104,10 @@ export default function ContactPage() {
               </h2>
 
               <a
-                href="tel:+905536834997"
+                href={`tel:${BUSINESS_INFO.phoneHref}`}
                 className="text-sm font-black text-black border-b border-black hover:text-gray-500 hover:border-gray-500 transition-colors"
               >
-                0553 683 49 97
+                {BUSINESS_INFO.phoneDisplay}
               </a>
             </div>
 
@@ -120,10 +121,10 @@ export default function ContactPage() {
               </h2>
 
               <a
-                href="mailto:info@prestigeso.com"
+                href={`mailto:${BUSINESS_INFO.email}`}
                 className="text-sm font-black text-black border-b border-black hover:text-gray-500 hover:border-gray-500 transition-colors"
               >
-                info@prestigeso.com
+                {BUSINESS_INFO.email}
               </a>
             </div>
 
@@ -258,8 +259,9 @@ export default function ContactPage() {
               </h2>
 
               <p className="text-sm md:text-base leading-relaxed font-medium opacity-90">
-                Siparişleriniz, ürünler, teslimat, iade ve destek talepleriniz için
-                profil sayfanızdaki "Satıcıya Mesaj Gönder" alanını da kullanabilirsiniz.
+                Siparişleriniz, ürünler, teslimat, iade ve destek talepleriniz
+                için profil sayfanızdaki "Satıcıya Mesaj Gönder" alanını da
+                kullanabilirsiniz.
               </p>
 
               <Link

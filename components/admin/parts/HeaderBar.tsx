@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import Image from "next/image";
 import type { AdminNotification } from "../hooks/useAdminNotifications";
 
 type Props = {
@@ -128,12 +129,12 @@ export default function HeaderBar({
                           notif.type === "order"
                             ? "bg-green-500"
                             : notif.type === "message"
-                            ? "bg-blue-500"
-                            : notif.type === "question"
-                            ? "bg-purple-500"
-                            : notif.type === "review"
-                            ? "bg-yellow-400"
-                            : "bg-red-500"
+                              ? "bg-blue-500"
+                              : notif.type === "question"
+                                ? "bg-purple-500"
+                                : notif.type === "review"
+                                  ? "bg-yellow-400"
+                                  : "bg-red-500"
                         }`}
                       />
 
@@ -159,7 +160,9 @@ export default function HeaderBar({
                             💌
                           </span>
                         ) : (
-                          <img
+                          <Image
+                            width={48}
+                            height={48}
                             src={notif.image || "/logo.jpeg"}
                             className="w-full h-full object-cover mix-blend-multiply group-hover:scale-110 transition-transform"
                             alt=""

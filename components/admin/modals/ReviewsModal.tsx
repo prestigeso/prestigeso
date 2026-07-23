@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReviewRow } from "../types";
+import Image from "next/image";
 
 type Props = {
   open: boolean;
@@ -75,7 +76,9 @@ export default function ReviewsModal({
                     </div>
 
                     <div className="flex items-center gap-3 mb-4 bg-gray-50 p-2 rounded-xl">
-                      <img
+                      <Image
+                        width={40}
+                        height={40}
                         src={productImage}
                         alt=""
                         className="w-10 h-10 rounded-lg object-cover"
@@ -105,8 +108,15 @@ export default function ReviewsModal({
                     {rev.images && rev.images.length > 0 && (
                       <div className="flex gap-2 mb-4 overflow-x-auto">
                         {rev.images.map((img: string, i: number) => (
-                          <a href={img} target="_blank" rel="noreferrer" key={i}>
-                            <img
+                          <a
+                            href={img}
+                            target="_blank"
+                            rel="noreferrer"
+                            key={i}
+                          >
+                            <Image
+                              width={48}
+                              height={48}
                               src={img}
                               className="w-12 h-12 rounded-lg object-cover border"
                               alt=""

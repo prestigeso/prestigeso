@@ -1,10 +1,18 @@
 "use client";
 
 import { useMemo } from "react";
-import type { MessageRow, QuestionRow, ReviewRow, OrderRow, ProductRow } from "../types";
+import type {
+  MessageRow,
+  QuestionRow,
+  ReviewRow,
+  OrderRow,
+  ProductRow,
+} from "../types";
 import { getTimeAgo } from "../utils";
+import type { DashboardCounts } from "./useAdminData";
 
-export type AdminNotifType = "order" | "message" | "question" | "review" | "stock";
+export type AdminNotifType =
+  "order" | "message" | "question" | "review" | "stock";
 
 export type AdminNotification = {
   id: string;
@@ -30,6 +38,7 @@ type Params = {
   onOpenReviews?: () => void;
   onOpenMessages?: () => void;
   onShowOutOfStock?: () => void;
+  exactCounts?: DashboardCounts;
 };
 
 export function useAdminNotifications(params: Params) {
@@ -44,26 +53,27 @@ export function useAdminNotifications(params: Params) {
     onOpenReviews,
     onOpenMessages,
     onShowOutOfStock,
+    exactCounts,
   } = params;
 
   const unreadMessagesCount = useMemo(
-    () => (dbMessages || []).filter((m) => !m.answer).length,
-    [dbMessages]
+    () => exactCounts?.unreadMessages ?? (dbMessages || []).filter((m) => !m.answer).length,
+    [dbMessages, exactCounts],
   );
 
   const unansweredQuestionsCount = useMemo(
-    () => (dbQuestions || []).filter((q) => !q.answer).length,
-    [dbQuestions]
+    () => exactCounts?.unansweredQuestions ?? (dbQuestions || []).filter((q) => !q.answer).length,
+    [dbQuestions, exactCounts],
   );
 
   const pendingReviewsCount = useMemo(
-    () => (dbReviews || []).filter((r) => !r.is_approved).length,
-    [dbReviews]
+    () => exactCounts?.pendingReviews ?? (dbReviews || []).filter((r) => !r.is_approved).length,
+    [dbReviews, exactCounts],
   );
 
   const pendingOrdersCount = useMemo(
-    () => (dbOrders || []).filter((o) => o.status === "Bekliyor").length,
-    [dbOrders]
+    () => exactCounts?.pendingOrders ?? (dbOrders || []).filter((o) => o.status === "Bekliyor").length,
+    [dbOrders, exactCounts],
   );
 
   const unifiedNotifications = useMemo<AdminNotification[]>(() => {
@@ -73,8 +83,8 @@ export function useAdminNotifications(params: Params) {
     (dbOrders || [])
       .filter((o) => o.status === "Bekliyor")
       .forEach((o) => {
-        const img =
-          o.items?.[0]?.images?.[0] || o.items?.[0]?.image || "/logo.jpeg";
+        const firstItem = Array.isArray(o.items) ? o.items[0] : undefined;
+        const img = firstItem?.images?.[0] || firstItem?.image || "/logo.jpeg";
         feed.push({
           id: `order_${o.id}`,
           type: "order",
@@ -158,7 +168,7 @@ export function useAdminNotifications(params: Params) {
 
     // Tarihe göre (en yeni -> en eski)
     return feed.sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
     );
   }, [
     dbOrders,
@@ -173,7 +183,8 @@ export function useAdminNotifications(params: Params) {
     onShowOutOfStock,
   ]);
 
-  const totalNotifications = unifiedNotifications.length;
+  const totalNotifications =
+    unreadMessagesCount + unansweredQuestionsCount + pendingReviewsCount + pendingOrdersCount;
 
   return {
     unifiedNotifications,

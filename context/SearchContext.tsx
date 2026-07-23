@@ -17,7 +17,12 @@ export function SearchProvider({ children }: { children: ReactNode }) {
 
   return (
     <SearchContext.Provider
-      value={{ searchQuery, setSearchQuery, selectedCategory, setSelectedCategory }}
+      value={{
+        searchQuery,
+        setSearchQuery,
+        selectedCategory,
+        setSelectedCategory,
+      }}
     >
       {children}
     </SearchContext.Provider>
@@ -26,6 +31,7 @@ export function SearchProvider({ children }: { children: ReactNode }) {
 
 export const useSearch = () => {
   const context = useContext(SearchContext);
-  if (!context) throw new Error("useSearch must be used within a SearchProvider");
+  if (!context)
+    throw new Error("useSearch must be used within a SearchProvider");
   return context;
 };

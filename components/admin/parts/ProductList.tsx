@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ProductRow, CampaignRow, CategoryRow } from "../types";
 import { safeParseIds } from "../utils";
+import AdminPagination from "./AdminPagination";
 
 type StockTab = "all" | "in" | "out";
 
@@ -21,7 +22,12 @@ type Props = {
 
   onEditProduct: (id: number) => void;
   onRefresh: () => void;
-  onInlineUpdate?: (id: number, field: "price" | "stock", value: number) => void;
+  onInlineUpdate?: (
+    id: number,
+    field: "price" | "stock",
+    value: number,
+  ) => void;
+  refreshToken?: number;
 };
 
 export default function ProductList({
@@ -36,57 +42,75 @@ export default function ProductList({
   onEditProduct,
   onRefresh,
   onInlineUpdate,
+  refreshToken = 0,
 }: Props) {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [sortFilter, setSortFilter] = useState("newest");
-  
+  const [products, setProducts] = useState(dbProducts.slice(0, 25));
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(dbProducts.length);
+  const [pageSize, setPageSize] = useState(25);
+  const [outOfStockCount, setOutOfStockCount] = useState(0);
+  const [listLoading, setListLoading] = useState(false);
+  const [refreshCount, setRefreshCount] = useState(0);
+
   const categories = useMemo(() => {
     if (dbCategories && dbCategories.length > 0) {
       return dbCategories.map((c) => c.name);
     }
-    const cats = new Set(dbProducts.map((p) => p.category).filter(Boolean));
+    const cats = new Set(products.map((p) => p.category).filter(Boolean));
     return Array.from(cats) as string[];
-  }, [dbProducts, dbCategories]);
+  }, [products, dbCategories]);
 
-  const outOfStockCount = useMemo(
-    () => dbProducts.filter((p) => Number(p.stock) <= 0).length,
-    [dbProducts]
-  );
-
-  const filteredProducts = useMemo(() => {
-    let result = dbProducts;
-
-    if (stockTab === "in") result = result.filter((p) => Number(p.stock) > 0);
-    if (stockTab === "out") result = result.filter((p) => Number(p.stock) <= 0);
-
-    if (searchTerm && searchTerm.trim() !== "") {
-      const q = searchTerm.trim().toLowerCase();
-      result = result.filter((p) => {
-        const name = (p.name || "").toLowerCase();
-        const sku = (p["SKU"] || "").toLowerCase();
-        const barcode = ((p.barcode ?? "") as any).toString().toLowerCase();
-        return name.includes(q) || sku.includes(q) || barcode.includes(q);
+  const loadProducts = useCallback(async () => {
+    setListLoading(true);
+    const params = new URLSearchParams({
+      page: String(page),
+      stock: stockTab,
+      sort: sortFilter,
+    });
+    if (searchTerm.trim()) params.set("q", searchTerm.trim());
+    if (categoryFilter !== "all") params.set("category", categoryFilter);
+    try {
+      const response = await fetch(`/api/admin/products?${params}`, {
+        credentials: "include",
+        cache: "no-store",
       });
+      const data = (await response.json()) as {
+        products?: ProductRow[];
+        total?: number;
+        pageSize?: number;
+        outOfStockTotal?: number;
+        error?: string;
+      };
+      if (!response.ok) throw new Error(data.error || "Ürünler yüklenemedi.");
+      setProducts(data.products || []);
+      setTotal(data.total || 0);
+      setPageSize(data.pageSize || 25);
+      setOutOfStockCount(data.outOfStockTotal || 0);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setListLoading(false);
     }
+  }, [categoryFilter, page, searchTerm, sortFilter, stockTab]);
 
-    if (categoryFilter !== "all") {
-      result = result.filter(p => p.category === categoryFilter);
-    }
+  useEffect(() => {
+    const timeout = window.setTimeout(() => void loadProducts(), 250);
+    return () => window.clearTimeout(timeout);
+  }, [loadProducts, refreshCount, refreshToken]);
 
-    if (sortFilter === "newest") result = result.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
-    if (sortFilter === "oldest") result = result.sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
-    if (sortFilter === "price_asc") result = result.sort((a, b) => Number(a.price) - Number(b.price));
-    if (sortFilter === "price_desc") result = result.sort((a, b) => Number(b.price) - Number(a.price));
-
-    return result;
-  }, [dbProducts, stockTab, searchTerm, categoryFilter, sortFilter]);
+  const changeFilter = (change: () => void) => {
+    setPage(1);
+    change();
+  };
 
   return (
     <div>
       {/* FİLTRE BUTONLARI */}
       <div className="flex items-center gap-2 px-1 overflow-x-auto">
         <button
-          onClick={() => setStockTab("all")}
+          onClick={() => changeFilter(() => setStockTab("all"))}
           className={`text-[10px] font-black uppercase tracking-widest px-5 py-2.5 rounded-full transition-all ${
             stockTab === "all"
               ? "bg-black text-white shadow-md"
@@ -97,7 +121,7 @@ export default function ProductList({
         </button>
 
         <button
-          onClick={() => setStockTab("in")}
+          onClick={() => changeFilter(() => setStockTab("in"))}
           className={`text-[10px] font-black uppercase tracking-widest px-5 py-2.5 rounded-full transition-all ${
             stockTab === "in"
               ? "bg-green-600 text-white shadow-md"
@@ -108,7 +132,7 @@ export default function ProductList({
         </button>
 
         <button
-          onClick={() => setStockTab("out")}
+          onClick={() => changeFilter(() => setStockTab("out"))}
           className={`text-[10px] font-black uppercase tracking-widest px-5 py-2.5 rounded-full transition-all ${
             stockTab === "out"
               ? "bg-red-600 text-white shadow-md"
@@ -129,16 +153,24 @@ export default function ProductList({
           <div className="flex flex-col sm:flex-row items-center gap-2 w-full sm:w-auto">
             <select
               value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
+              onChange={(e) =>
+                changeFilter(() => setCategoryFilter(e.target.value))
+              }
               className="w-full sm:w-auto bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-black"
             >
               <option value="all">Tüm Kategoriler</option>
-              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+              {categories.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
             </select>
 
             <select
               value={sortFilter}
-              onChange={(e) => setSortFilter(e.target.value)}
+              onChange={(e) =>
+                changeFilter(() => setSortFilter(e.target.value))
+              }
               className="w-full sm:w-auto bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-xs font-bold text-gray-700 outline-none focus:ring-2 focus:ring-black"
             >
               <option value="newest">En Yeniler</option>
@@ -152,7 +184,9 @@ export default function ProductList({
                 type="text"
                 placeholder="Ürün / SKU / Barkod ara..."
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                onChange={(e) =>
+                  changeFilter(() => setSearchTerm(e.target.value))
+                }
                 className="w-full pl-9 pr-4 py-2.5 bg-white border border-gray-200 rounded-xl text-sm font-medium outline-none focus:ring-2 focus:ring-black shadow-sm"
               />
               <span className="absolute left-3 top-2.5 text-gray-400 text-lg">
@@ -163,35 +197,35 @@ export default function ProductList({
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          {loading ? (
+          {loading || listLoading ? (
             <p className="p-6 text-center text-gray-400">Yükleniyor...</p>
-          ) : filteredProducts.length === 0 ? (
+          ) : products.length === 0 ? (
             <p className="p-6 text-center text-gray-400">
               Aramanıza uygun ürün bulunamadı.
             </p>
           ) : (
             <div className="divide-y divide-gray-100">
-              {filteredProducts.map((p) => {
+              {products.map((p) => {
                 const nowIso = new Date().toISOString();
 
-                const activeCamp = dbCampaigns.find((c: any) => {
+                const activeCamp = dbCampaigns.find((c) => {
                   const ids = safeParseIds(c.product_ids);
                   return (
                     ids.includes(p.id) &&
-                    nowIso >= (c as any).start_date &&
-                    nowIso <= (c as any).end_date
+                    nowIso >= c.start_date &&
+                    nowIso <= c.end_date
                   );
                 });
 
-                const upcomingCamp = dbCampaigns.find((c: any) => {
+                const upcomingCamp = dbCampaigns.find((c) => {
                   const ids = safeParseIds(c.product_ids);
-                  return ids.includes(p.id) && nowIso < (c as any).start_date;
+                  return ids.includes(p.id) && nowIso < c.start_date;
                 });
 
                 let newPriceStr = "";
                 if (activeCamp) {
                   const discounted =
-                    Number(p.price) * (1 - (activeCamp as any).discount_percent / 100);
+                    Number(p.price) * (1 - activeCamp.discount_percent / 100);
                   newPriceStr = discounted.toFixed(0);
                 }
 
@@ -221,7 +255,9 @@ export default function ProductList({
 
                       <div className="flex items-center gap-2 mt-2">
                         <div className="flex items-center bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
-                          <span className="text-[10px] font-black text-gray-500 px-2">₺</span>
+                          <span className="text-[10px] font-black text-gray-500 px-2">
+                            ₺
+                          </span>
                           <input
                             type="number"
                             defaultValue={p.price}
@@ -235,7 +271,9 @@ export default function ProductList({
                           />
                         </div>
                         <div className="flex items-center bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
-                          <span className="text-[10px] font-black text-gray-500 px-2">STOK</span>
+                          <span className="text-[10px] font-black text-gray-500 px-2">
+                            STOK
+                          </span>
                           <input
                             type="number"
                             defaultValue={p.stock}
@@ -262,13 +300,15 @@ export default function ProductList({
                       {/* KAMPANYA ETİKETLERİ */}
                       {activeCamp && (
                         <p className="text-[10px] font-bold text-green-600 mt-1">
-                          🟢 {(activeCamp as any).name}: {newPriceStr} ₺
+                          🟢 {activeCamp.name}: {newPriceStr} ₺
                         </p>
                       )}
                       {upcomingCamp && (
                         <p className="text-[10px] font-bold text-orange-500 mt-1">
-                          ⏳ Bekleyen: {(upcomingCamp as any).name} (
-                          {new Date((upcomingCamp as any).start_date).toLocaleDateString("tr-TR")}
+                          ⏳ Bekleyen: {upcomingCamp.name} (
+                          {new Date(upcomingCamp.start_date).toLocaleDateString(
+                            "tr-TR",
+                          )}
                           )
                         </p>
                       )}
@@ -287,9 +327,20 @@ export default function ProductList({
           )}
         </div>
 
+        <AdminPagination
+          page={page}
+          pageSize={pageSize}
+          total={total}
+          loading={listLoading}
+          onPageChange={setPage}
+        />
+
         <div className="pt-3">
           <button
-            onClick={onRefresh}
+            onClick={() => {
+              onRefresh();
+              setRefreshCount((value) => value + 1);
+            }}
             className="text-xs font-bold text-gray-500 hover:text-black border border-gray-200 px-4 py-2 rounded-full"
           >
             ↻ Listeyi Yenile

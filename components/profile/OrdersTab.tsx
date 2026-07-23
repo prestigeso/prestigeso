@@ -1,19 +1,124 @@
-import Link from "next/link";
-import type { Order, OrderItem } from "@/types";
-import { safeParseAddress } from "@/lib/utils";
+"use client";
 
-export default function OrdersTab({ orders, onOrderAction }: { orders: Order[], onOrderAction?: (id: number, action: "cancel" | "return") => void }) {
-  const safeParseItems = (items: OrderItem[] | string): OrderItem[] => {
-    try {
-      if (Array.isArray(items)) return items;
-      if (typeof items === "string") return JSON.parse(items || "[]");
-      return [];
-    } catch {
-      return [];
-    }
+import { useState } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import type { Order } from "@/types";
+import { supabase } from "@/lib/supabase";
+import { safeParseAddress } from "@/lib/utils";
+import {
+  formatOrderAddress as formatAddress,
+  getOrderCouponInfo as getCouponInfo,
+  getOrderItemsSubtotal as getItemsSubtotal,
+  parseOrderItems as safeParseItems,
+} from "@/lib/orders/orderPresentation";
+
+export default function OrdersTab({
+  orders,
+  onOrderAction,
+}: {
+  orders: Order[];
+  onOrderAction?: (
+    id: number,
+    action: "cancel" | "return",
+    details?: {
+      reason: string;
+      items: Array<{ id: number; variant_id?: number; quantity: number }>;
+      evidenceUrls?: string[];
+    },
+  ) => void | boolean | Promise<void | boolean>;
+}) {
+  const [returnOrder, setReturnOrder] = useState<{
+    id: number;
+    items: Array<{
+      lineId: string;
+      id: number;
+      variant_id?: number;
+      name: string;
+      quantity: number;
+    }>;
+  } | null>(null);
+  const [returnReason, setReturnReason] = useState("");
+  const [returnQuantities, setReturnQuantities] = useState<Record<string, number>>({});
+  const [returnFiles, setReturnFiles] = useState<File[]>([]);
+  const [returnSubmitting, setReturnSubmitting] = useState(false);
+  const [returnError, setReturnError] = useState("");
+
+  const closeReturnDialog = () => {
+    setReturnOrder(null);
+    setReturnReason("");
+    setReturnQuantities({});
+    setReturnFiles([]);
+    setReturnError("");
   };
 
-
+  const submitReturn = async () => {
+    if (!returnOrder || !onOrderAction || returnReason.trim().length < 5) return;
+    const items = returnOrder.items
+      .map((item) => ({
+        id: item.id,
+        ...(item.variant_id ? { variant_id: item.variant_id } : {}),
+        quantity: returnQuantities[item.lineId] || 0,
+      }))
+      .filter((item) => item.quantity > 0);
+    if (items.length === 0) return;
+    setReturnSubmitting(true);
+    setReturnError("");
+    let evidenceUrls: string[] = [];
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (!data.session?.access_token) throw new Error("Oturum bulunamadı.");
+      if (returnFiles.length > 0) {
+        const form = new FormData();
+        form.set("orderId", String(returnOrder.id));
+        returnFiles.forEach((file) => form.append("files", file));
+        const upload = await fetch("/api/orders/return-evidence", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${data.session.access_token}` },
+          body: form,
+        });
+        const uploadResult = await upload.json();
+        if (!upload.ok) throw new Error(uploadResult.error || "Görseller yüklenemedi.");
+        evidenceUrls = Array.isArray(uploadResult.urls) ? uploadResult.urls : [];
+      }
+      const succeeded = await onOrderAction(returnOrder.id, "return", {
+        reason: returnReason.trim(),
+        items,
+        evidenceUrls,
+      });
+      if (succeeded === false) {
+        if (evidenceUrls.length > 0)
+          await fetch("/api/orders/return-evidence", {
+            method: "DELETE",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${data.session.access_token}`,
+            },
+            body: JSON.stringify({ orderId: returnOrder.id, urls: evidenceUrls }),
+          }).catch(() => undefined);
+        return;
+      }
+      closeReturnDialog();
+    } catch (error) {
+      if (evidenceUrls.length > 0) {
+        const { data } = await supabase.auth.getSession();
+        if (data.session?.access_token)
+          await fetch("/api/orders/return-evidence", {
+            method: "DELETE",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${data.session.access_token}`,
+            },
+            body: JSON.stringify({ orderId: returnOrder?.id, urls: evidenceUrls }),
+          }).catch(() => undefined);
+      }
+      setReturnError(
+        error instanceof Error ? error.message : "İade talebi gönderilemedi.",
+      );
+    } finally {
+      setReturnSubmitting(false);
+    }
+  };
   const formatMoney = (value: unknown) => {
     return Number(value || 0).toLocaleString("tr-TR", {
       minimumFractionDigits: 0,
@@ -21,42 +126,9 @@ export default function OrdersTab({ orders, onOrderAction }: { orders: Order[], 
     });
   };
 
-  const getItemsSubtotal = (items: any[]) => {
-    return items.reduce((sum, item) => {
-      const quantity = Number(item.quantity || 1);
-      const price = Number(item.discount_price || item.price || 0);
-
-      if (!Number.isFinite(quantity) || !Number.isFinite(price)) {
-        return sum;
-      }
-
-      return sum + price * quantity;
-    }, 0);
-  };
-
-  const getCouponInfo = (address: any) => {
-    if (!address || typeof address !== "object") return null;
-
-    const coupon = address.coupon;
-
-    if (!coupon || typeof coupon !== "object") return null;
-
-    const discountAmount = Number(coupon.discount_amount || 0);
-
-    if (!Number.isFinite(discountAmount) || discountAmount <= 0) return null;
-
-    return {
-      id: coupon.id || null,
-      code: String(coupon.code || "").toUpperCase(),
-      discountType: coupon.discount_type || null,
-      discountValue: Number(coupon.discount_value || 0),
-      discountAmount,
-      subtotalAmount: Number(coupon.subtotal_amount || 0),
-      totalAfterDiscount: Number(coupon.total_after_discount || 0),
-    };
-  };
-
-  const getCouponDiscountLabel = (couponInfo: ReturnType<typeof getCouponInfo>) => {
+  const getCouponDiscountLabel = (
+    couponInfo: ReturnType<typeof getCouponInfo>,
+  ) => {
     if (!couponInfo) return "";
 
     if (couponInfo.discountType === "percent") {
@@ -64,52 +136,6 @@ export default function OrdersTab({ orders, onOrderAction }: { orders: Order[], 
     }
 
     return `${formatMoney(couponInfo.discountValue)} TL indirim`;
-  };
-
-  const formatAddress = (addr: any) => {
-    if (!addr) return "Adres bilgisi yok.";
-
-    let obj = addr;
-
-    if (typeof addr === "string") {
-      try {
-        obj = JSON.parse(addr);
-      } catch {
-        return addr;
-      }
-    }
-
-    if (typeof obj === "object") {
-      const parts: string[] = [];
-
-      const fullName = [obj.firstName, obj.lastName]
-        .filter(Boolean)
-        .join(" ");
-
-      if (fullName) parts.push(fullName);
-      if (obj.phone) parts.push(obj.phone);
-
-      const line =
-        obj.address ||
-        obj.street ||
-        obj.addressLine ||
-        obj.line ||
-        obj.fullAddress ||
-        obj.full_address ||
-        "";
-
-      if (line) parts.push(line);
-
-      const cityLine = [obj.neighborhood, obj.district, obj.city]
-        .filter(Boolean)
-        .join(" / ");
-
-      if (cityLine) parts.push(cityLine);
-
-      return parts.join(" • ") || "Adres bilgisi yok.";
-    }
-
-    return String(addr);
   };
 
   const getStatusClass = (status: string) => {
@@ -162,7 +188,9 @@ export default function OrdersTab({ orders, onOrderAction }: { orders: Order[], 
             const status = order.status || "İşleniyor";
             const itemsSubtotal = getItemsSubtotal(safeItems);
             const subtotalAmount = couponInfo?.subtotalAmount || itemsSubtotal;
-            const paidAmount = Number(order.total_amount || couponInfo?.totalAfterDiscount || 0);
+            const paidAmount = Number(
+              order.total_amount || couponInfo?.totalAfterDiscount || 0,
+            );
 
             return (
               <div
@@ -192,7 +220,7 @@ export default function OrdersTab({ orders, onOrderAction }: { orders: Order[], 
                       >
                         {order.created_at
                           ? new Date(order.created_at).toLocaleDateString(
-                              "tr-TR"
+                              "tr-TR",
                             )
                           : "Bilinmiyor"}
                       </p>
@@ -202,7 +230,7 @@ export default function OrdersTab({ orders, onOrderAction }: { orders: Order[], 
                   <div className="flex flex-col items-end gap-2">
                     <span
                       className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 ${getStatusClass(
-                        status
+                        status,
                       )}`}
                     >
                       <span
@@ -213,31 +241,58 @@ export default function OrdersTab({ orders, onOrderAction }: { orders: Order[], 
                       {status}
                     </span>
 
-                    {onOrderAction && (status === "İşleniyor" || status === "Bekliyor") && (
-                      <button
-                        onClick={() => {
-                          if (confirm("Bu siparişi iptal etmek istediğinize emin misiniz?")) {
-                            onOrderAction(order.id, "cancel");
-                          }
-                        }}
-                        className="mt-2 text-[10px] font-bold text-red-500 hover:text-red-700 underline"
-                      >
-                        Siparişi İptal Et
-                      </button>
-                    )}
+                    {onOrderAction &&
+                      (status === "İşleniyor" || status === "Bekliyor") && (
+                        <button
+                          onClick={() => {
+                            if (
+                              confirm(
+                                "Bu siparişi iptal etmek istediğinize emin misiniz?",
+                              )
+                            ) {
+                              onOrderAction(order.id, "cancel");
+                            }
+                          }}
+                          className="mt-2 text-[10px] font-bold text-red-500 hover:text-red-700 underline"
+                        >
+                          Siparişi İptal Et
+                        </button>
+                      )}
 
-                    {onOrderAction && (status === "Kargolandı" || status === "Tamamlandı") && (
-                      <button
-                        onClick={() => {
-                          if (confirm("Bu sipariş için iade talebi oluşturmak istediğinize emin misiniz?")) {
-                            onOrderAction(order.id, "return");
-                          }
-                        }}
-                        className="mt-2 text-[10px] font-bold text-orange-500 hover:text-orange-700 underline"
-                      >
-                        İade Talebi Oluştur
-                      </button>
-                    )}
+                    {onOrderAction &&
+                      (status === "Teslim Edildi" ||
+                        status === "Tamamlandı") && (
+                        <button
+                          onClick={() => {
+                            const items = safeItems
+                              .map((item) => ({
+                                id: Number(item.id),
+                                ...(item.variant_id
+                                  ? { variant_id: Number(item.variant_id) }
+                                  : {}),
+                                lineId: `${Number(item.id)}:${Number(item.variant_id || 0)}`,
+                                name: String(item.name || "Ürün"),
+                                quantity: Number(item.quantity),
+                              }))
+                              .filter(
+                                (item) =>
+                                  Number.isSafeInteger(item.id) &&
+                                  item.id > 0 &&
+                                  Number.isSafeInteger(item.quantity) &&
+                                  item.quantity > 0,
+                              );
+                            setReturnQuantities(
+                              Object.fromEntries(
+                                items.map((item) => [item.lineId, item.quantity]),
+                              ),
+                            );
+                            setReturnOrder({ id: order.id, items });
+                          }}
+                          className="mt-2 text-[10px] font-bold text-orange-500 hover:text-orange-700 underline"
+                        >
+                          İade Talebi Oluştur
+                        </button>
+                      )}
                   </div>
                 </div>
 
@@ -279,7 +334,7 @@ export default function OrdersTab({ orders, onOrderAction }: { orders: Order[], 
                         </p>
                       </div>
                     ) : (
-                      safeItems.map((item: any, idx: number) => {
+                      safeItems.map((item, idx) => {
                         const displayImage =
                           item.images?.[0] || item.image || "/logo.jpeg";
 
@@ -293,7 +348,9 @@ export default function OrdersTab({ orders, onOrderAction }: { orders: Order[], 
                             key={idx}
                             className="flex gap-4 items-center bg-gray-50/50 p-2 rounded-2xl border border-gray-50"
                           >
-                            <img
+                            <Image
+                              width={64}
+                              height={64}
                               src={displayImage}
                               alt={item.name || "Ürün"}
                               className="w-14 h-14 object-cover rounded-xl border border-gray-100 bg-white"
@@ -387,6 +444,75 @@ export default function OrdersTab({ orders, onOrderAction }: { orders: Order[], 
               </div>
             );
           })}
+        </div>
+      )}
+
+      {returnOrder && (
+        <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
+            <div className="mb-5 flex items-center justify-between">
+              <h4 className="text-lg font-black uppercase">İade talebi</h4>
+              <button type="button" onClick={closeReturnDialog} aria-label="Kapat">
+                ✕
+              </button>
+            </div>
+            <div className="space-y-3">
+              {returnOrder.items.map((item) => (
+                <label key={item.lineId} className="flex items-center justify-between gap-4 rounded-xl bg-gray-50 p-3 text-sm font-bold">
+                  <span className="min-w-0 truncate">{item.name}</span>
+                  <input
+                    type="number"
+                    min="0"
+                    max={item.quantity}
+                    value={returnQuantities[item.lineId] || 0}
+                    onChange={(event) =>
+                      setReturnQuantities((current) => ({
+                        ...current,
+                        [item.lineId]: Math.min(
+                          item.quantity,
+                          Math.max(0, Math.floor(Number(event.target.value) || 0)),
+                        ),
+                      }))
+                    }
+                    className="w-20 rounded-lg border border-gray-200 px-3 py-2"
+                    aria-label={`${item.name} iade adedi`}
+                  />
+                </label>
+              ))}
+              <textarea
+                value={returnReason}
+                onChange={(event) => setReturnReason(event.target.value.slice(0, 1000))}
+                rows={4}
+                placeholder="İade sebebinizi yazın (en az 5 karakter)"
+                className="w-full rounded-xl border border-gray-200 p-3 text-sm"
+              />
+              <label className="block text-xs font-bold text-gray-600">
+                Fotoğraf (isteğe bağlı, en fazla 3 adet / 5 MB)
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/avif"
+                  multiple
+                  onChange={(event) =>
+                    setReturnFiles(Array.from(event.target.files || []).slice(0, 3))
+                  }
+                  className="mt-2 block w-full text-xs"
+                />
+              </label>
+              {returnError && <p className="text-xs font-bold text-red-600">{returnError}</p>}
+              <button
+                type="button"
+                disabled={
+                  returnSubmitting ||
+                  returnReason.trim().length < 5 ||
+                  !Object.values(returnQuantities).some((quantity) => quantity > 0)
+                }
+                onClick={() => void submitReturn()}
+                className="w-full rounded-xl bg-black py-3 text-xs font-black uppercase text-white disabled:opacity-40"
+              >
+                {returnSubmitting ? "Gönderiliyor..." : "Talebi gönder"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

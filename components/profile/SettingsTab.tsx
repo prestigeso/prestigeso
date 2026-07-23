@@ -1,10 +1,10 @@
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAppAlert } from "@/context/AppAlertContext";
 import type { AuthUser, CustomerProfile } from "@/types";
+import { getErrorMessage } from "@/lib/utils";
 
 type Props = {
   user: AuthUser | null;
@@ -13,23 +13,40 @@ type Props = {
   setCustomerProfile?: (profile: CustomerProfile | null) => void;
 };
 
-function getProfileValue(customerProfile: CustomerProfile | null | undefined, metadata: Record<string, string> | undefined, snakeKey: string, camelKey?: string) {
-  const profileRecord = customerProfile as Record<string, unknown> | null | undefined;
+function getProfileValue(
+  customerProfile: CustomerProfile | null | undefined,
+  metadata: Record<string, string> | undefined,
+  snakeKey: string,
+  camelKey?: string,
+) {
+  const profileRecord = customerProfile as
+    Record<string, unknown> | null | undefined;
   return (
     (profileRecord?.[snakeKey] as string | undefined) ||
     metadata?.[snakeKey] ||
-    (camelKey ? (profileRecord?.[camelKey] as string | undefined) : undefined) ||
+    (camelKey
+      ? (profileRecord?.[camelKey] as string | undefined)
+      : undefined) ||
     (camelKey ? metadata?.[camelKey] : undefined) ||
     ""
   ).toString();
 }
 
-function getDisplayName(firstName: string, lastName: string, fallback = "Müşteri") {
+function getDisplayName(
+  firstName: string,
+  lastName: string,
+  fallback = "Müşteri",
+) {
   const fullName = [firstName, lastName].filter(Boolean).join(" ").trim();
   return fullName || fallback;
 }
 
-export default function SettingsTab({ user, setUser, customerProfile, setCustomerProfile }: Props) {
+export default function SettingsTab({
+  user,
+  setUser,
+  customerProfile,
+  setCustomerProfile,
+}: Props) {
   const { showToast } = useAppAlert();
   const metadata = useMemo(() => user?.user_metadata || {}, [user]);
 
@@ -37,14 +54,25 @@ export default function SettingsTab({ user, setUser, customerProfile, setCustome
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [saving, setSaving] = useState(false);
+  const [accountAction, setAccountAction] = useState<"export" | "delete" | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
 
   const [editFirstName, setEditFirstName] = useState("");
   const [editLastName, setEditLastName] = useState("");
 
   useEffect(() => {
-    const nextFirstName = getProfileValue(customerProfile, metadata, "first_name", "firstName");
-    const nextLastName = getProfileValue(customerProfile, metadata, "last_name", "lastName");
+    const nextFirstName = getProfileValue(
+      customerProfile,
+      metadata,
+      "first_name",
+      "firstName",
+    );
+    const nextLastName = getProfileValue(
+      customerProfile,
+      metadata,
+      "last_name",
+      "lastName",
+    );
     const nextPhone = getProfileValue(customerProfile, metadata, "phone");
 
     setFirstName(nextFirstName);
@@ -58,6 +86,55 @@ export default function SettingsTab({ user, setUser, customerProfile, setCustome
     setEditFirstName(firstName);
     setEditLastName(lastName);
     setIsEditOpen(true);
+  };
+
+  const getAccessToken = async () => {
+    const { data } = await supabase.auth.getSession();
+    if (!data.session?.access_token) throw new Error("Oturumunuz sona ermiş.");
+    return data.session.access_token;
+  };
+
+  const exportAccountData = async () => {
+    setAccountAction("export");
+    try {
+      const token = await getAccessToken();
+      const response = await fetch("/api/account", {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error("Veriler indirilemedi.");
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `prestigeso-verilerim-${new Date().toISOString().slice(0, 10)}.json`;
+      anchor.click();
+      URL.revokeObjectURL(url);
+      showToast("Verileriniz hazırlandı.", "success");
+    } catch (error) {
+      showToast(getErrorMessage(error, "Veriler indirilemedi."), "error");
+    } finally {
+      setAccountAction(null);
+    }
+  };
+
+  const deleteAccount = async () => {
+    if (!confirm("Hesabınız kalıcı olarak silinecek. Devam etmek istiyor musunuz?")) return;
+    setAccountAction("delete");
+    try {
+      const token = await getAccessToken();
+      const response = await fetch("/api/account", {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Hesap silinemedi.");
+      await supabase.auth.signOut();
+      window.location.assign("/");
+    } catch (error) {
+      showToast(getErrorMessage(error, "Hesap silinemedi."), "error");
+      setAccountAction(null);
+    }
   };
 
   const handleSave = async () => {
@@ -96,19 +173,15 @@ export default function SettingsTab({ user, setUser, customerProfile, setCustome
 
       const { data: updatedCustomer, error: customerError } = await supabase
         .from("customers")
-        .upsert(
-          [
-            {
-              id: user.id,
-              email: user.email,
-              first_name: cleanFirstName,
-              last_name: cleanLastName,
-              full_name: fullName,
-            },
-          ],
-          { onConflict: "id" }
+        .update({
+          first_name: cleanFirstName,
+          last_name: cleanLastName,
+          full_name: fullName,
+        })
+        .eq("id", user.id)
+        .select(
+          "id, email, first_name, last_name, full_name, phone, gender, birth_date",
         )
-        .select("id, email, first_name, last_name, full_name, phone, gender, birth_date")
         .single();
 
       if (customerError) throw customerError;
@@ -120,8 +193,8 @@ export default function SettingsTab({ user, setUser, customerProfile, setCustome
       setLastName(cleanLastName);
       setIsEditOpen(false);
       showToast("Kişisel bilgileriniz güncellendi.", "success");
-    } catch (err: any) {
-      showToast("Bilgiler güncellenemedi: " + (err?.message || "Bilinmeyen hata"), "error");
+    } catch (error: unknown) {
+      showToast("Bilgiler güncellenemedi: " + getErrorMessage(error), "error");
     } finally {
       setSaving(false);
     }
@@ -129,34 +202,79 @@ export default function SettingsTab({ user, setUser, customerProfile, setCustome
 
   return (
     <div className="animate-in fade-in duration-300">
-      <h3 className="text-xl font-black uppercase tracking-tight mb-6 text-black border-b-2 border-gray-100 pb-4">Hesap Ayarlarım</h3>
+      <h3 className="text-xl font-black uppercase tracking-tight mb-6 text-black border-b-2 border-gray-100 pb-4">
+        Hesap Ayarlarım
+      </h3>
 
       <div className="max-w-2xl space-y-6">
         <div className="bg-gray-50 border border-gray-100 rounded-3xl p-5">
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">E-Posta Adresi</p>
-          <div className="p-4 bg-white rounded-2xl border border-gray-100 text-sm font-bold text-gray-500 cursor-not-allowed break-all">{user?.email || "E-posta bilgisi yok"}</div>
-          <p className="text-[10px] font-bold text-gray-400 mt-2 leading-relaxed">E-posta adresi hesap güvenliği için buradan değiştirilemez. Gerekirse destek ile iletişime geçebilirsiniz.</p>
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
+            E-Posta Adresi
+          </p>
+          <div className="p-4 bg-white rounded-2xl border border-gray-100 text-sm font-bold text-gray-500 cursor-not-allowed break-all">
+            {user?.email || "E-posta bilgisi yok"}
+          </div>
+          <p className="text-[10px] font-bold text-gray-400 mt-2 leading-relaxed">
+            E-posta adresi hesap güvenliği için buradan değiştirilemez.
+            Gerekirse destek ile iletişime geçebilirsiniz.
+          </p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="bg-gray-50 border border-gray-100 rounded-3xl p-5">
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Ad</p>
-            <p className="text-sm font-black text-black uppercase">{firstName || "Belirtilmemiş"}</p>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
+              Ad
+            </p>
+            <p className="text-sm font-black text-black uppercase">
+              {firstName || "Belirtilmemiş"}
+            </p>
           </div>
 
           <div className="bg-gray-50 border border-gray-100 rounded-3xl p-5">
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Soyad</p>
-            <p className="text-sm font-black text-black uppercase">{lastName || "Belirtilmemiş"}</p>
+            <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
+              Soyad
+            </p>
+            <p className="text-sm font-black text-black uppercase">
+              {lastName || "Belirtilmemiş"}
+            </p>
           </div>
         </div>
 
         <div className="bg-gray-50 border border-gray-100 rounded-3xl p-5">
-          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">Telefon</p>
-          <div className="p-4 bg-white rounded-2xl border border-gray-100 text-sm font-bold text-gray-500 cursor-not-allowed break-all">{phone || "Telefon bilgisi yok"}</div>
-          <p className="text-[10px] font-bold text-gray-400 mt-2 leading-relaxed">Telefon numarası hesap güvenliği için buradan değiştirilemez. Numara değişikliği için destek ile iletişime geçebilirsiniz.</p>
+          <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">
+            Telefon
+          </p>
+          <div className="p-4 bg-white rounded-2xl border border-gray-100 text-sm font-bold text-gray-500 cursor-not-allowed break-all">
+            {phone || "Telefon bilgisi yok"}
+          </div>
+          <p className="text-[10px] font-bold text-gray-400 mt-2 leading-relaxed">
+            Telefon numarası hesap güvenliği için buradan değiştirilemez. Numara
+            değişikliği için destek ile iletişime geçebilirsiniz.
+          </p>
         </div>
 
-        <button type="button" onClick={openEditModal} className="bg-black text-white px-8 py-4 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-gray-800 transition-all w-full md:w-auto shadow-md active:scale-95">Bilgilerimi Güncelle</button>
+        <button
+          type="button"
+          onClick={openEditModal}
+          className="bg-black text-white px-8 py-4 rounded-xl font-black text-xs uppercase tracking-widest hover:bg-gray-800 transition-all w-full md:w-auto shadow-md active:scale-95"
+        >
+          Bilgilerimi Güncelle
+        </button>
+
+        <div className="rounded-3xl border border-gray-200 bg-white p-5">
+          <h4 className="text-sm font-black uppercase">Verilerim ve hesabım</h4>
+          <p className="mt-2 text-xs font-medium text-gray-500">
+            Hesap verilerinizi JSON olarak indirebilir veya aktif siparişiniz yoksa hesabınızı kapatabilirsiniz.
+          </p>
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+            <button type="button" disabled={accountAction !== null} onClick={exportAccountData} className="rounded-xl border border-black px-5 py-3 text-xs font-black uppercase disabled:opacity-50">
+              {accountAction === "export" ? "Hazırlanıyor..." : "Verilerimi indir"}
+            </button>
+            <button type="button" disabled={accountAction !== null} onClick={deleteAccount} className="rounded-xl bg-red-600 px-5 py-3 text-xs font-black uppercase text-white disabled:opacity-50">
+              {accountAction === "delete" ? "Siliniyor..." : "Hesabımı sil"}
+            </button>
+          </div>
+        </div>
       </div>
 
       {isEditOpen && (
@@ -164,30 +282,67 @@ export default function SettingsTab({ user, setUser, customerProfile, setCustome
           <div className="bg-white w-full max-w-md rounded-3xl p-6 md:p-8 shadow-2xl animate-in zoom-in duration-200">
             <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
               <div>
-                <h2 className="text-xl font-black uppercase tracking-tight text-black">Bilgilerimi Güncelle</h2>
-                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">Ad ve soyad bilgilerinizi düzenleyin</p>
+                <h2 className="text-xl font-black uppercase tracking-tight text-black">
+                  Bilgilerimi Güncelle
+                </h2>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-1">
+                  Ad ve soyad bilgilerinizi düzenleyin
+                </p>
               </div>
-              <button type="button" onClick={() => setIsEditOpen(false)} className="w-8 h-8 bg-gray-100 rounded-full font-bold hover:bg-gray-200 transition-colors">✕</button>
+              <button
+                type="button"
+                onClick={() => setIsEditOpen(false)}
+                className="w-8 h-8 bg-gray-100 rounded-full font-bold hover:bg-gray-200 transition-colors"
+              >
+                ✕
+              </button>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Ad</label>
-                <input value={editFirstName} onChange={(event) => setEditFirstName(event.target.value)} maxLength={40} placeholder="Adınız" className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-bold text-black outline-none focus:border-black focus:bg-white transition-all" />
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
+                  Ad
+                </label>
+                <input
+                  value={editFirstName}
+                  onChange={(event) => setEditFirstName(event.target.value)}
+                  maxLength={40}
+                  placeholder="Adınız"
+                  className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-bold text-black outline-none focus:border-black focus:bg-white transition-all"
+                />
               </div>
 
               <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Soyad</label>
-                <input value={editLastName} onChange={(event) => setEditLastName(event.target.value)} maxLength={40} placeholder="Soyadınız" className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-bold text-black outline-none focus:border-black focus:bg-white transition-all" />
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
+                  Soyad
+                </label>
+                <input
+                  value={editLastName}
+                  onChange={(event) => setEditLastName(event.target.value)}
+                  maxLength={40}
+                  placeholder="Soyadınız"
+                  className="w-full p-4 bg-gray-50 border border-gray-100 rounded-2xl text-sm font-bold text-black outline-none focus:border-black focus:bg-white transition-all"
+                />
               </div>
 
               <div>
-                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">Telefon</label>
-                <div className="w-full p-4 bg-gray-100 border border-gray-100 rounded-2xl text-sm font-bold text-gray-500 cursor-not-allowed">{phone || "Telefon bilgisi yok"}</div>
-                <p className="text-[10px] font-bold text-gray-400 mt-2 leading-relaxed">Telefon numarası bu ekrandan değiştirilemez.</p>
+                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
+                  Telefon
+                </label>
+                <div className="w-full p-4 bg-gray-100 border border-gray-100 rounded-2xl text-sm font-bold text-gray-500 cursor-not-allowed">
+                  {phone || "Telefon bilgisi yok"}
+                </div>
+                <p className="text-[10px] font-bold text-gray-400 mt-2 leading-relaxed">
+                  Telefon numarası bu ekrandan değiştirilemez.
+                </p>
               </div>
 
-              <button type="button" onClick={handleSave} disabled={saving} className="w-full bg-black text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest disabled:opacity-50 shadow-xl active:scale-95 transition-all">
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="w-full bg-black text-white py-4 rounded-2xl font-black text-xs uppercase tracking-widest disabled:opacity-50 shadow-xl active:scale-95 transition-all"
+              >
                 {saving ? "Güncelleniyor..." : "Değişiklikleri Kaydet"}
               </button>
             </div>

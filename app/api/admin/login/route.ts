@@ -5,84 +5,9 @@ import {
   ADMIN_COOKIE_NAME,
   createAdminSessionCookie,
 } from "@/lib/adminAuth";
+import { consumeRateLimit, getClientIp } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
-
-const MAX_FAILED_ATTEMPTS = 5;
-const LOCK_TIME_MS = 15 * 60 * 1000;
-
-type LoginAttemptRecord = {
-  count: number;
-  lockedUntil: number;
-  lastAttemptAt: number;
-};
-
-const loginAttempts = new Map<string, LoginAttemptRecord>();
-
-function getClientIp(req: Request) {
-  const forwardedFor = req.headers.get("x-forwarded-for");
-
-  if (forwardedFor) {
-    return forwardedFor.split(",")[0]?.trim() || "unknown";
-  }
-
-  const realIp = req.headers.get("x-real-ip");
-
-  if (realIp) {
-    return realIp.trim();
-  }
-
-  return "unknown";
-}
-
-function cleanupOldAttempts() {
-  const now = Date.now();
-
-  for (const [ip, record] of loginAttempts.entries()) {
-    const isUnlocked = record.lockedUntil <= now;
-    const isOld = now - record.lastAttemptAt > LOCK_TIME_MS;
-
-    if (isUnlocked && isOld) {
-      loginAttempts.delete(ip);
-    }
-  }
-}
-
-function getAttemptRecord(ip: string) {
-  cleanupOldAttempts();
-
-  const existing = loginAttempts.get(ip);
-
-  if (existing) {
-    return existing;
-  }
-
-  const fresh: LoginAttemptRecord = {
-    count: 0,
-    lockedUntil: 0,
-    lastAttemptAt: 0,
-  };
-
-  loginAttempts.set(ip, fresh);
-  return fresh;
-}
-
-function registerFailedAttempt(ip: string) {
-  const now = Date.now();
-  const record = getAttemptRecord(ip);
-
-  const nextCount = record.count + 1;
-
-  loginAttempts.set(ip, {
-    count: nextCount,
-    lockedUntil: nextCount >= MAX_FAILED_ATTEMPTS ? now + LOCK_TIME_MS : 0,
-    lastAttemptAt: now,
-  });
-}
-
-function clearAttempts(ip: string) {
-  loginAttempts.delete(ip);
-}
 
 function timingSafeStringEqual(input: string, expected: string) {
   const inputBuffer = Buffer.from(input, "utf8");
@@ -106,23 +31,41 @@ function timingSafeStringEqual(input: string, expected: string) {
 export async function POST(req: Request) {
   try {
     const clientIp = getClientIp(req);
-    const attemptRecord = getAttemptRecord(clientIp);
-    const now = Date.now();
+    const globalLimit = await consumeRateLimit({
+      bucket: "admin-login-global",
+      identifier: "admin-login",
+      maxRequests: 100,
+      windowSeconds: 15 * 60,
+    });
+    if (!globalLimit.allowed) {
+      return NextResponse.json(
+        { error: "Giriş geçici olarak sınırlandırıldı." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(globalLimit.retryAfterSeconds) },
+        },
+      );
+    }
+    const rateLimit = await consumeRateLimit({
+      bucket: "admin-login-ip",
+      identifier: clientIp,
+      maxRequests: 8,
+      windowSeconds: 15 * 60,
+    });
 
-    if (attemptRecord.lockedUntil > now) {
-      const remainingSeconds = Math.ceil((attemptRecord.lockedUntil - now) / 1000);
-
+    if (!rateLimit.allowed) {
       return NextResponse.json(
         {
-          error: "Çok fazla hatalı deneme yapıldı. Lütfen daha sonra tekrar deneyin.",
-          retryAfterSeconds: remainingSeconds,
+          error:
+            "Çok fazla hatalı deneme yapıldı. Lütfen daha sonra tekrar deneyin.",
+          retryAfterSeconds: rateLimit.retryAfterSeconds,
         },
         {
           status: 429,
           headers: {
-            "Retry-After": String(remainingSeconds),
+            "Retry-After": String(rateLimit.retryAfterSeconds),
           },
-        }
+        },
       );
     }
 
@@ -136,38 +79,25 @@ export async function POST(req: Request) {
     const adminPass = adminPassRaw.trim();
 
     if (!adminPass) {
-      return NextResponse.json(
-        { error: "Giriş başarısız." },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Giriş başarısız." }, { status: 500 });
     }
 
     if (!adminSecret) {
-      return NextResponse.json(
-        { error: "Giriş başarısız." },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Giriş başarısız." }, { status: 500 });
     }
 
     if (adminSecret.length < 32) {
-      return NextResponse.json(
-        { error: "Giriş başarısız." },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Giriş başarısız." }, { status: 500 });
     }
 
     const isPasswordValid = timingSafeStringEqual(password, adminPass);
 
     if (!isPasswordValid) {
-      registerFailedAttempt(clientIp);
-
       return NextResponse.json(
         { error: "Kullanıcı adı veya şifre hatalı." },
-        { status: 401 }
+        { status: 401 },
       );
     }
-
-    clearAttempts(clientIp);
 
     const cookieValue = await createAdminSessionCookie(adminSecret);
     const res = NextResponse.json({ ok: true });
@@ -183,10 +113,7 @@ export async function POST(req: Request) {
     });
 
     return res;
-  } catch (e: any) {
-    return NextResponse.json(
-      { error: "Geçersiz istek." },
-      { status: 400 }
-    );
+  } catch {
+    return NextResponse.json({ error: "Geçersiz istek." }, { status: 400 });
   }
 }

@@ -28,37 +28,21 @@ export type AddressForm = {
   addressTitle: string;
 };
 
-export type CouponRow = {
-  id: string;
-  code: string;
-  name: string;
-  description?: string | null;
-  discount_type: "percent" | "fixed";
-  discount_value: number;
-  min_order_amount: number;
-  max_discount_amount?: number | null;
-  starts_at?: string | null;
-  ends_at?: string | null;
-  usage_limit_total?: number | null;
-  usage_limit_per_user: number;
-  used_count: number;
-  is_active: boolean;
-  is_member_only: boolean;
-};
-
-export type CouponUsageRow = {
-  id: string;
-  coupon_id: string;
-  user_id: string;
-  coupon_code: string;
-  discount_amount: number;
-  created_at?: string;
-};
+export type { CouponRow, CouponUsageRow } from "@/types";
 
 export type ShippingSettings = {
   shipping_fee: number;
   free_shipping_threshold: number;
   shipping_enabled: boolean;
+};
+
+export type LocationOption = {
+  id: number;
+  name: string;
+};
+
+export type ProvinceOption = LocationOption & {
+  districts: LocationOption[];
 };
 
 export type SelectPopoverProps<T> = {

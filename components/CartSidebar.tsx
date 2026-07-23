@@ -3,6 +3,7 @@
 import { useCart } from "@/context/CartContext";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { supabase } from "@/lib/supabase";
 import { formatMoney } from "@/lib/checkout/checkoutFormatters";
 import {
@@ -13,12 +14,21 @@ import {
 } from "@/lib/checkout/checkoutShipping";
 
 export default function CartSidebar() {
-  const { isCartOpen, toggleCart, items, removeFromCart, updateQuantity, cartTotal } = useCart();
+  const {
+    isCartOpen,
+    toggleCart,
+    items,
+    removeFromCart,
+    updateQuantity,
+    cartTotal,
+  } = useCart();
 
   const [mounted, setMounted] = useState(false);
   const [authOptionsOpen, setAuthOptionsOpen] = useState(false);
   const [checkingSession, setCheckingSession] = useState(false);
-  const [shippingSettings, setShippingSettings] = useState(DEFAULT_SHIPPING_SETTINGS);
+  const [shippingSettings, setShippingSettings] = useState(
+    DEFAULT_SHIPPING_SETTINGS,
+  );
 
   const router = useRouter();
 
@@ -54,7 +64,11 @@ export default function CartSidebar() {
   }, [shippingSettings, cartTotal]);
 
   const remainingForFreeShipping = useMemo(() => {
-    return calculateRemainingForFreeShipping(shippingSettings, Number(cartTotal || 0), shippingFee);
+    return calculateRemainingForFreeShipping(
+      shippingSettings,
+      Number(cartTotal || 0),
+      shippingFee,
+    );
   }, [shippingSettings, cartTotal, shippingFee]);
 
   const cartFinalTotal = useMemo(() => {
@@ -64,7 +78,10 @@ export default function CartSidebar() {
   const freeShippingProgress = useMemo(() => {
     const threshold = Number(shippingSettings.free_shipping_threshold || 0);
     if (!shippingSettings.shipping_enabled || threshold <= 0) return 0;
-    return Math.min(100, Math.max(0, (Number(cartTotal || 0) / threshold) * 100));
+    return Math.min(
+      100,
+      Math.max(0, (Number(cartTotal || 0) / threshold) * 100),
+    );
   }, [shippingSettings, cartTotal]);
 
   const closeCartAndGo = (href: string) => {
@@ -98,7 +115,10 @@ export default function CartSidebar() {
 
   return (
     <div className="fixed inset-0 z-[999] overflow-hidden">
-      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={toggleCart} />
+      <div
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+        onClick={toggleCart}
+      />
 
       <div className="absolute inset-y-0 right-0 max-w-md w-full flex shadow-2xl">
         <div className="w-full h-full flex flex-col bg-white">
@@ -139,24 +159,38 @@ export default function CartSidebar() {
             ) : (
               <ul className="space-y-6">
                 {items.map((item) => (
-                  <li key={item.id} className="flex border-b border-gray-50 pb-4 last:border-0 last:pb-0">
-                    <button 
+                  <li
+                    key={item.id}
+                    className="flex border-b border-gray-50 pb-4 last:border-0 last:pb-0"
+                  >
+                    <button
                       type="button"
                       onClick={() => closeCartAndGo(`/product/${item.id}`)}
                       className="h-24 w-24 flex-shrink-0 overflow-hidden rounded-xl border border-gray-100 bg-white cursor-pointer group"
                     >
-                      <img src={item.image} alt={item.name} className="h-full w-full object-cover object-center group-hover:scale-105 transition-transform" />
+                      <Image
+                        width={96}
+                        height={96}
+                        src={item.image}
+                        alt={item.name}
+                        className="h-full w-full object-cover object-center group-hover:scale-105 transition-transform"
+                      />
                     </button>
 
                     <div className="ml-4 flex flex-1 flex-col justify-between">
                       <div className="flex justify-between items-start text-base font-bold text-gray-900">
-                        <button 
+                        <button
                           type="button"
                           onClick={() => closeCartAndGo(`/product/${item.id}`)}
                           className="line-clamp-2 pr-4 text-xs uppercase text-gray-700 leading-snug text-left hover:text-black hover:underline cursor-pointer"
                         >
                           {item.name}
                         </button>
+                        {item.variant_label && (
+                          <p className="mt-1 text-[10px] font-bold text-gray-500">
+                            {item.variant_label}
+                          </p>
+                        )}
 
                         <p className="whitespace-nowrap font-black">
                           {formatMoney(item.price)} ₺
@@ -167,7 +201,7 @@ export default function CartSidebar() {
                         <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden bg-gray-50 shadow-sm">
                           <button
                             type="button"
-                            onClick={() => updateQuantity(item.id, -1)}
+                            onClick={() => updateQuantity(item.id, -1, item.variant_id)}
                             className="w-8 h-8 flex items-center justify-center text-gray-600 hover:bg-black hover:text-white transition-colors font-black text-lg"
                             aria-label="Ürün adedini azalt"
                           >
@@ -180,7 +214,7 @@ export default function CartSidebar() {
 
                           <button
                             type="button"
-                            onClick={() => updateQuantity(item.id, 1)}
+                            onClick={() => updateQuantity(item.id, 1, item.variant_id)}
                             className="w-8 h-8 flex items-center justify-center text-gray-600 hover:bg-black hover:text-white transition-colors font-black text-lg"
                             aria-label="Ürün adedini artır"
                           >
@@ -190,7 +224,7 @@ export default function CartSidebar() {
 
                         <button
                           type="button"
-                          onClick={() => removeFromCart(item.id)}
+                          onClick={() => removeFromCart(item.id, item.variant_id)}
                           className="font-black text-[10px] text-gray-400 hover:text-red-600 uppercase tracking-widest underline underline-offset-4 transition-colors"
                         >
                           Sil
@@ -211,16 +245,24 @@ export default function CartSidebar() {
                   <span>{formatMoney(cartTotal)} ₺</span>
                 </div>
 
-                <div className={`flex justify-between items-center text-xs font-bold ${shippingFee > 0 ? "text-gray-500" : "text-green-600"}`}>
+                <div
+                  className={`flex justify-between items-center text-xs font-bold ${shippingFee > 0 ? "text-gray-500" : "text-green-600"}`}
+                >
                   <span>Kargo</span>
-                  <span>{shippingFee > 0 ? `${formatMoney(shippingFee)} ₺` : "ÜCRETSİZ"}</span>
+                  <span>
+                    {shippingFee > 0
+                      ? `${formatMoney(shippingFee)} ₺`
+                      : "ÜCRETSİZ"}
+                  </span>
                 </div>
 
                 {remainingForFreeShipping > 0 && (
                   <div className="bg-gray-50 border border-gray-100 rounded-2xl p-3">
                     <div className="flex items-center justify-between gap-3 mb-2">
                       <p className="text-[10px] font-black text-gray-500 uppercase tracking-widest leading-relaxed">
-                        Ücretsiz kargo için {formatMoney(remainingForFreeShipping)} ₺ daha alışveriş yapın.
+                        Ücretsiz kargo için{" "}
+                        {formatMoney(remainingForFreeShipping)} ₺ daha alışveriş
+                        yapın.
                       </p>
                     </div>
 
@@ -252,14 +294,17 @@ export default function CartSidebar() {
                     </p>
 
                     <p className="text-xs font-bold text-gray-600 leading-relaxed">
-                      Hesabınızla devam edin veya misafir olarak hızlıca ödeme yapın.
+                      Hesabınızla devam edin veya misafir olarak hızlıca ödeme
+                      yapın.
                     </p>
                   </div>
 
                   <div className="grid grid-cols-1 gap-2">
                     <button
                       type="button"
-                      onClick={() => closeCartAndGo("/login?redirect=/checkout")}
+                      onClick={() =>
+                        closeCartAndGo("/login?redirect=/checkout")
+                      }
                       className="w-full bg-black text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest active:scale-95 hover:bg-gray-900 transition-all shadow-md"
                     >
                       Giriş Yap / Üye Ol
