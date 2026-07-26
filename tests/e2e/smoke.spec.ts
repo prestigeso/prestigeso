@@ -7,7 +7,7 @@ test("storefront navigation and security headers work", async ({ page }) => {
   await expect(page.locator("html")).toHaveAttribute("lang", "tr");
 
   await page.goto("/shop?q=test&sort=price-asc");
-  await expect(page.locator("h1")).toContainText("ÜRÜNLER");
+  await expect(page.locator("h1:visible").first()).toContainText("ÜRÜNLER");
 });
 
 test("admin APIs reject unauthenticated requests", async ({ request }) => {
