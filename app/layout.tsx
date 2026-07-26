@@ -60,6 +60,10 @@ export default async function RootLayout({
   await headers();
   return (
     <html lang="tr">
+      <head>
+        <link rel="dns-prefetch" href="//www.paytr.com" />
+        <link rel="preconnect" href="https://www.paytr.com" />
+      </head>
       <body className="font-sans">
         <AppAlertProvider>
           <SearchProvider>

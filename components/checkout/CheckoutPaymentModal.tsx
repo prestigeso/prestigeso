@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 type CheckoutPaymentModalProps = {
   isOpen: boolean;
   iframeUrl: string;
@@ -13,6 +15,17 @@ export default function CheckoutPaymentModal({
   merchantOid,
   onClose,
 }: CheckoutPaymentModalProps) {
+  const [loadedIframeUrl, setLoadedIframeUrl] = useState("");
+  const [slowIframeUrl, setSlowIframeUrl] = useState("");
+  const isIframeLoaded = loadedIframeUrl === iframeUrl;
+  const isTakingLong = slowIframeUrl === iframeUrl;
+
+  useEffect(() => {
+    if (!isOpen || !iframeUrl) return;
+    const timeout = window.setTimeout(() => setSlowIframeUrl(iframeUrl), 12_000);
+    return () => window.clearTimeout(timeout);
+  }, [iframeUrl, isOpen]);
+
   // GÜVENLİK: Sadece PayTR domain'inden gelen URL'leri kabul et
   const isValidPaytrUrl = (() => {
     try {
@@ -51,13 +64,41 @@ export default function CheckoutPaymentModal({
           </button>
         </div>
 
-        <iframe
+        <div className="relative flex-1 bg-[#20242a]">
+          {!isIframeLoaded && (
+            <div
+              className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white px-6 text-center"
+              role="status"
+              aria-live="polite"
+            >
+              <div className="h-9 w-9 animate-spin rounded-full border-4 border-gray-200 border-t-black" />
+              <p className="mt-4 text-sm font-black text-black">
+                PayTR gÃ¼venli Ã¶deme ekranÄ± yÃ¼kleniyor
+              </p>
+              <p className="mt-2 max-w-sm text-xs font-medium text-gray-500">
+                Banka ve 3D Secure baÄŸlantÄ±sÄ± kuruluyor. Bu pencereyi kapatmayÄ±n.
+              </p>
+              {isTakingLong && (
+                <p className="mt-4 rounded-xl bg-amber-50 px-4 py-3 text-xs font-bold text-amber-800">
+                  BaÄŸlantÄ± beklenenden uzun sÃ¼rdÃ¼. Ä°nternet baÄŸlantÄ±nÄ±zÄ± kontrol
+                  edin; ekran aÃ§Ä±lmazsa pencereyi kapatÄ±p yeniden deneyin.
+                </p>
+              )}
+            </div>
+          )}
+          <iframe
+            key={iframeUrl}
           src={iframeUrl}
           title="PayTR Ödeme Formu"
-          className="w-full flex-1 bg-white"
+          className="h-full w-full bg-white"
           frameBorder="0"
           scrolling="yes"
+          loading="eager"
+          onLoad={() => {
+            setLoadedIframeUrl(iframeUrl);
+          }}
         />
+        </div>
       </div>
     </div>
   );

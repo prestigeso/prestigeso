@@ -23,7 +23,9 @@ export async function proxy(req: NextRequest) {
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob: " + supabaseOrigin,
     "font-src 'self' data: https://fonts.gstatic.com",
-    "connect-src 'self' " + supabaseOrigin + " wss://*.supabase.co",
+    "connect-src 'self' " +
+      supabaseOrigin +
+      " wss://*.supabase.co https://www.paytr.com",
     "frame-src https://www.paytr.com",
     "object-src 'none'",
     "base-uri 'self'",
