@@ -22,10 +22,6 @@ const securityHeaders = [
     key: "X-DNS-Prefetch-Control",
     value: "on",
   },
-  {
-    key: "X-Frame-Options",
-    value: "SAMEORIGIN",
-  },
   ...(process.env.NODE_ENV === "production"
     ? [
         {

@@ -12,6 +12,11 @@ export async function proxy(req: NextRequest) {
     process.env.NODE_ENV === "production"
       ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`
       : `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' 'unsafe-eval'`;
+  const isPaytrReturnPage =
+    pathname === "/odeme/basarili" || pathname === "/odeme/basarisiz";
+  const frameAncestors = isPaytrReturnPage
+    ? "frame-ancestors 'self' https://www.paytr.com"
+    : "frame-ancestors 'self'";
   const cspDirectives = [
     "default-src 'self'",
     scriptSource,
@@ -23,7 +28,7 @@ export async function proxy(req: NextRequest) {
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self' https://www.paytr.com",
-    "frame-ancestors 'self'",
+    frameAncestors,
   ];
   if (process.env.NODE_ENV === "production") {
     cspDirectives.push("upgrade-insecure-requests");
