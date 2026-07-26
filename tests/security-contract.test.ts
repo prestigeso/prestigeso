@@ -50,6 +50,8 @@ test("PayTR checkout uses the required iframe v2 integration", async () => {
   assert.match(modal, /id="paytriframe"/);
   assert.match(modal, /scrolling:\s*true/);
   assert.match(modal, /overflow-y-auto/);
+  assert.match(modal, /href=\{iframeUrl\}/);
+  assert.match(modal, /Tam Sayfada Aç/);
 });
 
 test("variant checkout is validated server-side and reserved in SQL", async () => {

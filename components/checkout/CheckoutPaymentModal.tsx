@@ -87,6 +87,19 @@ export default function CheckoutPaymentModal({
           </button>
         </div>
 
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-amber-100 bg-amber-50 px-4 py-3">
+          <p className="text-[11px] font-bold leading-relaxed text-amber-900">
+            Bankanız 3D Secure ekranını burada engellerse ödemeyi tam sayfada
+            açın.
+          </p>
+          <a
+            href={iframeUrl}
+            className="shrink-0 rounded-xl bg-black px-4 py-2 text-[10px] font-black uppercase tracking-wider text-white hover:bg-gray-800"
+          >
+            Tam Sayfada Aç
+          </a>
+        </div>
+
         <div
           className="relative min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain bg-[#20242a]"
           style={{ WebkitOverflowScrolling: "touch" }}
