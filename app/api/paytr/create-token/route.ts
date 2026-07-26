@@ -774,6 +774,8 @@ export async function POST(req: NextRequest) {
     params.append("timeout_limit", timeoutLimit);
     params.append("currency", currency);
     params.append("test_mode", testMode);
+    params.append("iframe_v2", "1");
+    params.append("iframe_v2_dark", "0");
 
     const paytrResponse = await fetch(
       "https://www.paytr.com/odeme/api/get-token",

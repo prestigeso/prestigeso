@@ -1,4 +1,6 @@
 import { Metadata } from "next";
+import { headers } from "next/headers";
+import Script from "next/script";
 
 export const metadata: Metadata = {
   title: "Ödeme",
@@ -6,10 +8,21 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-export default function CheckoutLayout({
+export default async function CheckoutLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <>{children}</>;
+  const nonce = (await headers()).get("x-nonce") || undefined;
+
+  return (
+    <>
+      <Script
+        src="https://www.paytr.com/js/iframeResizer.min.js?v2"
+        strategy="afterInteractive"
+        nonce={nonce}
+      />
+      {children}
+    </>
+  );
 }

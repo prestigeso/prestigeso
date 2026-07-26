@@ -38,6 +38,18 @@ test("PayTR reconciliation uses the official status-query token ingredients", as
   assert.match(query, /createHmac\("sha256", merchantKey\)/);
 });
 
+test("PayTR checkout uses the required iframe v2 integration", async () => {
+  const checkout = await source("../app/api/paytr/create-token/route.ts");
+  const layout = await source("../app/checkout/layout.tsx");
+  const modal = await source(
+    "../components/checkout/CheckoutPaymentModal.tsx",
+  );
+  assert.match(checkout, /params\.append\("iframe_v2", "1"\)/);
+  assert.match(layout, /iframeResizer\.min\.js\?v2/);
+  assert.match(modal, /iFrameResize/);
+  assert.match(modal, /id="paytriframe"/);
+});
+
 test("variant checkout is validated server-side and reserved in SQL", async () => {
   const checkout = await source("../app/api/paytr/create-token/route.ts");
   const migration = await source(

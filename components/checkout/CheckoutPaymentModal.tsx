@@ -2,6 +2,13 @@
 
 import { useEffect, useState } from "react";
 
+type PaytrWindow = Window & {
+  iFrameResize?: (
+    options: Record<string, unknown>,
+    selector: string,
+  ) => void;
+};
+
 type CheckoutPaymentModalProps = {
   isOpen: boolean;
   iframeUrl: string;
@@ -24,6 +31,23 @@ export default function CheckoutPaymentModal({
     if (!isOpen || !iframeUrl) return;
     const timeout = window.setTimeout(() => setSlowIframeUrl(iframeUrl), 12_000);
     return () => window.clearTimeout(timeout);
+  }, [iframeUrl, isOpen]);
+
+  useEffect(() => {
+    if (!isOpen || !iframeUrl) return;
+    let attempts = 0;
+    const initializeResizer = () => {
+      const resize = (window as PaytrWindow).iFrameResize;
+      if (typeof resize !== "function") return false;
+      resize({ checkOrigin: ["https://www.paytr.com"] }, "#paytriframe");
+      return true;
+    };
+    if (initializeResizer()) return;
+    const interval = window.setInterval(() => {
+      attempts += 1;
+      if (initializeResizer() || attempts >= 40) window.clearInterval(interval);
+    }, 250);
+    return () => window.clearInterval(interval);
   }, [iframeUrl, isOpen]);
 
   // GÜVENLİK: Sadece PayTR domain'inden gelen URL'leri kabul et
@@ -87,6 +111,7 @@ export default function CheckoutPaymentModal({
             </div>
           )}
           <iframe
+            id="paytriframe"
             key={iframeUrl}
           src={iframeUrl}
           title="PayTR Ödeme Formu"
