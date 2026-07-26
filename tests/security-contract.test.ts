@@ -38,20 +38,13 @@ test("PayTR reconciliation uses the official status-query token ingredients", as
   assert.match(query, /createHmac\("sha256", merchantKey\)/);
 });
 
-test("PayTR checkout uses the required iframe v2 integration", async () => {
+test("PayTR checkout uses one-time iframe v2 tokens in a top-level page", async () => {
   const checkout = await source("../app/api/paytr/create-token/route.ts");
-  const layout = await source("../app/checkout/layout.tsx");
-  const modal = await source(
-    "../components/checkout/CheckoutPaymentModal.tsx",
-  );
+  const checkoutPage = await source("../app/checkout/page.tsx");
   assert.match(checkout, /params\.append\("iframe_v2", "1"\)/);
-  assert.match(layout, /iframeResizer\.min\.js\?v2/);
-  assert.match(modal, /iFrameResize/);
-  assert.match(modal, /id="paytriframe"/);
-  assert.match(modal, /scrolling:\s*true/);
-  assert.match(modal, /overflow-y-auto/);
-  assert.match(modal, /href=\{iframeUrl\}/);
-  assert.match(modal, /Tam Sayfada Aç/);
+  assert.match(checkoutPage, /paymentUrl\.hostname !== "www\.paytr\.com"/);
+  assert.match(checkoutPage, /window\.location\.assign\(paymentUrl\.toString\(\)\)/);
+  assert.doesNotMatch(checkoutPage, /CheckoutPaymentModal/);
 });
 
 test("variant checkout is validated server-side and reserved in SQL", async () => {

@@ -15,7 +15,6 @@ type CheckoutSummaryProps = {
   setIsContractModalOpen: (value: boolean) => void;
   handleCompleteOrder: () => void | Promise<void>;
   isProcessing: boolean;
-  paytrIframeUrl: string;
   checkoutMode: CheckoutMode | null;
 };
 
@@ -31,7 +30,6 @@ export default function CheckoutSummary({
   setIsContractModalOpen,
   handleCompleteOrder,
   isProcessing,
-  paytrIframeUrl,
   checkoutMode,
 }: CheckoutSummaryProps) {
   return (
@@ -115,11 +113,7 @@ export default function CheckoutSummary({
           disabled={isProcessing || !checkoutMode}
           className="w-full bg-black text-white font-black py-5 rounded-2xl shadow-xl active:scale-95 disabled:opacity-50 uppercase tracking-widest text-sm flex items-center justify-center gap-2"
         >
-          {isProcessing
-            ? "Ödeme Başlatılıyor..."
-            : paytrIframeUrl
-              ? "Ödemeye Devam Et 💳"
-              : "Ödemeye Geç 💳"}
+          {isProcessing ? "Ödeme Başlatılıyor..." : "Ödemeye Geç 💳"}
         </button>
       </div>
     </div>

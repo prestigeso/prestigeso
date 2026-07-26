@@ -15,7 +15,6 @@ import { supabase } from "@/lib/supabase";
 import { useCart } from "@/context/CartContext";
 import NoticeToast from "@/components/checkout/NoticeToast";
 import CheckoutAddressModal from "@/components/checkout/CheckoutAddressModal";
-import CheckoutPaymentModal from "@/components/checkout/CheckoutPaymentModal";
 import CheckoutContractModal from "@/components/checkout/CheckoutContractModal";
 import CheckoutSummary from "@/components/checkout/CheckoutSummary";
 import {
@@ -70,9 +69,6 @@ export default function CheckoutPage() {
     type: NoticeType;
     message: string;
   } | null>(null);
-  const [paytrIframeUrl, setPaytrIframeUrl] = useState("");
-  const [paytrMerchantOid, setPaytrMerchantOid] = useState("");
-  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isOtpModalOpen, setIsOtpModalOpen] = useState(false);
   const [checkoutOtpCode, setCheckoutOtpCode] = useState("");
   const [otpVerificationToken, setOtpVerificationToken] = useState("");
@@ -493,10 +489,6 @@ export default function CheckoutPage() {
   };
 
   const handleCompleteOrder = async () => {
-    if (paytrIframeUrl) {
-      setIsPaymentModalOpen(true);
-      return;
-    }
     const err = validateBeforePay();
     if (err) {
       showNotice(err, "error");
@@ -612,9 +604,14 @@ export default function CheckoutPage() {
       const result = await response.json();
       if (!response.ok)
         throw new Error(result?.error || "PayTR ödeme başlatılamadı.");
-      setPaytrIframeUrl(result.iframe_url);
-      setPaytrMerchantOid(result.merchant_oid || "");
-      setIsPaymentModalOpen(true);
+      const paymentUrl = new URL(String(result.iframe_url || ""));
+      if (
+        paymentUrl.protocol !== "https:" ||
+        paymentUrl.hostname !== "www.paytr.com"
+      ) {
+        throw new Error("PayTR ödeme adresi geçersiz.");
+      }
+      window.location.assign(paymentUrl.toString());
     } catch (error: unknown) {
       showNotice(getErrorMessage(error, "Ödeme başlatılamadı."), "error");
     } finally {
@@ -945,19 +942,9 @@ export default function CheckoutPage() {
           setIsContractModalOpen={setIsContractModalOpen}
           handleCompleteOrder={handleCompleteOrder}
           isProcessing={isProcessing || isOtpSending}
-          paytrIframeUrl={paytrIframeUrl}
           checkoutMode={checkoutMode}
         />
       </div>
-
-      <CheckoutPaymentModal
-        isOpen={isPaymentModalOpen}
-        iframeUrl={paytrIframeUrl}
-        merchantOid={paytrMerchantOid}
-        onClose={() => {
-          setIsPaymentModalOpen(false);
-        }}
-      />
       <CheckoutContractModal
         isOpen={isContractModalOpen}
         cartItems={cartItems}
