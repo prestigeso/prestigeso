@@ -7,6 +7,7 @@ import { getErrorMessage } from "@/lib/utils";
 export default function AdminLoginPage() {
   const router = useRouter();
   const [password, setPassword] = useState("");
+  const [totpCode, setTotpCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -19,7 +20,7 @@ export default function AdminLoginPage() {
       const res = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password, totpCode }),
       });
 
       const data = await res.json().catch(() => ({}));
@@ -62,6 +63,23 @@ export default function AdminLoginPage() {
           onChange={(e) => setPassword(e.target.value)}
           className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl mb-4 focus:ring-2 focus:ring-black outline-none transition-all font-medium"
         />
+
+        <input
+          type="text"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          pattern="[0-9]{6}"
+          maxLength={6}
+          placeholder="6 haneli doğrulama kodu"
+          value={totpCode}
+          onChange={(e) =>
+            setTotpCode(e.target.value.replace(/\D/g, "").slice(0, 6))
+          }
+          className="w-full p-4 bg-gray-50 border border-gray-200 rounded-xl mb-2 focus:ring-2 focus:ring-black outline-none transition-all font-medium"
+        />
+        <p className="mb-4 text-[11px] text-center text-gray-400">
+          Canlı ortamda Authenticator kodu zorunludur.
+        </p>
 
         {error && (
           <p className="text-red-500 text-xs mb-4 font-bold text-center bg-red-50 p-2 rounded-lg">

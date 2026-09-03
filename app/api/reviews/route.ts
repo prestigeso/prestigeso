@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { consumeRateLimit } from "@/lib/rateLimit";
+import { consumeRateLimit, getClientIp } from "@/lib/rateLimit";
+import { getCustomerDisplayName } from "@/lib/customerDisplayName";
 import {
   createImageObjectPath,
   validateImageFile,
@@ -10,6 +11,53 @@ import {
 export const runtime = "nodejs";
 const MAX_REVIEW_IMAGES = 3;
 const MAX_REVIEW_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_REVIEW_REQUEST_BYTES =
+  MAX_REVIEW_IMAGES * MAX_REVIEW_IMAGE_BYTES + 1024 * 1024;
+
+type ReviewFormResult =
+  | { ok: true; form: FormData }
+  | { ok: false; tooLarge: boolean };
+
+async function readReviewFormData(
+  req: NextRequest,
+): Promise<ReviewFormResult> {
+  if (!req.body) return { ok: false, tooLarge: false };
+
+  const contentType = req.headers.get("content-type");
+  if (!contentType?.toLowerCase().startsWith("multipart/form-data"))
+    return { ok: false, tooLarge: false };
+
+  const reader = req.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let receivedBytes = 0;
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    receivedBytes += value.byteLength;
+    if (receivedBytes > MAX_REVIEW_REQUEST_BYTES) {
+      await reader.cancel().catch(() => undefined);
+      return { ok: false, tooLarge: true };
+    }
+    chunks.push(value);
+  }
+
+  const payload = new Uint8Array(receivedBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    payload.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+
+  try {
+    const form = await new Response(payload, {
+      headers: { "Content-Type": contentType },
+    }).formData();
+    return { ok: true, form };
+  } catch {
+    return { ok: false, tooLarge: false };
+  }
+}
 
 function parseItems(value: unknown): Array<{ id?: unknown }> {
   try {
@@ -24,6 +72,36 @@ export async function POST(req: NextRequest) {
   const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
   if (!token)
     return NextResponse.json({ error: "Oturum gerekli." }, { status: 401 });
+
+  const contentLength = req.headers.get("content-length");
+  if (contentLength) {
+    const declaredBytes = Number(contentLength);
+    if (
+      !Number.isSafeInteger(declaredBytes) ||
+      declaredBytes < 0 ||
+      declaredBytes > MAX_REVIEW_REQUEST_BYTES
+    )
+      return NextResponse.json(
+        { error: "Değerlendirme isteği çok büyük." },
+        { status: 413 },
+      );
+  }
+
+  const ipLimit = await consumeRateLimit({
+    bucket: "review-create-ip",
+    identifier: getClientIp(req),
+    maxRequests: 30,
+    windowSeconds: 3600,
+  });
+  if (!ipLimit.allowed)
+    return NextResponse.json(
+      { error: "Çok fazla değerlendirme isteği yapıldı." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(ipLimit.retryAfterSeconds) },
+      },
+    );
+
   const auth = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -35,9 +113,32 @@ export async function POST(req: NextRequest) {
       { status: 401 },
     );
 
-  const form = await req.formData().catch(() => null);
-  if (!form)
-    return NextResponse.json({ error: "Geçersiz istek." }, { status: 400 });
+  const limit = await consumeRateLimit({
+    bucket: "review-create-user",
+    identifier: authData.user.id,
+    maxRequests: 10,
+    windowSeconds: 3600,
+  });
+  if (!limit.allowed)
+    return NextResponse.json(
+      { error: "Çok fazla değerlendirme isteği yapıldı." },
+      {
+        status: 429,
+        headers: { "Retry-After": String(limit.retryAfterSeconds) },
+      },
+    );
+
+  const formResult = await readReviewFormData(req);
+  if (!formResult.ok)
+    return NextResponse.json(
+      {
+        error: formResult.tooLarge
+          ? "Değerlendirme isteği çok büyük."
+          : "Geçersiz istek.",
+      },
+      { status: formResult.tooLarge ? 413 : 400 },
+    );
+  const form = formResult.form;
   const productId = Number(form.get("productId"));
   const rating = Number(form.get("rating"));
   const comment = String(form.get("comment") || "")
@@ -80,25 +181,13 @@ export async function POST(req: NextRequest) {
       { status: 403 },
     );
 
-  const limit = await consumeRateLimit({
-    bucket: "review-create-user",
-    identifier: authData.user.id,
-    maxRequests: 10,
-    windowSeconds: 3600,
-  });
-  if (!limit.allowed)
-    return NextResponse.json(
-      { error: "Çok fazla değerlendirme isteği yapıldı." },
-      { status: 429 },
-    );
-
   const uploadedPaths: string[] = [];
   try {
     const images: string[] = [];
     for (const file of files) {
       const extension = await validateImageFile(file, MAX_REVIEW_IMAGE_BYTES);
       const path = createImageObjectPath(
-        `reviews/${authData.user.id}/${productId}`,
+        `reviews/${productId}`,
         extension,
       );
       const { error: uploadError } = await supabaseAdmin.storage
@@ -114,10 +203,11 @@ export async function POST(req: NextRequest) {
       images.push(data.publicUrl);
     }
 
+    const userName = await getCustomerDisplayName(authData.user.id);
     const { error } = await supabaseAdmin.from("reviews").insert({
       product_id: productId,
       user_id: authData.user.id,
-      user_name: authData.user.email?.split("@")[0] || "Kullanıcı",
+      user_name: userName,
       rating,
       comment,
       images,

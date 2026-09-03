@@ -7,6 +7,11 @@ import Image from "next/image";
 import { supabase } from "@/lib/supabase";
 import { useAppAlert } from "@/context/AppAlertContext";
 import { useCart } from "@/context/CartContext";
+import {
+  safeStorageGet,
+  safeStorageRemove,
+  safeStorageSet,
+} from "@/lib/browserStorage";
 import type {
   AuthUser,
   CustomerProfile,
@@ -92,7 +97,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     try {
-      const savedTab = localStorage.getItem("prestigeso_profile_tab");
+      const savedTab = safeStorageGet("local", "prestigeso_profile_tab");
       if (savedTab && VALID_PROFILE_TABS.includes(savedTab))
         setActiveTab(savedTab);
     } catch {
@@ -103,7 +108,7 @@ export default function ProfilePage() {
   const handleTabChange = (tab: string) => {
     setActiveTab(tab);
     try {
-      localStorage.setItem("prestigeso_profile_tab", tab);
+      safeStorageSet("local", "prestigeso_profile_tab", tab);
     } catch (error) {
       console.warn("Profil sekmesi tercihi kaydedilemedi:", error);
     }
@@ -127,7 +132,7 @@ export default function ProfilePage() {
       const { data: customerData } = await supabase
         .from("customers")
         .select(
-          "id, email, first_name, last_name, full_name, phone, gender, birth_date",
+          "id, email, first_name, last_name, full_name, phone, gender, birth_date, marketing_consent, marketing_consent_at, marketing_consent_revoked_at, marketing_consent_version",
         )
         .eq("id", session.user.id)
         .maybeSingle();
@@ -155,15 +160,17 @@ export default function ProfilePage() {
           .order("created_at", { ascending: false })
           .limit(100),
         supabase
-          .from("reviews")
-          .select("*, products(*)")
-          .eq("user_id", session.user.id)
+          .from("my_product_reviews")
+          .select(
+            "id,product_id,rating,comment,user_name,images,is_approved,created_at,products",
+          )
           .order("created_at", { ascending: false })
           .limit(100),
         supabase
-          .from("questions")
-          .select("*, products(*)")
-          .eq("user_id", session.user.id)
+          .from("my_product_questions")
+          .select(
+            "id,product_id,question,user_name,answer,is_approved,answered_at,created_at,products",
+          )
           .order("created_at", { ascending: false })
           .limit(100),
         supabase
@@ -191,25 +198,20 @@ export default function ProfilePage() {
 
         if (favIds.length > 0) {
           const { data: productReviews } = await supabase
-            .from("reviews")
-            .select("product_id, rating")
+            .from("product_review_stats")
+            .select("product_id,rating_avg,review_count")
             .in("product_id", favIds)
-            .eq("is_approved", true)
             .limit(500);
 
           const favsWithStats = dbFavs.map((p) => {
-            const pRevs =
-              productReviews?.filter(
-                (r) => String(r.product_id) === String(p.id),
-              ) || [];
-            const avg =
-              pRevs.length > 0
-                ? pRevs.reduce(
-                    (acc: number, r) => acc + Number(r.rating || 0),
-                    0,
-                  ) / pRevs.length
-                : 0;
-            return { ...p, ratingAvg: avg, reviewCount: pRevs.length };
+            const stats = productReviews?.find(
+              (row) => String(row.product_id) === String(p.id),
+            );
+            return {
+              ...p,
+              ratingAvg: Number(stats?.rating_avg || 0),
+              reviewCount: Number(stats?.review_count || 0),
+            };
           });
 
           setFavorites(favsWithStats);
@@ -220,7 +222,7 @@ export default function ProfilePage() {
 
       try {
         const savedViewed = JSON.parse(
-          localStorage.getItem("prestige_viewed") || "[]",
+          safeStorageGet("local", "prestige_viewed") || "[]",
         );
         setRecentlyViewed(Array.isArray(savedViewed) ? savedViewed : []);
       } catch {
@@ -478,8 +480,8 @@ export default function ProfilePage() {
             onClick={() => {
               clearCart();
               try {
-                localStorage.removeItem("prestige_viewed");
-                localStorage.removeItem("prestigeso_profile_tab");
+                safeStorageRemove("local", "prestige_viewed");
+                safeStorageRemove("local", "prestigeso_profile_tab");
               } catch (error) {
                 console.warn("Yerel profil verileri temizlenemedi:", error);
               }

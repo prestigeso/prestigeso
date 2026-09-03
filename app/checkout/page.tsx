@@ -54,10 +54,45 @@ import {
   calculateCouponDiscount,
   getCouponLabel,
 } from "@/lib/checkout/checkoutCoupons";
+import {
+  safeStorageGet,
+  safeStorageRemove,
+  safeStorageSet,
+} from "@/lib/browserStorage";
+import { DISTANCE_SALES_VERSION } from "@/lib/legal/consent";
+
+const CHECKOUT_IDEMPOTENCY_STORAGE_KEY = "prestigeso_checkout_idempotency";
+
+type StoredCheckoutIdempotency = {
+  key: string;
+  fingerprint: string;
+};
+
+function readStoredCheckoutIdempotency(): StoredCheckoutIdempotency | null {
+  const stored = safeStorageGet("session", CHECKOUT_IDEMPOTENCY_STORAGE_KEY);
+  if (!stored) return null;
+
+  try {
+    const parsed = JSON.parse(stored) as Partial<StoredCheckoutIdempotency>;
+    if (
+      typeof parsed.key !== "string" ||
+      !/^[A-Za-z0-9._:-]{16,128}$/.test(parsed.key) ||
+      typeof parsed.fingerprint !== "string" ||
+      parsed.fingerprint.length < 1
+    ) {
+      safeStorageRemove("session", CHECKOUT_IDEMPOTENCY_STORAGE_KEY);
+      return null;
+    }
+    return parsed as StoredCheckoutIdempotency;
+  } catch {
+    safeStorageRemove("session", CHECKOUT_IDEMPOTENCY_STORAGE_KEY);
+    return null;
+  }
+}
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { items: cartItems, cartTotal } = useCart();
+  const { items: cartItems, cartTotal, isHydrated: isCartHydrated } = useCart();
 
   const [user, setUser] = useState<User | null>(null);
   const [checkoutMode, setCheckoutMode] = useState<CheckoutMode | null>(null);
@@ -80,7 +115,8 @@ export default function CheckoutPage() {
   );
   const [isAddressModalOpen, setIsAddressModalOpen] = useState(false);
   const [isSavingAddress, setIsSavingAddress] = useState(false);
-  const [agreeTerms, setAgreeTerms] = useState(false);
+  const [acceptedContractFingerprint, setAcceptedContractFingerprint] =
+    useState<string | null>(null);
   const [isContractModalOpen, setIsContractModalOpen] = useState(false);
   const [couponCode, setCouponCode] = useState("");
   const [coupons, setCoupons] = useState<CouponRow[]>([]);
@@ -90,6 +126,10 @@ export default function CheckoutPage() {
   const [shippingSettings, setShippingSettings] = useState(
     DEFAULT_SHIPPING_SETTINGS,
   );
+  const [shippingSettingsReady, setShippingSettingsReady] = useState(false);
+  const [shippingSettingsError, setShippingSettingsError] = useState(false);
+  const paymentIdempotencyRef = useRef<StoredCheckoutIdempotency | null>(null);
+  const paymentInFlightRef = useRef(false);
   const [addressData, setAddressData] = useState<AddressForm>({
     email: "",
     firstName: "",
@@ -116,14 +156,21 @@ export default function CheckoutPage() {
   const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
-    if (!loading && !redirecting && (!cartItems || cartItems.length === 0)) {
+    if (
+      isCartHydrated &&
+      !loading &&
+      !redirecting &&
+      (!cartItems || cartItems.length === 0)
+    ) {
       setRedirecting(true);
       router.replace("/");
     }
-  }, [cartItems, router, loading, redirecting]);
+  }, [cartItems, isCartHydrated, router, loading, redirecting]);
 
   const isPageLoading =
-    redirecting || (!loading && (!cartItems || cartItems.length === 0));
+    !isCartHydrated ||
+    redirecting ||
+    (!loading && (!cartItems || cartItems.length === 0));
 
   useEffect(() => {
     const initCheckout = async () => {
@@ -137,10 +184,18 @@ export default function CheckoutPage() {
           method: "GET",
           credentials: "include",
         });
+        if (!settingsResponse.ok)
+          throw new Error("Kargo ayarları sunucudan alınamadı.");
         const settingsJson = await settingsResponse.json();
+        if (!settingsJson?.shipping)
+          throw new Error("Kargo ayarları eksik döndü.");
         setShippingSettings(normalizeShippingSettings(settingsJson?.shipping));
+        setShippingSettingsReady(true);
+        setShippingSettingsError(false);
       } catch (error) {
         console.error("Kargo ayarları yüklenemedi:", error);
+        setShippingSettingsReady(false);
+        setShippingSettingsError(true);
       }
 
       if (session) {
@@ -192,7 +247,7 @@ export default function CheckoutPage() {
 
       try {
         // PERF-06: İl listesini sessionStorage'dan cache'le
-        const cachedProvinces = sessionStorage.getItem("prestige_provinces");
+        const cachedProvinces = safeStorageGet("session", "prestige_provinces");
         if (cachedProvinces) {
           setCities(JSON.parse(cachedProvinces));
         } else {
@@ -204,12 +259,13 @@ export default function CheckoutPage() {
             );
             setCities(sorted);
             try {
-              sessionStorage.setItem(
+              safeStorageSet(
+                "session",
                 "prestige_provinces",
                 JSON.stringify(sorted),
               );
             } catch {
-              /* quota */
+              /* invalid response */
             }
           }
         }
@@ -228,6 +284,20 @@ export default function CheckoutPage() {
           null
         : null,
     [savedAddresses, selectedAddressId],
+  );
+  const contractAddress = useMemo<AddressForm>(
+    () => ({
+      email: normalizeEmail(addressData.email || user?.email || ""),
+      firstName: selectedAddress?.first_name || "",
+      lastName: selectedAddress?.last_name || "",
+      phone: selectedAddress?.phone || "",
+      city: selectedAddress?.city || "",
+      district: selectedAddress?.district || "",
+      neighborhood: selectedAddress?.neighborhood || "",
+      fullAddress: selectedAddress?.full_address || "",
+      addressTitle: selectedAddress?.title || "",
+    }),
+    [addressData.email, selectedAddress, user?.email],
   );
   const usageCountsByCouponId = useMemo(
     () =>
@@ -281,6 +351,64 @@ export default function CheckoutPage() {
     () => Math.max(0, subtotalAfterCoupon + shippingFee),
     [subtotalAfterCoupon, shippingFee],
   );
+  const checkoutRequestFingerprint = useMemo(
+    () =>
+      JSON.stringify({
+        version: DISTANCE_SALES_VERSION,
+        checkoutMode,
+        email: normalizeEmail(addressData.email || user?.email || ""),
+        address: contractAddress,
+        items: [...(cartItems || [])]
+          .map((item) => ({
+            id: Number(item.id),
+            variantId: Number(item.variant_id || 0),
+            name: String(item.name || ""),
+            price: Number(item.price || 0).toFixed(2),
+            quantity: Number(item.quantity || 0),
+          }))
+          .sort((left, right) =>
+            `${left.id}:${left.variantId}`.localeCompare(
+              `${right.id}:${right.variantId}`,
+            ),
+          ),
+        couponCode:
+          isMember && selectedCoupon && couponDiscount > 0
+            ? selectedCoupon.code
+            : "",
+        couponDiscount: Number(couponDiscount || 0).toFixed(2),
+        shippingFee: Number(shippingFee || 0).toFixed(2),
+        finalTotal: Number(finalTotal || 0).toFixed(2),
+      }),
+    [
+      addressData.email,
+      cartItems,
+      checkoutMode,
+      contractAddress,
+      couponDiscount,
+      finalTotal,
+      isMember,
+      selectedCoupon,
+      shippingFee,
+      user?.email,
+    ],
+  );
+  const agreeTerms =
+    acceptedContractFingerprint === checkoutRequestFingerprint;
+
+  const openContractModal = () => {
+    if (!shippingSettingsReady || shippingSettingsError) {
+      showNotice(
+        "Kargo ve toplam tutar doğrulanamadı. Lütfen sayfayı yenileyip tekrar deneyin.",
+        "error",
+      );
+      return;
+    }
+    if (!selectedAddress) {
+      showNotice("Önce teslimat adresinizi seçin.", "error");
+      return;
+    }
+    setIsContractModalOpen(true);
+  };
 
   useEffect(() => {
     if (!selectedCoupon) return;
@@ -470,6 +598,8 @@ export default function CheckoutPage() {
     if (!checkoutMode)
       return "Devam etmek için giriş yapın veya üye olmadan devam edin.";
     if (!cartItems || cartItems.length === 0) return "Sepet boş.";
+    if (!shippingSettingsReady || shippingSettingsError)
+      return "Kargo ve toplam tutar doğrulanamadı. Lütfen sayfayı yenileyip tekrar deneyin.";
     const email = normalizeEmail(addressData.email || user?.email || "");
     if (!isValidEmail(email))
       return "Lütfen geçerli bir e-posta adresi giriniz.";
@@ -559,7 +689,45 @@ export default function CheckoutPage() {
   };
 
   const proceedToPayment = async (verificationToken?: string) => {
+    if (paymentInFlightRef.current) return;
+    const validationError = validateBeforePay();
+    if (validationError) {
+      showNotice(validationError, "error");
+      setIsProcessing(false);
+      return;
+    }
+
+    paymentInFlightRef.current = true;
     setIsProcessing(true);
+    const storedIdempotency = readStoredCheckoutIdempotency();
+    const reusableIdempotency =
+      paymentIdempotencyRef.current?.fingerprint ===
+      checkoutRequestFingerprint
+        ? paymentIdempotencyRef.current
+        : storedIdempotency?.fingerprint === checkoutRequestFingerprint
+          ? storedIdempotency
+          : null;
+    const idempotency: StoredCheckoutIdempotency =
+      reusableIdempotency || {
+        key: window.crypto.randomUUID(),
+        fingerprint: checkoutRequestFingerprint,
+      };
+    const idempotencyKey = idempotency.key;
+    paymentIdempotencyRef.current = idempotency;
+    safeStorageSet(
+      "session",
+      CHECKOUT_IDEMPOTENCY_STORAGE_KEY,
+      JSON.stringify(idempotency),
+    );
+
+    const clearIdempotency = () => {
+      if (paymentIdempotencyRef.current?.key === idempotencyKey)
+        paymentIdempotencyRef.current = null;
+      const currentStored = readStoredCheckoutIdempotency();
+      if (!currentStored || currentStored.key === idempotencyKey)
+        safeStorageRemove("session", CHECKOUT_IDEMPOTENCY_STORAGE_KEY);
+    };
+
     try {
       const shippingAddressObject = {
         email: normalizeEmail(addressData.email || user?.email || ""),
@@ -581,6 +749,7 @@ export default function CheckoutPage() {
       } = await supabase.auth.getSession();
       const authHeaders: Record<string, string> = {
         "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
       };
       if (isMember && currentSession?.access_token) {
         authHeaders["Authorization"] = `Bearer ${currentSession.access_token}`;
@@ -594,16 +763,39 @@ export default function CheckoutPage() {
             id: item.id,
             quantity: item.quantity,
             name: item.name,
+            variant_id: item.variant_id ?? null,
           })),
           shippingAddress: shippingAddressObject,
           checkoutMode,
           couponCode: activeCouponCode,
           otpVerificationToken: verificationToken || otpVerificationToken,
+          expectedTotalAmount: Number(finalTotal.toFixed(2)),
+          contractAccepted: true,
+          contractVersion: DISTANCE_SALES_VERSION,
         }),
       });
-      const result = await response.json();
-      if (!response.ok)
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const shouldPreserveIdempotency =
+          response.status >= 500 ||
+          response.status === 429 ||
+          response.status === 401 ||
+          result?.code === "IDEMPOTENCY_IN_PROGRESS" ||
+          result?.code === "CHECKOUT_STATUS_UNCERTAIN";
+        if (!shouldPreserveIdempotency) clearIdempotency();
+        if (
+          result?.code === "QUOTE_CHANGED" ||
+          result?.code === "CART_CHANGED" ||
+          result?.code === "COUPON_INVALID"
+        ) {
+          setAcceptedContractFingerprint(null);
+        }
+        if (result?.code === "COUPON_INVALID") {
+          setSelectedCoupon(null);
+          setCouponCode("");
+        }
         throw new Error(result?.error || "PayTR ödeme başlatılamadı.");
+      }
       const paymentUrl = new URL(String(result.iframe_url || ""));
       if (
         paymentUrl.protocol !== "https:" ||
@@ -611,10 +803,11 @@ export default function CheckoutPage() {
       ) {
         throw new Error("PayTR ödeme adresi geçersiz.");
       }
-      window.location.assign(paymentUrl.toString());
+      window.location.replace(paymentUrl.toString());
     } catch (error: unknown) {
       showNotice(getErrorMessage(error, "Ödeme başlatılamadı."), "error");
     } finally {
+      paymentInFlightRef.current = false;
       setIsProcessing(false);
     }
   };
@@ -938,8 +1131,12 @@ export default function CheckoutPage() {
           remainingForFreeShipping={remainingForFreeShipping}
           finalTotal={finalTotal}
           agreeTerms={agreeTerms}
-          setAgreeTerms={setAgreeTerms}
-          setIsContractModalOpen={setIsContractModalOpen}
+          shippingSettingsReady={shippingSettingsReady && !shippingSettingsError}
+          onTermsChange={(checked) => {
+            if (checked) openContractModal();
+            else setAcceptedContractFingerprint(null);
+          }}
+          openContractModal={openContractModal}
           handleCompleteOrder={handleCompleteOrder}
           isProcessing={isProcessing || isOtpSending}
           checkoutMode={checkoutMode}
@@ -948,14 +1145,14 @@ export default function CheckoutPage() {
       <CheckoutContractModal
         isOpen={isContractModalOpen}
         cartItems={cartItems}
-        address={addressData}
+        address={contractAddress}
         cartTotal={Number(cartTotal || 0)}
         couponDiscount={couponDiscount}
         shippingFee={shippingFee}
         finalTotal={finalTotal}
         onClose={() => setIsContractModalOpen(false)}
         onApprove={() => {
-          setAgreeTerms(true);
+          setAcceptedContractFingerprint(checkoutRequestFingerprint);
           setIsContractModalOpen(false);
         }}
       />

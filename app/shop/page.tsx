@@ -149,7 +149,15 @@ export default async function ShopPage({
     ],
   );
 
-  const failures = [productsResult, campaignsResult, categoriesResult]
+  const productsError =
+    productsResult.error?.code === "PGRST103" && page > 1
+      ? null
+      : productsResult.error;
+  const failures = [
+    { ...productsResult, error: productsError },
+    campaignsResult,
+    categoriesResult,
+  ]
     .map((result) => result.error)
     .filter(Boolean);
   if (failures.length > 0)

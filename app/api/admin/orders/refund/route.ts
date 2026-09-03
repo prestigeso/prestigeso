@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ADMIN_COOKIE_NAME, verifyAdminSessionCookie } from "@/lib/adminAuth";
+import { isAdminRequest } from "@/lib/adminRequest";
 import { RefundError, refundOrder } from "@/lib/paytr/refundOrder";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
-    const adminSecret = (process.env.ADMIN_COOKIE_SECRET ?? "").trim();
-    const cookieValue = req.cookies.get(ADMIN_COOKIE_NAME)?.value ?? "";
-    if (!(await verifyAdminSessionCookie(adminSecret, cookieValue))) {
+    if (!(await isAdminRequest(req))) {
       return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
     }
 

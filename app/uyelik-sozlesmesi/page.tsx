@@ -67,8 +67,8 @@ export default function MembershipAgreementPage() {
               </li>
               <li>
                 <strong>Şifre:</strong> Üyenin sistem tarafından tanınmasını
-                sağlayan, güvenliğinden tamamen üyenin sorumlu olduğu 6 ila 16
-                hane arası ibareyi,
+                sağlayan, güvenliğinden tamamen üyenin sorumlu olduğu 8 ila 128
+                karakter arası ibareyi,
               </li>
               <li>
                 <strong>Üye Hesabı:</strong> Üyelerin çeşitli ürün veya
@@ -131,10 +131,12 @@ export default function MembershipAgreementPage() {
                   4.5 Üye'ye Ait Kişisel Bilgiler
                 </h3>
                 <p>
-                  Üye, vermiş olduğu bilgilerin istatistiksel raporlama veya
-                  pazarlama alanında kullanılmasına muvafakat ettiğini kabul
-                  eder. prestigeso.com.tr bu bilgileri üyenin kişilik haklarına
-                  zarar vermeksizin kullanacaktır.
+                  Üyelik ve sipariş hizmetleri için gerekli kişisel veriler,
+                  Aydınlatma Metni&apos;nde açıklanan amaçlar ve hukuki sebeplerle
+                  işlenir. Pazarlama ve ticari elektronik ileti faaliyetleri
+                  üyelik sözleşmesinin zorunlu bir parçası değildir; yalnızca
+                  üyenin ayrı ve isteğe bağlı izin vermesi halinde yürütülür.
+                  Üye bu izni hesap ayarlarından her zaman geri çekebilir.
                 </p>
               </div>
               <div>

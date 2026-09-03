@@ -323,17 +323,21 @@ export default function ProductDetailClient({
     setIsSubmitting(true);
 
     try {
-      const { error } = await supabase.from("questions").insert([
-        {
-          product_id: product.id,
-          user_id: user.id,
-          user_name: user.email?.split("@")[0] || "Kullanıcı",
-          question: questionText,
-          is_approved: false,
+      const { data } = await supabase.auth.getSession();
+      if (!data.session?.access_token) throw new Error("Oturum bulunamadı.");
+      const response = await fetch("/api/questions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${data.session.access_token}`,
         },
-      ]);
-
-      if (error) throw error;
+        body: JSON.stringify({
+          productId: product.id,
+          question: questionText.trim(),
+        }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "Soru kaydedilemedi.");
 
       showToast(
         "Sorunuz satıcıya iletildi. Cevaplandığında burada görünecektir.",
@@ -428,7 +432,7 @@ export default function ProductDetailClient({
               src={productImages[selectedImageIndex]}
               alt={product.name}
               fill
-              priority
+              preload
               sizes="(max-width: 768px) 100vw, 50vw"
               className="object-cover mix-blend-multiply transition-opacity duration-300 pointer-events-none"
             />
@@ -513,6 +517,7 @@ export default function ProductDetailClient({
                     src={url}
                     alt=""
                     fill
+                    loading={index === selectedImageIndex ? "eager" : "lazy"}
                     sizes="80px"
                     className="object-cover"
                   />

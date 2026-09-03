@@ -46,15 +46,18 @@ export async function GET(): Promise<Response> {
 
   if (error) {
     return NextResponse.json(
-      { shipping: DEFAULT_SHIPPING_SETTINGS, marquee: "" },
-      { status: 200 },
+      { error: "Site ayarları şu anda alınamıyor." },
+      { status: 503, headers: { "Cache-Control": "no-store" } },
     );
   }
 
   const values = new Map((data || []).map((row) => [row.key, row.value]));
 
-  return NextResponse.json({
-    shipping: normalizeSettings(values.get("shipping")),
-    marquee: String(values.get("marquee") || "").slice(0, 200),
-  });
+  return NextResponse.json(
+    {
+      shipping: normalizeSettings(values.get("shipping")),
+      marquee: String(values.get("marquee") || "").slice(0, 200),
+    },
+    { headers: { "Cache-Control": "no-store" } },
+  );
 }

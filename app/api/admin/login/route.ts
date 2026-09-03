@@ -5,6 +5,13 @@ import {
   ADMIN_COOKIE_NAME,
   createAdminSessionCookie,
 } from "@/lib/adminAuth";
+import { isTrustedAdminMutationRequest } from "@/lib/adminRequest";
+import {
+  isProductionRuntime,
+  isStrongAdminPassword,
+  isValidTotpSecret,
+} from "@/lib/adminSecurity";
+import { verifyAdminTotp } from "@/lib/adminTotp";
 import { consumeRateLimit, getClientIp } from "@/lib/rateLimit";
 
 export const runtime = "nodejs";
@@ -30,22 +37,14 @@ function timingSafeStringEqual(input: string, expected: string) {
 
 export async function POST(req: Request) {
   try {
-    const clientIp = getClientIp(req);
-    const globalLimit = await consumeRateLimit({
-      bucket: "admin-login-global",
-      identifier: "admin-login",
-      maxRequests: 100,
-      windowSeconds: 15 * 60,
-    });
-    if (!globalLimit.allowed) {
+    if (!isTrustedAdminMutationRequest(req)) {
       return NextResponse.json(
-        { error: "Giriş geçici olarak sınırlandırıldı." },
-        {
-          status: 429,
-          headers: { "Retry-After": String(globalLimit.retryAfterSeconds) },
-        },
+        { error: "Geçersiz istek kaynağı." },
+        { status: 403 },
       );
     }
+
+    const clientIp = getClientIp(req);
     const rateLimit = await consumeRateLimit({
       bucket: "admin-login-ip",
       identifier: clientIp,
@@ -69,11 +68,30 @@ export async function POST(req: Request) {
       );
     }
 
+    const globalLimit = await consumeRateLimit({
+      bucket: "admin-login-global",
+      identifier: "admin-login",
+      maxRequests: 100,
+      windowSeconds: 15 * 60,
+    });
+    if (!globalLimit.allowed) {
+      return NextResponse.json(
+        { error: "Giriş geçici olarak sınırlandırıldı." },
+        {
+          status: 429,
+          headers: { "Retry-After": String(globalLimit.retryAfterSeconds) },
+        },
+      );
+    }
+
     const body = await req.json().catch(() => ({}));
     const passwordRaw = (body?.password ?? "").toString();
+    const totpCode = (body?.totpCode ?? "").toString();
 
     const adminPassRaw = (process.env.ADMIN_PASSWORD ?? "").toString();
     const adminSecret = (process.env.ADMIN_COOKIE_SECRET ?? "").trim();
+    const totpSecret = (process.env.ADMIN_TOTP_SECRET ?? "").trim();
+    const isProduction = isProductionRuntime();
 
     const password = passwordRaw.trim();
     const adminPass = adminPassRaw.trim();
@@ -90,11 +108,38 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Giriş başarısız." }, { status: 500 });
     }
 
-    const isPasswordValid = timingSafeStringEqual(password, adminPass);
-
-    if (!isPasswordValid) {
+    if (isProduction && !isStrongAdminPassword(adminPass)) {
+      console.error("Admin parolası üretim güvenlik politikasını karşılamıyor.");
       return NextResponse.json(
-        { error: "Kullanıcı adı veya şifre hatalı." },
+        { error: "Admin güvenlik yapılandırması eksik." },
+        { status: 503 },
+      );
+    }
+
+    if (totpSecret && !isValidTotpSecret(totpSecret)) {
+      console.error("ADMIN_TOTP_SECRET geçersiz.");
+      return NextResponse.json(
+        { error: "Admin güvenlik yapılandırması eksik." },
+        { status: 503 },
+      );
+    }
+
+    if (isProduction && !totpSecret) {
+      console.error("ADMIN_TOTP_SECRET üretim ortamında zorunludur.");
+      return NextResponse.json(
+        { error: "Admin güvenlik yapılandırması eksik." },
+        { status: 503 },
+      );
+    }
+
+    const isPasswordValid = timingSafeStringEqual(password, adminPass);
+    const isTotpValid = totpSecret
+      ? verifyAdminTotp(totpCode, totpSecret)
+      : !isProduction;
+
+    if (!isPasswordValid || !isTotpValid) {
+      return NextResponse.json(
+        { error: "Şifre veya doğrulama kodu hatalı." },
         { status: 401 },
       );
     }
@@ -106,7 +151,7 @@ export async function POST(req: Request) {
       name: ADMIN_COOKIE_NAME,
       value: cookieValue,
       httpOnly: true,
-      sameSite: "lax",
+      sameSite: "strict",
       secure: process.env.NODE_ENV === "production",
       path: "/",
       maxAge: ADMIN_COOKIE_MAX_AGE_SECONDS,

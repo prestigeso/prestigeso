@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { ADMIN_COOKIE_NAME, verifyAdminSessionCookie } from "@/lib/adminAuth";
+import { isAdminRequest } from "@/lib/adminRequest";
 
 export const runtime = "nodejs";
 
@@ -11,19 +11,7 @@ export const runtime = "nodejs";
 async function getAdminErrorResponse(
   req: NextRequest,
 ): Promise<NextResponse | null> {
-  const adminSecret = (process.env.ADMIN_COOKIE_SECRET || "").trim();
-  const cookieValue = req.cookies.get(ADMIN_COOKIE_NAME)?.value || "";
-
-  if (!adminSecret || adminSecret.length < 32) {
-    return NextResponse.json(
-      { error: "Admin oturum yapılandırması eksik." },
-      { status: 500 },
-    );
-  }
-
-  const isValid = await verifyAdminSessionCookie(adminSecret, cookieValue);
-
-  if (!isValid) {
+  if (!(await isAdminRequest(req))) {
     return NextResponse.json(
       { error: "Admin oturumu geçersiz veya süresi dolmuş." },
       { status: 401 },

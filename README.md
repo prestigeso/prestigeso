@@ -26,13 +26,16 @@ SUPABASE_SERVICE_ROLE_KEY=
 
 ADMIN_PASSWORD=
 ADMIN_COOKIE_SECRET=
+ADMIN_TOTP_SECRET=
 RATE_LIMIT_SECRET=
 OTP_PROOF_SECRET=
+CRON_SECRET=
 
 PAYTR_MERCHANT_ID=
 PAYTR_MERCHANT_KEY=
 PAYTR_MERCHANT_SALT=
 PAYTR_TEST_MODE=1
+PAYTR_DEBUG_ON=0
 
 RESEND_API_KEY=
 RESEND_FROM_EMAIL=
@@ -75,6 +78,10 @@ Testler; sepet miktarı birleştirme, kupon/teslimat hesapları ve kritik ödeme
 ## Üretim notları
 
 - `PAYTR_TEST_MODE=0` yalnızca canlı PayTR bilgileri doğrulandıktan sonra kullanılmalıdır.
-- `ADMIN_COOKIE_SECRET`, `RATE_LIMIT_SECRET` ve `OTP_PROOF_SECRET` güçlü ve birbirinden bağımsız değerler olmalıdır.
+- Canlı ortamda `PAYTR_DEBUG_ON=0` kullanılmalıdır.
+- `ADMIN_PASSWORD` en az 16 karakter olmalı; büyük/küçük harf, rakam ve sembol içermelidir.
+- `npm run admin:totp:setup` ile bir TOTP anahtarı üretin, Authenticator uygulamasına ekleyin ve aynı değeri yalnız sunucu ortamında `ADMIN_TOTP_SECRET` olarak saklayın.
+- `ADMIN_COOKIE_SECRET`, `RATE_LIMIT_SECRET`, `OTP_PROOF_SECRET` ve `CRON_SECRET` en az 32 karakterlik, güçlü ve birbirinden bağımsız değerler olmalıdır.
 - `SUPABASE_SERVICE_ROLE_KEY` yalnızca sunucu ortamında tutulmalıdır.
 - Yeni migration'lar üretime alınmadan önce yedekli bir staging veritabanında denenmelidir.
+- Uygulama kodunu deploy etmeden önce bekleyen migration'ları dosya adı sırasıyla uygulayın; checkout ve kayıt route'ları yeni RPC/kolonlar olmadan güvenli biçimde çalışmayı reddeder.

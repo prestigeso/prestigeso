@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { comparePaytrStatus, queryPaytrStatus } from "@/lib/paytr/queryStatus";
+import { cleanupStaleReturnEvidenceUploads } from "@/lib/returnEvidence";
 
 export const runtime = "nodejs";
 
@@ -17,11 +18,12 @@ export async function GET(req: NextRequest) {
   if (secret.length < 32 || !safeEqual(provided, secret))
     return NextResponse.json({ error: "Yetkisiz erişim." }, { status: 401 });
 
-  const [reservations, cleanup] = await Promise.all([
+  const [reservations, cleanup, staleEvidenceCleanup] = await Promise.all([
     supabaseAdmin.rpc("release_expired_stock_reservations"),
     supabaseAdmin.rpc("prune_operational_data"),
+    cleanupStaleReturnEvidenceUploads(100).catch(() => null),
   ]);
-  if (reservations.error || cleanup.error)
+  if (reservations.error || cleanup.error || staleEvidenceCleanup === null)
     return NextResponse.json({ error: "Bakım işlemi başarısız." }, { status: 500 });
   let reconciled = 0;
   if (
@@ -76,6 +78,7 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({
     success: true,
     released: Number(reservations.data || 0),
+    staleEvidenceDeleted: staleEvidenceCleanup,
     reconciled,
   });
 }

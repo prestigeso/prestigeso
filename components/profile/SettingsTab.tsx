@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAppAlert } from "@/context/AppAlertContext";
 import type { AuthUser, CustomerProfile } from "@/types";
@@ -47,6 +48,7 @@ export default function SettingsTab({
   customerProfile,
   setCustomerProfile,
 }: Props) {
+  const router = useRouter();
   const { showToast } = useAppAlert();
   const metadata = useMemo(() => user?.user_metadata || {}, [user]);
 
@@ -54,6 +56,8 @@ export default function SettingsTab({
   const [lastName, setLastName] = useState("");
   const [phone, setPhone] = useState("");
   const [saving, setSaving] = useState(false);
+  const [savingMarketingConsent, setSavingMarketingConsent] = useState(false);
+  const [marketingConsent, setMarketingConsent] = useState(false);
   const [accountAction, setAccountAction] = useState<"export" | "delete" | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
 
@@ -78,6 +82,7 @@ export default function SettingsTab({
     setFirstName(nextFirstName);
     setLastName(nextLastName);
     setPhone(nextPhone);
+    setMarketingConsent(customerProfile?.marketing_consent === true);
     setEditFirstName(nextFirstName);
     setEditLastName(nextLastName);
   }, [customerProfile, metadata]);
@@ -130,10 +135,48 @@ export default function SettingsTab({
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Hesap silinemedi.");
       await supabase.auth.signOut();
-      window.location.assign("/");
+      router.replace("/");
+      router.refresh();
     } catch (error) {
       showToast(getErrorMessage(error, "Hesap silinemedi."), "error");
       setAccountAction(null);
+    }
+  };
+
+  const updateMarketingConsent = async (nextConsent: boolean) => {
+    setSavingMarketingConsent(true);
+    try {
+      const token = await getAccessToken();
+      const response = await fetch("/api/account/marketing-consent", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ marketingConsent: nextConsent }),
+      });
+      const result = await response.json();
+      if (!response.ok)
+        throw new Error(result.error || "Pazarlama tercihi kaydedilemedi.");
+
+      setMarketingConsent(nextConsent);
+      setCustomerProfile?.({
+        ...(customerProfile || { id: user?.id || "" }),
+        ...(result.consent || {}),
+      });
+      showToast(
+        nextConsent
+          ? "Kampanya ileti izniniz kaydedildi."
+          : "Kampanya ileti izniniz geri çekildi.",
+        "success",
+      );
+    } catch (error) {
+      showToast(
+        getErrorMessage(error, "Pazarlama tercihi kaydedilemedi."),
+        "error",
+      );
+    } finally {
+      setSavingMarketingConsent(false);
     }
   };
 
@@ -180,7 +223,7 @@ export default function SettingsTab({
         })
         .eq("id", user.id)
         .select(
-          "id, email, first_name, last_name, full_name, phone, gender, birth_date",
+          "id, email, first_name, last_name, full_name, phone, gender, birth_date, marketing_consent, marketing_consent_at, marketing_consent_revoked_at, marketing_consent_version",
         )
         .single();
 
@@ -260,6 +303,29 @@ export default function SettingsTab({
         >
           Bilgilerimi Güncelle
         </button>
+
+        <div className="rounded-3xl border border-gray-200 bg-white p-5">
+          <h4 className="text-sm font-black uppercase">Kampanya ileti izni</h4>
+          <p className="mt-2 text-xs font-medium leading-relaxed text-gray-500">
+            E-posta ve SMS ile kampanya ve ticari elektronik ileti almak
+            isteğe bağlıdır. Üyeliğiniz ve siparişleriniz bu tercihten
+            etkilenmez.
+          </p>
+          <label className="mt-4 flex cursor-pointer items-center justify-between gap-4 rounded-2xl bg-gray-50 p-4">
+            <span className="text-xs font-bold text-gray-700">
+              Kampanya iletilerine izin ver
+            </span>
+            <input
+              type="checkbox"
+              checked={marketingConsent}
+              disabled={savingMarketingConsent}
+              onChange={(event) =>
+                void updateMarketingConsent(event.target.checked)
+              }
+              className="h-5 w-5 accent-black disabled:opacity-50"
+            />
+          </label>
+        </div>
 
         <div className="rounded-3xl border border-gray-200 bg-white p-5">
           <h4 className="text-sm font-black uppercase">Verilerim ve hesabım</h4>

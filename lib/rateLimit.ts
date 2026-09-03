@@ -1,22 +1,8 @@
 import "server-only";
 
 import crypto from "crypto";
-import { isIP } from "net";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-
-export function getClientIp(req: Request) {
-  const candidates = [
-    req.headers.get("cf-connecting-ip"),
-    req.headers.get("x-vercel-forwarded-for")?.split(",")[0],
-    req.headers.get("x-real-ip"),
-    req.headers.get("x-forwarded-for")?.split(",")[0],
-  ];
-  for (const candidate of candidates) {
-    const value = candidate?.trim();
-    if (value && isIP(value)) return value;
-  }
-  return "unknown";
-}
+export { getClientIp } from "@/lib/clientIp";
 
 function hashIdentifier(value: string) {
   const secret =

@@ -5,11 +5,14 @@ import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
 import { safeParseIds } from "@/lib/utils";
 import { parsePurchasedItems } from "@/lib/products/productDetail";
+import { safeStorageGet, safeStorageSet } from "@/lib/browserStorage";
 import type { Campaign, Product, ProductVariant, Question, Review } from "@/types";
 
 function rememberProduct(product: Product) {
   try {
-    const current = JSON.parse(localStorage.getItem("prestige_viewed") || "[]");
+    const current = JSON.parse(
+      safeStorageGet("local", "prestige_viewed") || "[]",
+    );
     if (!Array.isArray(current)) return;
     const filtered = current.filter(
       (item: unknown) =>
@@ -17,7 +20,8 @@ function rememberProduct(product: Product) {
         typeof item === "object" &&
         String((item as Record<string, unknown>).id) !== String(product.id),
     );
-    localStorage.setItem(
+    safeStorageSet(
+      "local",
       "prestige_viewed",
       JSON.stringify([product, ...filtered].slice(0, 10)),
     );
@@ -29,13 +33,13 @@ function rememberProduct(product: Product) {
 async function recordProductView(productId: number) {
   try {
     const key = `viewed_product_log_${productId}`;
-    if (sessionStorage.getItem(key)) return;
+    if (safeStorageGet("session", key)) return;
     const response = await fetch("/api/product-views", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ productId }),
     });
-    if (response.ok) sessionStorage.setItem(key, "true");
+    if (response.ok) safeStorageSet("session", key, "true");
   } catch (error) {
     console.warn("Ürün görüntüleme kaydı oluşturulamadı:", error);
   }
@@ -109,17 +113,19 @@ export function useProductDetailData(
             .order("id")
             .limit(100),
           supabase
-            .from("reviews")
-            .select("*")
+            .from("public_product_reviews")
+            .select(
+              "id,product_id,rating,comment,user_name,images,is_approved,created_at",
+            )
             .eq("product_id", typedProduct.id)
-            .eq("is_approved", true)
             .order("created_at", { ascending: false })
             .limit(100),
           supabase
-            .from("questions")
-            .select("*")
+            .from("public_product_questions")
+            .select(
+              "id,product_id,question,user_name,answer,is_approved,answered_at,created_at",
+            )
             .eq("product_id", typedProduct.id)
-            .eq("is_approved", true)
             .order("created_at", { ascending: false })
             .limit(100),
           supabase.auth.getSession(),

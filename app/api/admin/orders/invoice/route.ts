@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
-import { verifyAdminSessionCookie, ADMIN_COOKIE_NAME } from "@/lib/adminAuth";
+import { isAdminRequest } from "@/lib/adminRequest";
 import { InvoiceEmail } from "@/components/emails/InvoiceEmail";
 import type { ReactElement } from "react";
 
@@ -9,6 +9,10 @@ const MAX_INVOICE_BYTES = 10 * 1024 * 1024;
 
 export async function POST(req: NextRequest) {
   try {
+    if (!(await isAdminRequest(req))) {
+      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
+    }
+
     if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL)
       return NextResponse.json(
         { error: "E-posta servisi yapılandırılmamış." },
@@ -16,19 +20,7 @@ export async function POST(req: NextRequest) {
       );
     const resend = new Resend(process.env.RESEND_API_KEY);
     const fromEmail = process.env.RESEND_FROM_EMAIL;
-    // 1) Admin yetki kontrolü
-    const adminSecret = (process.env.ADMIN_COOKIE_SECRET ?? "").trim();
-    const cookieValue = req.cookies.get(ADMIN_COOKIE_NAME)?.value ?? "";
-    const adminSession = await verifyAdminSessionCookie(
-      adminSecret,
-      cookieValue,
-    );
-
-    if (!adminSession) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
-
-    // 2) Parse FormData
+    // Parse FormData
     const formData = await req.formData();
     const orderId = formData.get("orderId") as string;
     const customerName = formData.get("customerName") as string;

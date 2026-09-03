@@ -9,6 +9,7 @@ import { useAppAlert } from "@/context/AppAlertContext";
 import { supabase } from "@/lib/supabase";
 import { safeParseIds, sanitizeImageUrl } from "@/lib/utils";
 import { getEffectiveUnitPrice } from "@/lib/commerce/pricing";
+import { safeStorageGet, safeStorageSet } from "@/lib/browserStorage";
 import type { Product, Campaign, HeroSlide } from "@/types";
 
 export type HomepageProduct = Partial<Product> & {
@@ -103,16 +104,16 @@ export default function Home({
       }
 
       try {
-        const isHere = sessionStorage.getItem("prestige_session_active");
+        const isHere = safeStorageGet("session", "prestige_session_active");
         const lastView = Number(
-          localStorage.getItem("prestige_last_view") || 0,
+          safeStorageGet("local", "prestige_last_view") || 0,
         );
         const now = Date.now();
         const THROTTLE_MS = 30 * 60 * 1000; // 30 dakika
 
         if (!isHere && now - lastView > THROTTLE_MS) {
-          sessionStorage.setItem("prestige_session_active", "true");
-          localStorage.setItem("prestige_last_view", String(now));
+          safeStorageSet("session", "prestige_session_active", "true");
+          safeStorageSet("local", "prestige_last_view", String(now));
 
           await fetch("/api/page_views", { method: "POST" });
         }

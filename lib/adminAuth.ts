@@ -1,7 +1,10 @@
 export const ADMIN_COOKIE_NAME = "prestigeso_admin";
-export const ADMIN_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
+// Keep privileged browser sessions short even when a workstation is left open.
+export const ADMIN_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 8;
+export const ADMIN_COOKIE_VERSION = 2;
 
 type AdminCookiePayload = {
+  ver: typeof ADMIN_COOKIE_VERSION;
   iat: number;
   exp: number;
   nonce: string;
@@ -82,6 +85,7 @@ export const createAdminSessionCookie = async (
   const now = Date.now();
 
   const payload: AdminCookiePayload = {
+    ver: ADMIN_COOKIE_VERSION,
     iat: now,
     exp: now + ADMIN_COOKIE_MAX_AGE_SECONDS * 1000,
     nonce: toBase64Url(nonceBytes),
@@ -110,12 +114,28 @@ export const verifyAdminSessionCookie = async (
 ): Promise<boolean> => {
   if (!secret || !cookieValue) return false;
 
-  const [payloadEncoded, signatureEncoded] = cookieValue.split(".");
+  const parts = cookieValue.split(".");
+  if (parts.length !== 2) return false;
+  const [payloadEncoded, signatureEncoded] = parts;
 
   if (!payloadEncoded || !signatureEncoded) return false;
 
-  let payload: AdminCookiePayload;
+  try {
+    const key = await getHmacKey(secret);
+    const signatureBytes = fromBase64Url(signatureEncoded);
+    const payloadBytes = encoder.encode(payloadEncoded);
+    const signatureValid = await crypto.subtle.verify(
+      "HMAC",
+      key,
+      toArrayBuffer(signatureBytes),
+      toArrayBuffer(payloadBytes),
+    );
+    if (!signatureValid) return false;
+  } catch {
+    return false;
+  }
 
+  let payload: AdminCookiePayload;
   try {
     const payloadBytes = fromBase64Url(payloadEncoded);
     payload = JSON.parse(decoder.decode(payloadBytes)) as AdminCookiePayload;
@@ -123,16 +143,19 @@ export const verifyAdminSessionCookie = async (
     return false;
   }
 
-  if (!payload?.exp || Date.now() > payload.exp) return false;
-
-  const key = await getHmacKey(secret);
-  const signatureBytes = fromBase64Url(signatureEncoded);
-  const payloadBytes = encoder.encode(payloadEncoded);
-
-  return crypto.subtle.verify(
-    "HMAC",
-    key,
-    toArrayBuffer(signatureBytes),
-    toArrayBuffer(payloadBytes),
+  const now = Date.now();
+  const maxLifetimeMs = ADMIN_COOKIE_MAX_AGE_SECONDS * 1000;
+  const maxClockSkewMs = 60_000;
+  return (
+    payload?.ver === ADMIN_COOKIE_VERSION &&
+    Number.isFinite(payload.iat) &&
+    Number.isFinite(payload.exp) &&
+    payload.iat <= now + maxClockSkewMs &&
+    payload.exp > now &&
+    payload.exp > payload.iat &&
+    payload.exp - payload.iat <= maxLifetimeMs &&
+    typeof payload.nonce === "string" &&
+    payload.nonce.length >= 16 &&
+    payload.nonce.length <= 128
   );
 };

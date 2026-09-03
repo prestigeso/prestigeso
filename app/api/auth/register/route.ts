@@ -7,6 +7,11 @@ import {
 import { consumeRateLimit, getClientIp } from "@/lib/rateLimit";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { isValidTurkishPhone, normalizePhone } from "@/lib/utils";
+import {
+  MARKETING_CONSENT_VERSION,
+  PRIVACY_NOTICE_VERSION,
+  TERMS_VERSION,
+} from "@/lib/legal/consent";
 
 export const runtime = "nodejs";
 
@@ -37,6 +42,7 @@ export async function POST(req: NextRequest) {
     const phone = normalizePhone(body.phone);
     const gender = GENDERS.has(String(body.gender)) ? String(body.gender) : null;
     const birthDate = validBirthDate(body.birthDate);
+    const marketingConsent = body.marketingConsent === true;
 
     if (
       !email ||
@@ -47,7 +53,6 @@ export async function POST(req: NextRequest) {
       !isValidTurkishPhone(phone) ||
       birthDate === false ||
       body.agreedTerms !== true ||
-      body.agreedPrivacy !== true ||
       !verifyOtpProof(body.verificationToken, email, "signup")
     ) {
       return NextResponse.json(
@@ -83,6 +88,7 @@ export async function POST(req: NextRequest) {
     }
 
     const fullName = `${firstName} ${lastName}`;
+    const registeredAt = new Date().toISOString();
     const { data, error } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,
@@ -118,6 +124,14 @@ export async function POST(req: NextRequest) {
       phone,
       gender,
       birth_date: birthDate,
+      marketing_consent: marketingConsent,
+      marketing_consent_at: marketingConsent ? registeredAt : null,
+      marketing_consent_revoked_at: null,
+      marketing_consent_version: MARKETING_CONSENT_VERSION,
+      terms_accepted_at: registeredAt,
+      terms_version: TERMS_VERSION,
+      privacy_notice_presented_at: registeredAt,
+      privacy_notice_version: PRIVACY_NOTICE_VERSION,
     });
 
     if (profileError) {

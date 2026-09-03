@@ -12,6 +12,12 @@ import {
 } from "react";
 import { supabase } from "@/lib/supabase";
 import { safeParseIds } from "@/lib/utils";
+import { getEffectiveUnitPrice } from "@/lib/commerce/pricing";
+import {
+  safeStorageGet,
+  safeStorageRemove,
+  safeStorageSet,
+} from "@/lib/browserStorage";
 import type { Campaign, CartItem } from "@/types";
 
 export type { CartItem } from "@/types";
@@ -19,6 +25,7 @@ export type { CartItem } from "@/types";
 type CartContextType = {
   cart: CartItem[];
   items: CartItem[];
+  isHydrated: boolean;
   isCartOpen: boolean;
   setIsCartOpen: (isOpen: boolean) => void;
   toggleCart: () => void;
@@ -50,17 +57,21 @@ const isSameCartLine = (
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [isHydrated, setIsHydrated] = useState(false);
+  const [isCampaignHydrated, setIsCampaignHydrated] = useState(false);
   const [isCartOpen, setIsCartOpen] = useState(false);
-  const hydratedRef = useRef(false);
 
   const [campaignText, setCampaignText] = useState("");
+  const cartMutationVersionRef = useRef(0);
 
   useEffect(() => {
     const loadAndSyncCart = async () => {
-      const savedCart = localStorage.getItem("prestigeso_cart");
+      const syncStartVersion = cartMutationVersionRef.current;
+      const savedCart = safeStorageGet("local", "prestigeso_cart");
+      let localCartHydrated = false;
 
       if (!savedCart) {
-        hydratedRef.current = true;
+        setIsHydrated(true);
         return;
       }
 
@@ -68,8 +79,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
         const parsed = JSON.parse(savedCart);
 
         if (!Array.isArray(parsed)) {
-          localStorage.removeItem("prestigeso_cart");
+          safeStorageRemove("local", "prestigeso_cart");
           setCart([]);
+          setIsHydrated(true);
           return;
         }
 
@@ -116,8 +128,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
               : {}),
           }));
 
-        hydratedRef.current = true;
         setCart(localCart);
+        setIsHydrated(true);
+        localCartHydrated = true;
 
         if (localCart.length === 0) return;
 
@@ -125,7 +138,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
         const { data: pData, error } = await supabase
           .from("products")
-          .select("id, price, stock")
+          .select("id, price, discount_price, stock")
           .in("id", ids);
 
         const variantIds = localCart.flatMap((item) =>
@@ -195,9 +208,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
             });
 
             const basePrice = variant?.price == null ? Number(dbItem.price) : Number(variant.price);
-            const activePrice = activeCamp
-              ? basePrice * (1 - activeCamp.discount_percent / 100)
-              : basePrice;
+            const activePrice = getEffectiveUnitPrice({
+              basePrice,
+              discountPrice:
+                variant?.price == null ? dbItem.discount_price : undefined,
+              campaignPercent: activeCamp?.discount_percent,
+            });
 
             const dbStock = Number(variant?.stock ?? dbItem.stock ?? 0);
             const fixedQuantity = Math.min(Number(item.quantity || 1), dbStock);
@@ -219,42 +235,50 @@ export function CartProvider({ children }: { children: ReactNode }) {
           })
           .filter((item) => item.quantity > 0);
 
-        if (isChanged) {
+        if (
+          isChanged &&
+          cartMutationVersionRef.current === syncStartVersion
+        ) {
           setCart(syncedCart);
         }
       } catch (e) {
-        hydratedRef.current = true;
         console.error("Sepet okunurken hata oluştu:", e);
-        localStorage.removeItem("prestigeso_cart");
-        setCart([]);
+        if (!localCartHydrated) {
+          safeStorageRemove("local", "prestigeso_cart");
+          setCart([]);
+          setIsHydrated(true);
+        }
       }
     };
 
     void loadAndSyncCart();
 
-    const savedCampaign = localStorage.getItem("prestigeso_campaign") || "";
-    hydratedRef.current = true;
-    const frame = requestAnimationFrame(() => setCampaignText(savedCampaign));
+    const savedCampaign = safeStorageGet("local", "prestigeso_campaign") || "";
+    const frame = requestAnimationFrame(() => {
+      setCampaignText(savedCampaign);
+      setIsCampaignHydrated(true);
+    });
     return () => cancelAnimationFrame(frame);
   }, []);
 
   useEffect(() => {
-    if (!hydratedRef.current) return;
+    if (!isHydrated) return;
 
-    localStorage.setItem("prestigeso_cart", JSON.stringify(cart));
-  }, [cart]);
+    safeStorageSet("local", "prestigeso_cart", JSON.stringify(cart));
+  }, [cart, isHydrated]);
 
   useEffect(() => {
-    if (!hydratedRef.current) return;
+    if (!isCampaignHydrated) return;
 
-    localStorage.setItem("prestigeso_campaign", campaignText);
-  }, [campaignText]);
+    safeStorageSet("local", "prestigeso_campaign", campaignText);
+  }, [campaignText, isCampaignHydrated]);
 
   const toggleCart = useCallback(() => {
     setIsCartOpen((value) => !value);
   }, []);
 
   const addToCart = useCallback((product: CartItem) => {
+    cartMutationVersionRef.current += 1;
     setCart((prev) => {
       const existing = prev.find(
         (item) => isSameCartLine(item, product.id, product.variant_id),
@@ -294,10 +318,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const removeFromCart = useCallback((id: number, variantId?: number) => {
+    cartMutationVersionRef.current += 1;
     setCart((prev) => prev.filter((item) => !isSameCartLine(item, id, variantId)));
   }, []);
 
   const updateQuantity = useCallback((id: number, amount: number, variantId?: number) => {
+    cartMutationVersionRef.current += 1;
     setCart((prev) => {
       return prev
         .map((item) => {
@@ -314,8 +340,9 @@ export function CartProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const clearCart = useCallback(() => {
+    cartMutationVersionRef.current += 1;
     setCart([]);
-    localStorage.removeItem("prestigeso_cart");
+    safeStorageRemove("local", "prestigeso_cart");
   }, []);
 
   const cartTotal = useMemo(() => {
@@ -328,6 +355,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
     () => ({
       cart,
       items: cart,
+      isHydrated,
       isCartOpen,
       setIsCartOpen,
       toggleCart,
@@ -345,6 +373,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
       cart,
       cartTotal,
       clearCart,
+      isHydrated,
       isCartOpen,
       removeFromCart,
       toggleCart,

@@ -17,8 +17,9 @@ jobs:
       NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
       NEXT_PUBLIC_SUPABASE_ANON_KEY: ci-placeholder
       SUPABASE_SERVICE_ROLE_KEY: ci-placeholder
-      ADMIN_PASSWORD: ci-placeholder
+      ADMIN_PASSWORD: Ci-Placeholder-Password-2026!
       ADMIN_COOKIE_SECRET: ci-placeholder-secret-at-least-32-characters
+      ADMIN_TOTP_SECRET: JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP
       RATE_LIMIT_SECRET: ci-placeholder-secret-at-least-32-characters
       OTP_PROOF_SECRET: ci-placeholder-secret-at-least-32-characters
       CRON_SECRET: ci-placeholder-secret-at-least-32-characters
@@ -26,6 +27,7 @@ jobs:
       PAYTR_MERCHANT_KEY: ci-placeholder
       PAYTR_MERCHANT_SALT: ci-placeholder
       PAYTR_TEST_MODE: "1"
+      PAYTR_DEBUG_ON: "0"
       RESEND_API_KEY: ci-placeholder
       RESEND_FROM_EMAIL: ci@example.invalid
     steps:
@@ -39,7 +41,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit
       - run: npm run test:browser
 
   database:

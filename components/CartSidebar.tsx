@@ -29,6 +29,7 @@ export default function CartSidebar() {
   const [shippingSettings, setShippingSettings] = useState(
     DEFAULT_SHIPPING_SETTINGS,
   );
+  const [shippingSettingsReady, setShippingSettingsReady] = useState(false);
 
   const router = useRouter();
 
@@ -41,11 +42,14 @@ export default function CartSidebar() {
           method: "GET",
           credentials: "include",
         });
+        if (!response.ok) throw new Error("Kargo ayarları alınamadı.");
 
         const json = await response.json();
         setShippingSettings(normalizeShippingSettings(json?.shipping));
+        setShippingSettingsReady(true);
       } catch (error) {
         console.error("Sepet kargo ayarları yüklenemedi:", error);
+        setShippingSettingsReady(false);
       }
     };
 
@@ -250,7 +254,9 @@ export default function CartSidebar() {
                 >
                   <span>Kargo</span>
                   <span>
-                    {shippingFee > 0
+                    {!shippingSettingsReady
+                      ? "ÖDEME ADIMINDA HESAPLANACAK"
+                      : shippingFee > 0
                       ? `${formatMoney(shippingFee)} ₺`
                       : "ÜCRETSİZ"}
                   </span>
@@ -281,7 +287,9 @@ export default function CartSidebar() {
                   </p>
 
                   <p className="text-2xl font-black text-black leading-none">
-                    {formatMoney(cartFinalTotal)} ₺
+                    {shippingSettingsReady
+                      ? `${formatMoney(cartFinalTotal)} ₺`
+                      : "—"}
                   </p>
                 </div>
               </div>

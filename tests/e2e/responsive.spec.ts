@@ -64,12 +64,15 @@ test("product can be added to cart and checkout opens", async ({
   page,
 }, testInfo) => {
   await page.goto("/product/247", { waitUntil: "domcontentloaded" });
-  const addToCart = page.getByTestId(
+  const addToCartTestId =
     testInfo.project.name === "desktop-chrome"
       ? "add-to-cart-desktop"
-      : "add-to-cart-mobile",
-  );
-  await addToCart.waitFor({ state: "visible", timeout: 15_000 });
+      : "add-to-cart-mobile";
+  const addToCart = page
+    .getByTestId(addToCartTestId)
+    .filter({ visible: true });
+  await expect(addToCart).toHaveCount(1, { timeout: 15_000 });
+  await expect(addToCart).toBeVisible();
   await page.waitForTimeout(2000);
   await addToCart.click();
   await page.waitForFunction(() => {

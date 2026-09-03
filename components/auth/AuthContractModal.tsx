@@ -90,8 +90,15 @@ export default function AuthContractModal({
               </p>
               <p>
                 Kayıt sırasında alınan iletişim bilgileriniz, siparişlerin
-                ulaştırılması ve size özel kampanyaların sunulması amacıyla
+                ulaştırılması, üyelik hizmetlerinin sunulması, müşteri desteği,
+                yasal yükümlülükler ve işlem güvenliği amaçlarıyla
                 kullanılmaktadır.
+              </p>
+              <p>
+                Kampanya ve ticari elektronik ileti gönderimi yalnızca kayıt
+                ekranındaki ayrı ve isteğe bağlı izin verilmişse yapılır. Bu
+                izin üyeliğin şartı değildir ve hesap ayarlarından geri
+                çekilebilir.
               </p>
             </div>
           )}
@@ -99,10 +106,16 @@ export default function AuthContractModal({
         <div className="mt-6 flex shrink-0 justify-end border-t border-gray-100 pt-4">
           <button
             type="button"
-            onClick={() => onApprove(active)}
+            onClick={() =>
+              active === "terms" || active === "distance"
+                ? onApprove(active)
+                : onClose()
+            }
             className="rounded-xl bg-black px-8 py-3 text-xs font-bold uppercase tracking-widest text-white shadow-md hover:bg-gray-900"
           >
-            Okudum, Onaylıyorum
+            {active === "terms" || active === "distance"
+              ? "Kabul Ediyorum"
+              : "Kapat"}
           </button>
         </div>
       </div>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { RefundError, refundOrder } from "@/lib/paytr/refundOrder";
+import { releaseReturnEvidenceUploads } from "@/lib/returnEvidence";
 
 export const runtime = "nodejs";
 
@@ -17,6 +18,7 @@ async function getAuthenticatedUserId(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  let cleanupPendingEvidence: (() => Promise<void>) | null = null;
   try {
     const userId = await getAuthenticatedUserId(req);
     if (!userId)
@@ -33,18 +35,46 @@ export async function POST(req: NextRequest) {
       evidenceUrls?: unknown;
     };
     const orderId = Number(body.orderId);
+    const action = String(body.action || "");
+    const rawEvidencePaths = Array.isArray(body.evidenceUrls)
+      ? body.evidenceUrls.map((value) =>
+          typeof value === "string" ? value : "",
+        )
+      : [];
+    const ownedEvidencePaths = [
+      ...new Set(
+        rawEvidencePaths.filter(
+          (path) =>
+            Number.isSafeInteger(orderId) &&
+            orderId > 0 &&
+            path.length <= 500 &&
+            !path.includes("..") &&
+            path.startsWith(`returns/${userId}/${orderId}/`),
+        ),
+      ),
+    ].slice(0, 3);
+    cleanupPendingEvidence = async () => {
+      if (ownedEvidencePaths.length === 0) return;
+      await releaseReturnEvidenceUploads({
+        orderId,
+        userId,
+        paths: ownedEvidencePaths,
+      }).catch(() => undefined);
+    };
     if (
       !Number.isSafeInteger(orderId) ||
       orderId <= 0 ||
-      !["cancel", "return"].includes(String(body.action))
+      !["cancel", "return"].includes(action)
     ) {
+      await cleanupPendingEvidence();
       return NextResponse.json(
         { error: "Geçersiz sipariş işlemi." },
         { status: 400 },
       );
     }
 
-    if (body.action === "cancel") {
+    if (action === "cancel") {
+      cleanupPendingEvidence = null;
       const result = await refundOrder({
         orderId,
         newStatus: "İptal Edildi",
@@ -54,11 +84,13 @@ export async function POST(req: NextRequest) {
     }
 
     const reason = String(body.reason || "").trim().slice(0, 1000);
-    if (reason.length < 5)
+    if (reason.length < 5) {
+      await cleanupPendingEvidence();
       return NextResponse.json(
         { error: "İade sebebi en az 5 karakter olmalıdır." },
         { status: 400 },
       );
+    }
     const { data: order, error: orderError } = await supabaseAdmin
       .from("orders")
       .select("id, items, status, created_at, delivered_at")
@@ -67,20 +99,30 @@ export async function POST(req: NextRequest) {
       .eq("payment_status", "paid")
       .in("status", ["Teslim Edildi", "Tamamlandı"])
       .maybeSingle();
-    if (orderError) throw new Error(orderError.message);
-    if (!order)
+    if (orderError) {
+      await cleanupPendingEvidence();
+      return NextResponse.json(
+        { error: "İade talebi için sipariş doğrulanamadı." },
+        { status: 500 },
+      );
+    }
+    if (!order) {
+      await cleanupPendingEvidence();
       return NextResponse.json(
         { error: "Sipariş iade talebine uygun değil." },
         { status: 409 },
       );
+    }
     const deliveredAt = new Date(order.delivered_at || order.created_at).getTime();
     if (
       Date.now() - deliveredAt > 14 * 24 * 60 * 60 * 1000
-    )
+    ) {
+      await cleanupPendingEvidence();
       return NextResponse.json(
         { error: "14 günlük iade talebi süresi dolmuş." },
         { status: 409 },
       );
+    }
     let orderItems: unknown[] = [];
     if (Array.isArray(order.items)) {
       orderItems = order.items;
@@ -93,24 +135,21 @@ export async function POST(req: NextRequest) {
       }
     }
     const requestedItems = Array.isArray(body.items) ? body.items : orderItems;
-    const evidenceUrls = Array.isArray(body.evidenceUrls)
-      ? body.evidenceUrls.slice(0, 3).map((value) => String(value))
-      : [];
-    const evidencePaths = evidenceUrls.map((value) => String(value || ""));
-    const cleanupEvidence = async () => {
-      const paths = evidencePaths.filter((path): path is string => Boolean(path));
-      if (paths.length > 0)
-        await supabaseAdmin.storage.from("return-evidence").remove(paths);
-    };
+    const evidencePaths = rawEvidencePaths;
     if (
+      evidencePaths.length > 3 ||
+      new Set(evidencePaths).size !== evidencePaths.length ||
       evidencePaths.some(
         (path) =>
           !path ||
+          path.length > 500 ||
           path.includes("..") ||
           !path.startsWith(`returns/${userId}/${orderId}/`),
       )
-    )
+    ) {
+      await cleanupPendingEvidence();
       return NextResponse.json({ error: "İade görselleri geçersiz." }, { status: 400 });
+    }
     const aggregatedItems = new Map<
       string,
       { id: number; variant_id?: number; quantity: number }
@@ -162,50 +201,60 @@ export async function POST(req: NextRequest) {
       }
     }
     if (invalidReturnItems || validItems.length === 0) {
-      await cleanupEvidence();
+      await cleanupPendingEvidence();
       return NextResponse.json({ error: "İade ürünleri geçersiz." }, { status: 400 });
     }
-    const { data: request, error: requestError } = await supabaseAdmin
-      .from("return_requests")
-      .insert({
-        order_id: orderId,
-        user_id: userId,
-        reason,
-        items: validItems,
-        evidence_urls: evidenceUrls,
-        original_order_status: order.status,
-      })
-      .select("id")
-      .single();
-    if (requestError?.code === "23505") {
-      await cleanupEvidence();
-      return NextResponse.json({ error: "Bu sipariş için zaten iade talebi var." }, { status: 409 });
+    const { error: requestError } = await supabaseAdmin.rpc(
+      "create_return_request_with_evidence",
+      {
+        p_order_id: orderId,
+        p_user_id: userId,
+        p_reason: reason,
+        p_items: validItems,
+        p_evidence_paths: evidencePaths,
+      },
+    );
+    if (requestError) {
+      await cleanupPendingEvidence();
+      const conflict =
+        requestError.code === "23505" ||
+        /RETURN_REQUEST_EXISTS|RETURN_EVIDENCE_INVALID|ORDER_NOT_RETURNABLE/.test(
+          requestError.message,
+        );
+      return NextResponse.json(
+        {
+          error: conflict
+            ? "Bu sipariş için iade talebi oluşturulamıyor."
+            : "İade talebi oluşturulamadı.",
+        },
+        { status: conflict ? 409 : 500 },
+      );
     }
-    if (requestError || !request) {
-      await cleanupEvidence();
-      throw new Error(requestError?.message || "İade talebi oluşturulamadı.");
-    }
-    const { data: updated, error } = await supabaseAdmin
-      .from("orders")
-      .update({ status: "İade Talebi" })
-      .eq("id", orderId)
-      .eq("user_id", userId)
-      .select("id, status")
-      .single();
-    if (error) {
-      await supabaseAdmin.from("return_requests").delete().eq("id", request.id);
-      await cleanupEvidence();
-      throw new Error(error.message);
-    }
+    cleanupPendingEvidence = null;
     return NextResponse.json({
       success: true,
       orderId,
-      status: updated.status,
+      status: "İade Talebi",
     });
   } catch (error) {
-    const status = error instanceof RefundError ? error.status : 500;
-    const message =
-      error instanceof Error ? error.message : "Sipariş işlemi başarısız.";
-    return NextResponse.json({ error: message }, { status });
+    if (cleanupPendingEvidence) await cleanupPendingEvidence();
+    if (error instanceof RefundError) {
+      const status = [400, 404, 409, 502].includes(error.status)
+        ? error.status
+        : 500;
+      const message =
+        status === 404
+          ? "Sipariş bulunamadı."
+          : status === 409
+            ? "Sipariş bu aşamada iptal edilemiyor veya işlem devam ediyor."
+            : status === 502
+              ? "Ödeme sağlayıcısıyla iletişim kurulamadı."
+              : "Sipariş iptal işlemi tamamlanamadı.";
+      return NextResponse.json({ error: message }, { status });
+    }
+    return NextResponse.json(
+      { error: "Sipariş işlemi başarısız." },
+      { status: 500 },
+    );
   }
 }

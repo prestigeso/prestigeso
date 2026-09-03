@@ -53,7 +53,7 @@ export default function LoginPage() {
   const [birthYear, setBirthYear] = useState("");
 
   const [agreedTerms, setAgreedTerms] = useState(false);
-  const [agreedPrivacy, setAgreedPrivacy] = useState(false);
+  const [marketingConsent, setMarketingConsent] = useState(false);
   const [activeModal, setActiveModal] = useState<ContractModalType>(null);
   const [registerAttempted, setRegisterAttempted] = useState(false);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
@@ -100,7 +100,6 @@ export default function LoginPage() {
     password !== passwordConfirm;
   const passwordConfirmRequiredError = registerAttempted && !passwordConfirm;
   const termsError = registerAttempted && !agreedTerms;
-  const privacyError = registerAttempted && !agreedPrivacy;
 
   const markTouched = (field: string) => {
     setTouched((prev) => ({ ...prev, [field]: true }));
@@ -117,7 +116,7 @@ export default function LoginPage() {
     setBirthMonth("");
     setBirthYear("");
     setAgreedTerms(false);
-    setAgreedPrivacy(false);
+    setMarketingConsent(false);
     setRegisterAttempted(false);
     setTouched({});
     setErrorMsg("");
@@ -205,15 +204,7 @@ export default function LoginPage() {
 
     if (!agreedTerms) {
       showToast(
-        "Lütfen Üyelik Sözleşmesi ve Mesafeli Satış Sözleşmesi'ni onaylayınız.",
-        "warning",
-      );
-      return;
-    }
-
-    if (!agreedPrivacy) {
-      showToast(
-        "Lütfen Aydınlatma Metni ve Gizlilik Politikası'nı okuyup onaylayınız.",
+        "Lütfen Üyelik Sözleşmesi'ni onaylayınız.",
         "warning",
       );
       return;
@@ -290,7 +281,7 @@ export default function LoginPage() {
           gender: gender || null,
           birthDate: birthDate || null,
           agreedTerms,
-          agreedPrivacy,
+          marketingConsent,
           verificationToken: verifyData.verificationToken,
         }),
       });
@@ -772,55 +763,46 @@ export default function LoginPage() {
                     className="font-bold text-black underline underline-offset-2 hover:text-gray-500"
                   >
                     Üyelik Sözleşmesi
-                  </button>{" "}
-                  ve{" "}
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      setActiveModal("distance");
-                    }}
-                    className="font-bold text-black underline underline-offset-2 hover:text-gray-500"
-                  >
-                    Mesafeli Satış Sözleşmesi
                   </button>
-                  &apos;ni okudum, onaylıyorum.
+                  &apos;ni okudum ve kabul ediyorum. Mesafeli satış sözleşmesi,
+                  siparişe özel bilgilerle ödeme öncesinde ayrıca sunulur.
                 </span>
               </label>
 
-              <label
-                className={`flex items-start gap-3 cursor-pointer group rounded-2xl p-3 border transition-all ${privacyError ? "border-red-200 bg-red-50" : "border-transparent"}`}
-              >
+              <div className="rounded-2xl border border-gray-100 bg-gray-50 p-3 text-[11px] font-medium leading-relaxed text-gray-600">
+                Üyelik sırasında kişisel verilerinizin nasıl işlendiğini{" "}
+                <button
+                  type="button"
+                  onClick={() => setActiveModal("aydinlatma")}
+                  className="font-bold text-black underline underline-offset-2 hover:text-gray-500"
+                >
+                  Aydınlatma Metni
+                </button>{" "}
+                ve{" "}
+                <button
+                  type="button"
+                  onClick={() => setActiveModal("privacy")}
+                  className="font-bold text-black underline underline-offset-2 hover:text-gray-500"
+                >
+                  Gizlilik Politikası
+                </button>{" "}
+                üzerinden inceleyebilirsiniz. Bu bilgilendirme için onay veya
+                açık rıza istenmez.
+              </div>
+
+              <label className="flex cursor-pointer items-start gap-3 rounded-2xl border border-transparent p-3 transition-all hover:bg-gray-50">
                 <input
                   type="checkbox"
-                  checked={agreedPrivacy}
-                  onChange={(event) => setAgreedPrivacy(event.target.checked)}
-                  className="mt-0.5 accent-black w-4 h-4 rounded border-gray-300 shrink-0"
+                  checked={marketingConsent}
+                  onChange={(event) =>
+                    setMarketingConsent(event.target.checked)
+                  }
+                  className="mt-0.5 h-4 w-4 shrink-0 rounded border-gray-300 accent-black"
                 />
-                <span className="text-[11px] text-gray-600 font-medium leading-tight">
-                  Kişisel verilerimin işlenmesine yönelik{" "}
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      setActiveModal("aydinlatma");
-                    }}
-                    className="font-bold text-black underline underline-offset-2 hover:text-gray-500"
-                  >
-                    Aydınlatma Metni
-                  </button>
-                  &apos;ni ve{" "}
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      setActiveModal("privacy");
-                    }}
-                    className="font-bold text-black underline underline-offset-2 hover:text-gray-500"
-                  >
-                    Gizlilik Politikası
-                  </button>
-                  &apos;nı okudum.
+                <span className="text-[11px] font-medium leading-tight text-gray-600">
+                  İsteğe bağlı olarak e-posta ve SMS ile kampanya ve ticari
+                  elektronik ileti almak istiyorum. Bu izni hesap ayarlarımdan
+                  her zaman geri çekebilirim.
                 </span>
               </label>
             </div>
@@ -900,8 +882,6 @@ export default function LoginPage() {
           onClose={() => setActiveModal(null)}
           onApprove={(type) => {
             if (type === "terms" || type === "distance") setAgreedTerms(true);
-            if (type === "aydinlatma" || type === "privacy")
-              setAgreedPrivacy(true);
             setActiveModal(null);
           }}
         />

@@ -80,6 +80,14 @@ export type Database = {
           phone: string | null;
           gender: string | null;
           birth_date: string | null;
+          marketing_consent: boolean;
+          marketing_consent_at: string | null;
+          marketing_consent_revoked_at: string | null;
+          marketing_consent_version: string | null;
+          terms_accepted_at: string | null;
+          terms_version: string | null;
+          privacy_notice_presented_at: string | null;
+          privacy_notice_version: string | null;
           updated_at: string;
         }
       >;
@@ -132,6 +140,9 @@ export type Database = {
             reconciliation_detail: Json;
             tracking_token_hash: string | null;
             delivered_at: string | null;
+            contract_version: string | null;
+            contract_accepted_at: string | null;
+            contract_snapshot_hash: string | null;
             updated_at: string;
           }
       >;
@@ -288,10 +299,66 @@ export type Database = {
             updated_at: string;
           }
       >;
+      return_evidence_uploads: Table<
+        {
+          object_path: string;
+          order_id: number;
+          user_id: string;
+          return_request_id: number | null;
+          created_at: string;
+          submitted_at: string | null;
+          deletion_started_at: string | null;
+          deletion_claim_id: string | null;
+        },
+        {
+          object_path: string;
+          order_id: number;
+          user_id: string;
+          return_request_id?: number | null;
+          created_at?: string;
+          submitted_at?: string | null;
+          deletion_started_at?: string | null;
+          deletion_claim_id?: string | null;
+        }
+      >;
       return_inventory_releases: Table<{
         return_request_id: number;
         released_at: string;
       }>;
+      checkout_idempotency_keys: Table<
+        {
+          identity_hash: string;
+          key_hash: string;
+          attempt_hash: string;
+          request_fingerprint: string;
+          merchant_oid: string;
+          state: "processing" | "completed" | "failed" | "expired";
+          lease_expires_at: string | null;
+          order_id: number | null;
+          otp_consumed_at: string | null;
+          response_status: number | null;
+          response_payload: Json | null;
+          expires_at: string;
+          created_at: string;
+          updated_at: string;
+        },
+        {
+          identity_hash: string;
+          key_hash: string;
+          attempt_hash: string;
+          request_fingerprint: string;
+          merchant_oid: string;
+          state?: "processing" | "completed" | "failed" | "expired";
+          lease_expires_at?: string | null;
+          order_id?: number | null;
+          otp_consumed_at?: string | null;
+          response_status?: number | null;
+          response_payload?: Json | null;
+          expires_at?: string;
+          created_at?: string;
+          updated_at?: string;
+        }
+      >;
       api_rate_limits: Table<{
         bucket: string;
         identifier_hash: string;
@@ -300,6 +367,60 @@ export type Database = {
       }>;
     };
     Views: {
+      public_product_reviews: {
+        Row: {
+          id: number;
+          product_id: number;
+          rating: number;
+          comment: string;
+          user_name: string;
+          images: Json;
+          is_approved: boolean;
+          created_at: string;
+        };
+        Relationships: [];
+      };
+      public_product_questions: {
+        Row: {
+          id: number;
+          product_id: number;
+          question: string;
+          user_name: string;
+          answer: string | null;
+          is_approved: boolean;
+          answered_at: string | null;
+          created_at: string;
+        };
+        Relationships: [];
+      };
+      my_product_reviews: {
+        Row: {
+          id: number;
+          product_id: number;
+          rating: number;
+          comment: string;
+          user_name: string;
+          images: Json;
+          is_approved: boolean;
+          created_at: string;
+          products: Json;
+        };
+        Relationships: [];
+      };
+      my_product_questions: {
+        Row: {
+          id: number;
+          product_id: number;
+          question: string;
+          user_name: string;
+          answer: string | null;
+          is_approved: boolean;
+          answered_at: string | null;
+          created_at: string;
+          products: Json;
+        };
+        Relationships: [];
+      };
       product_review_stats: {
         Row: {
           product_id: number | null;
@@ -348,6 +469,44 @@ export type Database = {
         Args: { p_order_id: number; p_success: boolean };
         Returns: undefined;
       };
+      reserve_return_evidence_uploads: {
+        Args: {
+          p_order_id: number;
+          p_user_id: string;
+          p_object_paths: string[];
+        };
+        Returns: boolean;
+      };
+      release_return_evidence_uploads: {
+        Args: {
+          p_order_id: number;
+          p_user_id: string;
+          p_object_paths: string[];
+        };
+        Returns: { object_path: string; deletion_claim_id: string }[];
+      };
+      complete_return_evidence_release: {
+        Args: { p_deletion_claim_id: string; p_object_paths: string[] };
+        Returns: { object_path: string }[];
+      };
+      cancel_return_evidence_release: {
+        Args: { p_deletion_claim_id: string; p_object_paths: string[] };
+        Returns: number;
+      };
+      claim_stale_return_evidence_uploads: {
+        Args: { p_deletion_claim_id: string; p_limit?: number };
+        Returns: { object_path: string; order_id: number; user_id: string }[];
+      };
+      create_return_request_with_evidence: {
+        Args: {
+          p_order_id: number;
+          p_user_id: string;
+          p_reason: string;
+          p_items: Json;
+          p_evidence_paths: string[];
+        };
+        Returns: number;
+      };
       register_order_coupon_usage: {
         Args: {
           p_coupon_id: string;
@@ -375,6 +534,54 @@ export type Database = {
       consume_otp_proof: {
         Args: { p_token_hash: string; p_expires_at: string };
         Returns: boolean;
+      };
+      claim_checkout_idempotency: {
+        Args: {
+          p_identity_hash: string;
+          p_key_hash: string;
+          p_attempt_hash: string;
+          p_request_fingerprint: string;
+          p_merchant_oid: string;
+          p_lease_seconds?: number;
+        };
+        Returns: Json;
+      };
+      fail_checkout_idempotency: {
+        Args: {
+          p_identity_hash: string;
+          p_key_hash: string;
+          p_attempt_hash: string;
+          p_request_fingerprint: string;
+        };
+        Returns: boolean;
+      };
+      complete_checkout_idempotency: {
+        Args: {
+          p_identity_hash: string;
+          p_key_hash: string;
+          p_attempt_hash: string;
+          p_request_fingerprint: string;
+          p_response_status: number;
+          p_response_payload: Json;
+        };
+        Returns: Json;
+      };
+      finalize_idempotent_checkout_order: {
+        Args: {
+          p_identity_hash: string;
+          p_key_hash: string;
+          p_attempt_hash: string;
+          p_request_fingerprint: string;
+          p_order: Json;
+          p_response_payload: Json;
+          p_otp_token_hash?: string | null;
+          p_otp_expires_at?: string | null;
+          p_coupon_id?: string | null;
+          p_coupon_user_id?: string | null;
+          p_coupon_code?: string | null;
+          p_coupon_discount_amount?: number | null;
+        };
+        Returns: Json;
       };
       save_my_address: {
         Args: { p_address_id: number | null; p_address: Json };

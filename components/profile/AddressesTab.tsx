@@ -13,6 +13,7 @@ import type {
   LocationOption,
   ProvinceOption,
 } from "@/lib/checkout/checkoutTypes";
+import { safeStorageGet, safeStorageSet } from "@/lib/browserStorage";
 
 type Props = {
   user: AuthUser | null;
@@ -70,7 +71,7 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
     const fetchCities = async () => {
       try {
         // PERF-06: İl listesini sessionStorage'dan cache'le
-        const cachedProvinces = sessionStorage.getItem("prestige_provinces");
+        const cachedProvinces = safeStorageGet("session", "prestige_provinces");
         if (cachedProvinces) {
           setCities(JSON.parse(cachedProvinces));
         } else {
@@ -84,7 +85,8 @@ export default function AddressesTab({ user, addresses, setAddresses }: Props) {
             );
             setCities(sorted);
             try {
-              sessionStorage.setItem(
+              safeStorageSet(
+                "session",
                 "prestige_provinces",
                 JSON.stringify(sorted),
               );

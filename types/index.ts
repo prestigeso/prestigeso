@@ -149,7 +149,7 @@ export interface Address {
 /* ─── Yorum ─── */
 export interface Review {
   id: number;
-  user_id: string;
+  user_id?: string;
   product_id: number;
   rating: number;
   comment?: string;
@@ -163,7 +163,7 @@ export interface Review {
 /* ─── Soru ─── */
 export interface Question {
   id: number;
-  user_id: string;
+  user_id?: string;
   product_id: number;
   question: string;
   user_name?: string;
@@ -208,6 +208,10 @@ export interface CustomerProfile {
   phone?: string | null;
   gender?: string | null;
   birth_date?: string | null;
+  marketing_consent?: boolean;
+  marketing_consent_at?: string | null;
+  marketing_consent_revoked_at?: string | null;
+  marketing_consent_version?: string | null;
 }
 
 /* ─── Favori (join ile) ─── */

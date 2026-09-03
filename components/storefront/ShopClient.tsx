@@ -347,11 +347,12 @@ export default function ShopPage({
         ) : (
           <>
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
-              {dbProducts.map((product) => (
+              {dbProducts.map((product, index) => (
                 <ShopCard
                   key={product.id}
                   product={product}
                   campaigns={dbCampaigns}
+                  eagerImage={index < 5}
                   isFavorite={favoriteIds.has(Number(product.id))}
                   onToggleFavorite={handleToggleFavorite}
                 />
@@ -393,11 +394,13 @@ export default function ShopPage({
 function ShopCard({
   product,
   campaigns,
+  eagerImage,
   isFavorite,
   onToggleFavorite,
 }: {
   product: Product;
   campaigns: Campaign[];
+  eagerImage: boolean;
   isFavorite: boolean;
   onToggleFavorite: (productId: number, isCurrentlyFavorite: boolean) => void;
 }) {
@@ -435,6 +438,7 @@ function ShopCard({
           src={displayImage}
           alt={product.name || "Ürün"}
           fill
+          loading={eagerImage ? "eager" : "lazy"}
           sizes="(max-width: 768px) 50vw, 25vw"
           className="object-cover mix-blend-multiply group-hover:scale-110 transition-transform duration-700"
         />

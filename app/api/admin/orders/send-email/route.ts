@@ -1,13 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Resend } from "resend";
 import type { ReactElement } from "react";
-import { verifyAdminSessionCookie, ADMIN_COOKIE_NAME } from "@/lib/adminAuth";
+import { isAdminRequest } from "@/lib/adminRequest";
 import { OrderDelivered } from "@/components/emails/OrderDelivered";
 
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
   try {
+    if (!(await isAdminRequest(req))) {
+      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
+    }
+
     if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL)
       return NextResponse.json(
         { error: "E-posta servisi yapılandırılmamış." },
@@ -15,19 +19,7 @@ export async function POST(req: NextRequest) {
       );
     const resend = new Resend(process.env.RESEND_API_KEY);
     const fromEmail = process.env.RESEND_FROM_EMAIL;
-    // 1) Admin yetki kontrolü
-    const adminSecret = (process.env.ADMIN_COOKIE_SECRET ?? "").trim();
-    const cookieValue = req.cookies.get(ADMIN_COOKIE_NAME)?.value ?? "";
-    const adminSession = await verifyAdminSessionCookie(
-      adminSecret,
-      cookieValue,
-    );
-
-    if (!adminSession) {
-      return NextResponse.json({ error: "Yetkisiz erişim" }, { status: 401 });
-    }
-
-    // 2) Body parsing
+    // Body parsing
     const body = await req.json();
     const { orderId, customerName, email, type } = body;
 

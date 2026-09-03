@@ -11,8 +11,9 @@ type CheckoutSummaryProps = {
   remainingForFreeShipping: number;
   finalTotal: number;
   agreeTerms: boolean;
-  setAgreeTerms: (value: boolean) => void;
-  setIsContractModalOpen: (value: boolean) => void;
+  shippingSettingsReady: boolean;
+  onTermsChange: (checked: boolean) => void;
+  openContractModal: () => void;
   handleCompleteOrder: () => void | Promise<void>;
   isProcessing: boolean;
   checkoutMode: CheckoutMode | null;
@@ -26,8 +27,9 @@ export default function CheckoutSummary({
   remainingForFreeShipping,
   finalTotal,
   agreeTerms,
-  setAgreeTerms,
-  setIsContractModalOpen,
+  shippingSettingsReady,
+  onTermsChange,
+  openContractModal,
   handleCompleteOrder,
   isProcessing,
   checkoutMode,
@@ -62,7 +64,11 @@ export default function CheckoutSummary({
           >
             <span>Kargo</span>
             <span>
-              {shippingFee > 0 ? `${formatMoney(shippingFee)} ₺` : "ÜCRETSİZ"}
+              {!shippingSettingsReady
+                ? "HESAPLANAMADI"
+                : shippingFee > 0
+                  ? `${formatMoney(shippingFee)} ₺`
+                  : "ÜCRETSİZ"}
             </span>
           </div>
 
@@ -78,7 +84,7 @@ export default function CheckoutSummary({
               Toplam
             </span>
             <span className="text-3xl font-black">
-              {formatMoney(finalTotal)} ₺
+              {shippingSettingsReady ? `${formatMoney(finalTotal)} ₺` : "—"}
             </span>
           </div>
         </div>
@@ -87,7 +93,7 @@ export default function CheckoutSummary({
           <input
             type="checkbox"
             checked={agreeTerms}
-            onChange={(event) => setAgreeTerms(event.target.checked)}
+            onChange={(event) => onTermsChange(event.target.checked)}
             className="mt-0.5 accent-black w-4 h-4 flex-shrink-0"
           />
 
@@ -97,7 +103,7 @@ export default function CheckoutSummary({
               type="button"
               onClick={(event) => {
                 event.preventDefault();
-                setIsContractModalOpen(true);
+                openContractModal();
               }}
               className="text-black font-bold border-b border-black"
             >
@@ -110,7 +116,7 @@ export default function CheckoutSummary({
         <button
           type="button"
           onClick={handleCompleteOrder}
-          disabled={isProcessing || !checkoutMode}
+          disabled={isProcessing || !checkoutMode || !shippingSettingsReady}
           className="w-full bg-black text-white font-black py-5 rounded-2xl shadow-xl active:scale-95 disabled:opacity-50 uppercase tracking-widest text-sm flex items-center justify-center gap-2"
         >
           {isProcessing ? "Ödeme Başlatılıyor..." : "Ödemeye Geç 💳"}
