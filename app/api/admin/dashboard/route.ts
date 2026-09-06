@@ -132,7 +132,8 @@ export async function GET(req: NextRequest) {
       .from("orders")
       .select("id", { count: "exact", head: true })
       .or(
-        `reconciliation_status.in.(mismatch,error),and(refund_started_at.lt.${new Date(Date.now() - 15 * 60000).toISOString()},refunded_at.is.null),and(post_payment_processing_at.lt.${new Date(Date.now() - 15 * 60000).toISOString()},post_payment_processed_at.is.null)`,
+        // A previous partial refund (or a saved refund awaiting stock) must not hide a retained lock.
+        `reconciliation_status.in.(mismatch,error),refund_started_at.lt.${new Date(Date.now() - 15 * 60000).toISOString()},and(post_payment_processing_at.lt.${new Date(Date.now() - 15 * 60000).toISOString()},post_payment_processed_at.is.null)`,
       ),
   ]);
 

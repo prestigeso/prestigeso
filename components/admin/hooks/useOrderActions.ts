@@ -19,12 +19,23 @@ const VALID_ORDER_STATUSES = [
 interface UseOrderActionsParams {
   setDbOrders: React.Dispatch<React.SetStateAction<OrderRow[]>>;
   showToast: (options: ShowToastOptions | string, type?: AppToastType) => void;
+  refreshOrders: () => Promise<void>;
 }
 
 export function useOrderActions({
   setDbOrders,
   showToast,
+  refreshOrders,
 }: UseOrderActionsParams) {
+  const refreshOrdersAfterDecision = async () => {
+    try {
+      await refreshOrders();
+    } catch {
+      // Refresh failures must not replace the original payment result/error toast.
+      console.warn("Sipariş ve iade durumu yenilenemedi; sipariş listesini yeniden açın.");
+    }
+  };
+
   const handleUpdateOrderStatus = async (
     orderId: number,
     newStatus: string,
@@ -59,6 +70,8 @@ export function useOrderActions({
         );
       } catch (error: unknown) {
         showToast("Bir hata oluştu: " + getErrorMessage(error), "error");
+      } finally {
+        await refreshOrdersAfterDecision();
       }
       return;
     }
@@ -108,6 +121,8 @@ export function useOrderActions({
       );
     } catch (error) {
       showToast(getErrorMessage(error, "İade kararı uygulanamadı."), "error");
+    } finally {
+      await refreshOrdersAfterDecision();
     }
   };
 

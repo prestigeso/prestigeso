@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./readonly.fixture";
 
 test("storefront navigation and security headers work", async ({ page }) => {
   const response = await page.goto("/");

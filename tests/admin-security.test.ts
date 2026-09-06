@@ -176,3 +176,15 @@ test("admin TOTP setup generates a local random secret without writing files", a
   assert.match(setupScript, /ADMIN_TOTP_SECRET=/);
   assert.doesNotMatch(setupScript, /writeFile|appendFile|createWriteStream/);
 });
+
+test("dashboard counts every stale refund lock even when a previous refund timestamp exists", async () => {
+  const dashboard = await source("../app/api/admin/dashboard/route.ts");
+  assert.match(
+    dashboard,
+    /reconciliation_status\.in\.\(mismatch,error\),refund_started_at\.lt\.\$\{new Date\(Date\.now\(\) - 15 \* 60000\)\.toISOString\(\)\}/,
+    "stale refund locks must be an independent OR clause, not gated by refunded_at",
+  );
+  assert.doesNotMatch(dashboard, /refunded_at\.is\.null/);
+  assert.match(dashboard, /post_payment_processed_at\.is\.null/);
+  assert.match(dashboard, /reconciliationIssues:\s*reconciliationCount\.count/);
+});

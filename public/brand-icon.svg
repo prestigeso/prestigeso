@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="PrestigeSO">
+  <title>PrestigeSO</title>
+  <rect width="512" height="512" fill="#fff" />
+  <path fill="#000" fill-rule="evenodd" d="M122 92h147c82 0 125 40 125 103s-43 103-125 103h-70v104h51v18H122v-18h35V110h-35zm77 18v170h61c60 0 90-31 90-85s-30-85-90-85z" />
+</svg>

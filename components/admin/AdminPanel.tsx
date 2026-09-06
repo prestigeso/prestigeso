@@ -142,7 +142,11 @@ export default function AdminPanel() {
     setDbQuestions,
     showToast,
   });
-  const orderActions = useOrderActions({ setDbOrders, showToast });
+  const orderActions = useOrderActions({
+    setDbOrders,
+    showToast,
+    refreshOrders: () => loadAdminList("orders", listMeta.orders.page),
+  });
   const reviewActions = useReviewActions({
     setDbReviews,
     showToast,

@@ -1,6 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const externalBaseUrl = process.env.PLAYWRIGHT_BASE_URL;
+const localHttps = externalBaseUrl
+  ? new URL(externalBaseUrl).protocol === "https:" &&
+    ["127.0.0.1", "localhost", "[::1]"].includes(new URL(externalBaseUrl).hostname)
+  : false;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -10,6 +14,8 @@ export default defineConfig({
   reporter: process.env.CI ? "github" : "list",
   use: {
     baseURL: externalBaseUrl || "http://127.0.0.1:3000",
+    // Only the loopback TLS test bridge uses a self-signed certificate.
+    ignoreHTTPSErrors: localHttps,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
   },

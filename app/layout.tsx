@@ -13,6 +13,8 @@ const SITE_URL =
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
+  applicationName: "PrestigeSO",
+  manifest: "/manifest.json",
   title: {
     default: "PrestigeSO | Tarzını Yeniden Keşfet",
     template: "%s | PrestigeSO",

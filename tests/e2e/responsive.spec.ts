@@ -1,9 +1,11 @@
-import { expect, test } from "@playwright/test";
+import { expect, test } from "./readonly.fixture";
+
+const productPath = `/product/${process.env.PLAYWRIGHT_PRODUCT_ID || "247"}`;
 
 const publicRoutes = [
   "/",
   "/shop",
-  "/product/247",
+  productPath,
   "/login",
   "/siparis-takip",
   "/iletisim",
@@ -63,7 +65,7 @@ for (const route of publicRoutes) {
 test("product can be added to cart and checkout opens", async ({
   page,
 }, testInfo) => {
-  await page.goto("/product/247", { waitUntil: "domcontentloaded" });
+  await page.goto(productPath, { waitUntil: "domcontentloaded" });
   const addToCartTestId =
     testInfo.project.name === "desktop-chrome"
       ? "add-to-cart-desktop"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Image from "next/image";
 import type { OrderRow } from "../types";
 import { adminDb } from "../adminDb";
@@ -15,18 +15,24 @@ import {
   parseOrderItems as safeParseItems,
 } from "@/lib/orders/orderPresentation";
 import AdminPagination from "../parts/AdminPagination";
+import {
+  approveReturnWithConfirmation,
+  confirmFinancialStatusChange,
+  getReviewableReturnRequest,
+} from "@/lib/orders/returnApproval";
+import { calculateReturnRefundAmount } from "@/lib/returns/refundAmount";
 
 type Props = {
   open: boolean;
   onClose: () => void;
   orders: OrderRow[];
-  onUpdateStatus: (orderId: number, newStatus: string) => void;
+  onUpdateStatus: (orderId: number, newStatus: string) => void | Promise<void>;
   onReturnDecision: (
     orderId: number,
     decision: "approve" | "reject",
     note: string,
     returnShippingCode?: string,
-  ) => void;
+  ) => void | Promise<void>;
   onShippingSaved: (
     orderId: number,
     carrier: string,
@@ -87,6 +93,8 @@ export default function OrdersModal({
   const [isSaving, setIsSaving] = useState(false);
   const [sendingInvoiceId, setSendingInvoiceId] = useState<number | null>(null);
   const [reconcilingId, setReconcilingId] = useState<number | null>(null);
+  const financialActionRef = useRef<number | null>(null);
+  const [financialActionId, setFinancialActionId] = useState<number | null>(null);
 
   if (!open) return null;
 
@@ -217,6 +225,89 @@ export default function OrdersModal({
     }
   };
 
+  const handleStatusChange = async (order: OrderRow, newStatus: string) => {
+    if (financialActionRef.current !== null) return;
+    if (getReviewableReturnRequest(order.return_requests)?.status === "approved") {
+      showToast("İade işlemi başlatılmış. Yeni bir işlem yapmadan önce PayTR mutabakatını kontrol edin.", "warning");
+      return;
+    }
+    const approved = confirmFinancialStatusChange(
+      newStatus,
+      [
+        `Sipariş: ${order.order_no || `PRS-ESKI-${order.id}`}`,
+        `Sipariş için ödenen toplam: ${formatMoney(order.total_amount)} TL`,
+        `Yeni durum: ${newStatus}`,
+        "Bu seçim yalnızca durum etiketini değiştirmez; PayTR üzerinden gerçek para iadesi başlatır ve sipariş stoğunu geri ekler.",
+        "İade uygunluğu ve tutarı sunucuda yeniden doğrulanacaktır. Devam etmek istiyor musunuz?",
+      ].join("\n\n"),
+      (message) => window.confirm(message),
+    );
+    if (!approved) return;
+
+    financialActionRef.current = order.id;
+    setFinancialActionId(order.id);
+    try {
+      await onUpdateStatus(order.id, newStatus);
+    } catch (error) {
+      showToast(getErrorMessage(error, "Sipariş durumu güncellenemedi."), "error");
+    } finally {
+      financialActionRef.current = null;
+      setFinancialActionId(null);
+    }
+  };
+
+  const handleReturnApproval = async (order: OrderRow) => {
+    if (financialActionRef.current !== null) return;
+    financialActionRef.current = order.id;
+    setFinancialActionId(order.id);
+    try {
+      const request = getReviewableReturnRequest(order.return_requests);
+      if (!request || request.status !== "pending")
+        throw new Error("Onaylanabilir bekleyen iade talebi bulunamadı. Siparişleri yenileyin; başlatılmış iadeyi tekrar göndermeyin.");
+      // Use the server's calculation rules; invalid or stale item data must never open an approval.
+      const refundAmount = calculateReturnRefundAmount({
+        orderItems: order.items,
+        returnItems: request.items,
+        totalAmount: order.total_amount,
+      });
+      const orderItems = safeParseItems(order.items);
+      const requestedItems = safeParseItems(request.items);
+      const itemLines = requestedItems.map((item) => {
+        const source = orderItems.find(
+          (candidate) =>
+            Number(candidate.id) === Number(item.id) &&
+            Number(candidate.variant_id || 0) === Number(item.variant_id || 0),
+        );
+        const variant = source?.variant_sku || (item.variant_id ? `Varyant #${item.variant_id}` : "");
+        return `- ${source?.name || `Ürün #${item.id}`}${variant ? ` (${variant})` : ""}: ${item.quantity} adet`;
+      });
+      const quantity = requestedItems.reduce((sum, item) => sum + Number(item.quantity), 0);
+      const summary = [
+        `Sipariş: ${order.order_no || `PRS-ESKI-${order.id}`}`,
+        `İade talebi: #${request.id}`,
+        `İade tutarı: ${formatMoney(refundAmount)} TL`,
+        `İade edilecek ürünler:\n${itemLines.join("\n")}`,
+        `Bu işlem PayTR üzerinden gerçek para iadesi başlatır. Talepteki ${quantity} adet ürün stoklara geri eklenecektir.`,
+        "Ürünlerin teslim alındığını ve stoklara geri eklenmeye uygun olduğunu kontrol edin. İade uygunluğu ve tutarı sunucuda yeniden doğrulanacaktır.",
+        "Para iadesini şimdi başlatmak istiyor musunuz?",
+      ].join("\n\n");
+      await approveReturnWithConfirmation(
+        summary,
+        {
+          prompt: (message) => window.prompt(message),
+          confirm: (message) => window.confirm(message),
+        },
+        ({ note, returnShippingCode }) =>
+          onReturnDecision(order.id, "approve", note, returnShippingCode),
+      );
+    } catch (error) {
+      showToast(getErrorMessage(error, "İade kararı uygulanamadı."), "error");
+    } finally {
+      financialActionRef.current = null;
+      setFinancialActionId(null);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
       <div className="bg-white w-full max-w-5xl rounded-3xl p-8 shadow-2xl max-h-[90vh] flex flex-col">
@@ -256,7 +347,8 @@ export default function OrdersModal({
               const paidAmount = Number(
                 order.total_amount || couponInfo?.totalAfterDiscount || 0,
               );
-              const returnRequest = order.return_requests?.[0];
+              const returnRequest = getReviewableReturnRequest(order.return_requests);
+              const returnNeedsReconciliation = returnRequest?.status === "approved";
 
               return (
                 <div
@@ -393,8 +485,9 @@ export default function OrdersModal({
 
                           <select
                             value={order.status || "Bekliyor"}
+                            disabled={financialActionId !== null || returnNeedsReconciliation}
                             onChange={(e) =>
-                              onUpdateStatus(order.id, e.target.value)
+                              void handleStatusChange(order, e.target.value)
                             }
                             className={`text-xs font-black uppercase tracking-widest px-3 py-1.5 rounded-lg border outline-none cursor-pointer transition-colors ${getStatusClass(order.status)}`}
                           >
@@ -414,7 +507,7 @@ export default function OrdersModal({
                           </select>
                         </div>
 
-                        {order.status === "İade Talebi" && (
+                        {(order.status === "İade Talebi" || returnNeedsReconciliation) && (
                           <div className="space-y-2 rounded-xl border border-orange-200 bg-orange-50 p-3">
                             {returnRequest && (
                               <div className="space-y-2 text-xs">
@@ -430,21 +523,25 @@ export default function OrdersModal({
                                 )}
                               </div>
                             )}
+                            {returnNeedsReconciliation ? (
+                              <p role="status" className="text-xs font-bold leading-relaxed text-orange-900">
+                                İade işlemi başlatılmış; işlem sürüyor veya sonuç doğrulanmayı bekliyor.
+                                Yeniden iade başlatmayın. Aşağıdaki “PayTR ile doğrula” düğmesiyle
+                                mutabakatı kontrol edin; sonuç kesinleşmeden yeni karar vermeyin.
+                              </p>
+                            ) : returnRequest?.status === "pending" ? (
                             <div className="grid grid-cols-2 gap-2">
                             <button
                               type="button"
-                              onClick={() => {
-                                const note = prompt("Onay notu (isteğe bağlı):") || "";
-                                const returnCode =
-                                  prompt("İade kargo kodu (isteğe bağlı):") || "";
-                                onReturnDecision(order.id, "approve", note, returnCode);
-                              }}
-                              className="rounded-xl bg-emerald-600 px-3 py-2 text-[10px] font-black uppercase text-white"
+                              disabled={financialActionId !== null}
+                              onClick={() => void handleReturnApproval(order)}
+                              className="rounded-xl bg-emerald-600 px-3 py-2 text-[10px] font-black uppercase text-white disabled:opacity-50"
                             >
-                              İadeyi onayla
+                              {financialActionId === order.id ? "İşleniyor..." : "İadeyi onayla"}
                             </button>
                             <button
                               type="button"
+                              disabled={financialActionId !== null}
                               onClick={() => {
                                 const note = prompt("Ret sebebini yazın:")?.trim();
                                 if (note) onReturnDecision(order.id, "reject", note);
@@ -454,6 +551,11 @@ export default function OrdersModal({
                               Talebi reddet
                             </button>
                             </div>
+                            ) : (
+                              <p role="status" className="text-xs font-bold text-orange-900">
+                                Onaylanabilir bekleyen iade talebi bulunamadı. Güncel durum için siparişleri yenileyin.
+                              </p>
+                            )}
                           </div>
                         )}
 
