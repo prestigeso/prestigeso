@@ -1,5 +1,6 @@
 import { logServerEvent } from "@/lib/logger";
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
+import { readVisitor, linkAnalyticsOrder } from "@/lib/analytics/server";
 import crypto from "crypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { createClient } from "@supabase/supabase-js";
@@ -99,6 +100,7 @@ type CheckoutShippingAddress = {
 };
 
 type CheckoutRequestBody = {
+  analytics?: unknown;
   checkoutMode?: unknown;
   contractAccepted?: unknown;
   contractVersion?: unknown;
@@ -700,6 +702,9 @@ export async function POST(req: NextRequest) {
 
     const claim = (claimData || {}) as CheckoutIdempotencyClaim;
     if (claim.action === "completed") {
+      const visitor = readVisitor(req);
+      const replayOrder = String((claim.response as Record<string, unknown> | undefined)?.merchant_oid || "");
+      if (replayOrder) after(() => linkAnalyticsOrder(visitor, body.analytics, replayOrder));
       const replayStatus = Number(claim.status || 200);
       return NextResponse.json(claim.response, {
         status:
@@ -1227,6 +1232,9 @@ export async function POST(req: NextRequest) {
       );
       const recovered = (recoveredClaim || {}) as CheckoutIdempotencyClaim;
       if (recovered.action === "completed") {
+        const visitor = readVisitor(req);
+        const recoveredOrder = String((recovered.response as Record<string, unknown> | undefined)?.merchant_oid || "");
+        if (recoveredOrder) after(() => linkAnalyticsOrder(visitor, body.analytics, recoveredOrder));
         const recoveredStatus = Number(recovered.status || 200);
         return NextResponse.json(recovered.response, {
           status:
@@ -1257,6 +1265,8 @@ export async function POST(req: NextRequest) {
         },
         { status: 503, headers: { "Retry-After": "3" } },
       );
+    const analyticsVisitor = readVisitor(req);
+    after(() => linkAnalyticsOrder(analyticsVisitor, body.analytics, merchantOid));
     return NextResponse.json(finalizedResponse);
   } catch (err: unknown) {
     if (!finalizationStarted) await failCheckoutIdempotency(idempotencyContext);

@@ -20,12 +20,13 @@ export async function GET(req: NextRequest) {
   if (secret.length < 32 || !safeEqual(provided, secret))
     return NextResponse.json({ error: "Yetkisiz erişim." }, { status: 401 });
 
-  const [reservations, cleanup, staleEvidenceCleanup] = await Promise.all([
+  const [reservations, cleanup, staleEvidenceCleanup, analyticsCleanup] = await Promise.all([
     supabaseAdmin.rpc("release_expired_stock_reservations"),
     supabaseAdmin.rpc("prune_operational_data"),
     cleanupStaleReturnEvidenceUploads(100).catch(() => null),
+    supabaseAdmin.rpc("analytics_purge"),
   ]);
-  if (reservations.error || cleanup.error || staleEvidenceCleanup === null)
+  if (reservations.error || cleanup.error || staleEvidenceCleanup === null || analyticsCleanup.error)
     return NextResponse.json({ error: "Bakım işlemi başarısız." }, { status: 500 });
   let reconciled = 0;
   let reconciliationFailures = 0;
@@ -120,6 +121,7 @@ export async function GET(req: NextRequest) {
     success: reconciliationFailures === 0,
     released: Number(reservations.data || 0),
     staleEvidenceDeleted: staleEvidenceCleanup,
+    analyticsEventsDeleted: Number(analyticsCleanup.data || 0),
     reconciled,
     reconciliationFailures,
     emails,

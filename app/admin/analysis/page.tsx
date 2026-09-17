@@ -481,6 +481,7 @@ export default function AdminAnalysisPage() {
   return (
     <div className="min-h-screen bg-gray-100 text-black font-sans px-4 py-8">
       <div className="max-w-7xl mx-auto space-y-6">
+        <Link href="/admin/analytics" className="block bg-black text-white rounded-2xl p-5 font-bold">Yeni: Mağaza yolculuğu, sepet ve ödeme analizi →</Link>
         <div className="bg-white border border-gray-100 rounded-3xl shadow-sm p-6 md:p-8 flex flex-col md:flex-row md:items-center md:justify-between gap-5">
           <div>
             <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">
@@ -596,13 +597,13 @@ export default function AdminAnalysisPage() {
 
               <div className="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
                 <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">
-                  Dönüşüm
+                  Sipariş / eski ziyaret sayacı
                 </p>
                 <p className="text-3xl font-black text-purple-600">
                   %{conversionRate.toFixed(2)}
                 </p>
                 <p className="text-[10px] font-bold text-gray-400 mt-3">
-                  Sipariş / ziyaret oranı.
+                  Farklı kapsamdaki eski sayaçların oranı; gerçek dönüşüm hunisi değildir.
                 </p>
               </div>
             </div>

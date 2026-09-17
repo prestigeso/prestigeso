@@ -7,6 +7,8 @@ import { SearchProvider } from "@/context/SearchContext";
 import ConditionalLayout from "@/components/ConditionalUI";
 import AppAlertProvider from "@/components/ui/AppAlertProvider";
 import CookieConsent from "@/components/CookieConsent";
+import { Suspense } from "react";
+import AnalyticsTracker from "@/components/AnalyticsTracker";
 
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "https://prestigeso.com.tr";
@@ -72,6 +74,7 @@ export default async function RootLayout({
           </SearchProvider>
         </AppAlertProvider>
         <CookieConsent />
+        <Suspense fallback={null}><AnalyticsTracker /></Suspense>
       </body>
     </html>
   );

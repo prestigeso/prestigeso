@@ -7,7 +7,8 @@ const [action] = process.argv.slice(2);
 if (!["build", "start"].includes(action)) throw new Error("Use: node scripts/phase0-local.mjs build|start");
 const health = await fetch("http://127.0.0.1:54321/__health").then(r => r.json());
 if (health.fixture !== true) throw new Error("Synthetic fixture must be running first");
-const secret = randomBytes(40).toString("hex");
+const secret = process.env.PHASE0_ADMIN_TEST_SECRET || randomBytes(40).toString("hex");
+if (secret.length < 32) throw new Error("Synthetic test secret must be at least 32 characters");
 const env = { ...process.env,
   NODE_EXTRA_CA_CERTS: resolve("tmp/local-https-test/cert.pem"),
   NEXT_PUBLIC_SITE_URL: "https://www.prestigeso.com.tr",

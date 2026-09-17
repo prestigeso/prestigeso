@@ -1,4 +1,5 @@
 "use client";
+import { trackAnalytics, trackCategory } from "@/lib/analytics/client";
 
 import { useCart } from "@/context/CartContext";
 import { useEffect, useMemo, useState, useTransition } from "react";
@@ -168,6 +169,19 @@ export default function Home({
     discountedFull,
   ]);
 
+  useEffect(() => {
+    const record = () => { if (catalogErrorId) return; if (searchQuery?.trim()) trackAnalytics("search", { resultCount: Math.min(filteredProducts.length, 1000000) }); };
+    const timer = setTimeout(record, 600);
+    window.addEventListener("prestigeso:consent-changed", record);
+    return () => { clearTimeout(timer); window.removeEventListener("prestigeso:consent-changed", record); };
+  }, [searchQuery, filteredProducts.length, catalogErrorId]);
+
+  useEffect(() => {
+    const record = () => { if (selectedCategory && selectedCategory !== "Tümü") trackCategory(selectedCategory); };
+    record(); window.addEventListener("prestigeso:consent-changed", record);
+    return () => window.removeEventListener("prestigeso:consent-changed", record);
+  }, [selectedCategory]);
+
   const handleSeeAll = (cat: string) => {
     setSelectedCategory(cat);
     setShowAll(true);
@@ -245,8 +259,10 @@ export default function Home({
 
       {!showAll && (
         <div
+          data-analytics-block="hero"
           className="relative w-full aspect-video md:h-[75vh] flex items-center justify-center overflow-hidden bg-gray-900 group cursor-pointer"
           onClick={() => {
+            trackAnalytics("block_click", { block: "hero" });
             const activeSlide = heroSlides[currentSlide];
             if (activeSlide && activeSlide.category_slug) {
               const matched = dbCategories.find(
@@ -580,8 +596,8 @@ function ProductCarousel({
   if (!products || products.length === 0) return null;
 
   return (
-    <div className="relative">
-      <div className="flex justify-between items-end mb-4 md:mb-6 border-b pb-2 md:pb-3 px-1">
+    <div className="relative" data-analytics-block="products">
+      <div className="flex justify-between items-end mb-4 md:mb-6 border-b pb-2 md:pb-3 px-1" data-analytics-block="category">
         <h2 className="text-base md:text-xl font-black uppercase border-l-4 border-black pl-2 md:pl-3">
           {title}
         </h2>
@@ -589,7 +605,7 @@ function ProductCarousel({
         {onSeeAll && (
           <button
             type="button"
-            onClick={onSeeAll}
+            onClick={() => { trackAnalytics("block_click", { block: "category" }); onSeeAll(); }}
             className="text-[9px] md:text-xs font-black text-gray-400 hover:text-black transition-colors uppercase flex items-center gap-1"
           >
             TÜMÜ <span className="text-sm">›</span>

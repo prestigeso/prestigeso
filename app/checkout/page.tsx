@@ -1,4 +1,5 @@
 "use client";
+import { checkoutAnalyticsContext, trackAnalytics, trackCheckoutStep, trackCheckoutIssue, flushAnalytics } from "@/lib/analytics/client";
 
 import {
   useEffect,
@@ -398,6 +399,12 @@ export default function CheckoutPage() {
   );
   const agreeTerms =
     acceptedContractFingerprint === checkoutRequestFingerprint;
+  const measuredCheckoutStep = otpVerificationToken ? "otp" : agreeTerms ? "contract" : selectedAddress ? "address" : checkoutMode ? "identity" : "cart";
+  useEffect(() => {
+    const record = () => trackCheckoutStep(measuredCheckoutStep);
+    record(); window.addEventListener("prestigeso:consent-changed", record);
+    return () => window.removeEventListener("prestigeso:consent-changed", record);
+  }, [measuredCheckoutStep]);
 
   const openContractModal = () => {
     if (!shippingSettingsReady || shippingSettingsError) {
@@ -614,6 +621,7 @@ export default function CheckoutPage() {
   const handleCompleteOrder = async () => {
     const err = validateBeforePay();
     if (err) {
+      trackCheckoutIssue("validation");
       showNotice(err, "error");
       return;
     }
@@ -638,6 +646,7 @@ export default function CheckoutPage() {
           getErrorMessage(error, "Doğrulama kodu gönderilemedi."),
           "error",
         );
+        trackCheckoutIssue("otp");
       } finally {
         setIsOtpSending(false);
       }
@@ -677,6 +686,7 @@ export default function CheckoutPage() {
       proceedToPayment(verificationToken);
     } catch (error: unknown) {
       showNotice(getErrorMessage(error, "Kod doğrulanamadı."), "error");
+      trackCheckoutIssue("otp");
       setIsProcessing(false);
     }
   };
@@ -721,6 +731,7 @@ export default function CheckoutPage() {
         safeStorageRemove("session", CHECKOUT_IDEMPOTENCY_STORAGE_KEY);
     };
 
+    let trackedFailure = false;
     try {
       const shippingAddressObject = {
         email: normalizeEmail(addressData.email || user?.email || ""),
@@ -747,6 +758,8 @@ export default function CheckoutPage() {
       if (isMember && currentSession?.access_token) {
         authHeaders["Authorization"] = `Bearer ${currentSession.access_token}`;
       }
+      const analytics = await checkoutAnalyticsContext(idempotencyKey);
+      trackCheckoutStep("payment");
       const response = await fetch("/api/paytr/create-token", {
         method: "POST",
         headers: authHeaders,
@@ -765,10 +778,13 @@ export default function CheckoutPage() {
           expectedTotalAmount: Number(finalTotal.toFixed(2)),
           contractAccepted: true,
           contractVersion: DISTANCE_SALES_VERSION,
+          analytics,
         }),
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) {
+        trackedFailure = true;
+        if (analytics) trackAnalytics("checkout_error", { cartId: analytics.cartId, attemptId: analytics.attemptId, reason: response.status >= 500 ? "technical" : "validation" });
         const shouldPreserveIdempotency =
           response.status >= 500 ||
           response.status === 429 ||
@@ -796,8 +812,10 @@ export default function CheckoutPage() {
       ) {
         throw new Error("PayTR ödeme adresi geçersiz.");
       }
+      void flushAnalytics();
       window.location.replace(paymentUrl.toString());
     } catch (error: unknown) {
+      if (!trackedFailure) trackCheckoutIssue("technical");
       showNotice(getErrorMessage(error, "Ödeme başlatılamadı."), "error");
     } finally {
       paymentInFlightRef.current = false;

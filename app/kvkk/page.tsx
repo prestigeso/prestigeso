@@ -48,6 +48,16 @@ export default function KvkkPage() {
           <section>
             <h2 className="font-black uppercase text-black">Çerezler</h2>
             <p>
+              Analitik izni verdiğinizde ürün ve kategori incelemeleri, sepet hareketleri
+              ve ödeme adımları takma kimliklerle ilişkilendirilir. Ham hareket kayıtları
+              30 günlük saklama penceresine tabidir; 30 dakika hareketsizlik yeni oturum,
+              24 saat hareketsiz ve ödenmemiş sepet ise terk edilmiş olarak değerlendirilir.
+              Analitik kayıtlara adres, telefon, e-posta, kart bilgisi veya serbest arama
+              metni eklenmez. Çerez tercihinden izni geri aldığınızda toplama durur ve
+              tarayıcınızla ilişkilendirilen analitik kayıtlar için silme isteği gönderilir.
+              Muhasebe ve sipariş kayıtları bu analitik silme işleminden ayrıdır.
+            </p>
+            <p>
               Zorunlu çerezler oturum, sepet ve güvenlik işlevleri için
               kullanılır. Tarayıcı ayarlarınızdan çerezleri silebilir veya
               engelleyebilirsiniz; bu durumda bazı site işlevleri

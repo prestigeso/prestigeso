@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase";
 import { useAppAlert } from "@/context/AppAlertContext";
 import { sanitizeImageUrl } from "@/lib/utils";
 import { getProductUnitPrice } from "@/lib/commerce/catalogPricing";
+import { trackAnalytics } from "@/lib/analytics/client";
 
 import type { Product, Campaign } from "@/types";
 
@@ -62,6 +63,16 @@ export default function ShopPage({
   const [favoriteIds, setFavoriteIds] = useState<Set<number>>(() => new Set());
   const [authUserId, setAuthUserId] = useState<string | null>(null);
   const categories = initialCategories;
+  useEffect(() => {
+    const record = () => {
+      if (catalogErrorId) return;
+      if (query) trackAnalytics("search", { resultCount: Math.min(total, 1000000) });
+      const count = [minPrice !== null, maxPrice !== null, discounted, bestseller, minRating !== null, Boolean(availability), Boolean(option)].filter(Boolean).length;
+      if (count) trackAnalytics("filter", { filterCount: count });
+    };
+    record(); window.addEventListener("prestigeso:consent-changed", record);
+    return () => window.removeEventListener("prestigeso:consent-changed", record);
+  }, [query, total, minPrice, maxPrice, discounted, bestseller, minRating, availability, option, catalogErrorId]);
 
   useEffect(() => {
     const loadAccount = async () => {

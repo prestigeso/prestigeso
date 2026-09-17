@@ -7,7 +7,7 @@ test.beforeEach(async ({ page, baseURL }) => {
   expect(["127.0.0.1", "localhost"]).toContain(new URL(baseURL!).hostname);
   await page.addInitScript(() => {
     localStorage.setItem("prestigeso_cart", JSON.stringify([{ id: 247, name: "Test Çelik Kolye 247", price: 1000, quantity: 1, stock: 20, image: "/logo.jpeg" }]));
-    localStorage.setItem("prestigeso_cookie_consent", JSON.stringify({ version: "2026-08-23", necessary: true, analytics: false, marketing: false, updatedAt: new Date().toISOString() }));
+    localStorage.setItem("prestigeso_cookie_consent", JSON.stringify({ version: "2026-09-17", necessary: true, analytics: false, marketing: false, updatedAt: new Date().toISOString() }));
   });
   await page.route("**/api/turkiyeapi/provinces**", route => route.fulfill(reply(provinces)));
   await page.route("**/api/turkiyeapi/neighborhoods?**", route => route.fulfill(reply([{ id: 201, name: "Test Mahallesi" }])));

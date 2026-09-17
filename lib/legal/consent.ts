@@ -3,7 +3,7 @@ export const PRIVACY_NOTICE_VERSION = "2026-08-23";
 export const MARKETING_CONSENT_VERSION = "2026-08-23";
 export const DISTANCE_SALES_VERSION = "2026-08-23";
 
-export const COOKIE_CONSENT_VERSION = "2026-08-23";
+export const COOKIE_CONSENT_VERSION = "2026-09-17";
 export const COOKIE_CONSENT_STORAGE_KEY = "prestigeso_cookie_consent";
 
 export type CookieConsentPreferences = {

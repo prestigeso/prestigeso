@@ -18,6 +18,7 @@ import {
 } from "@/lib/browserStorage";
 import { reconcileCart } from "@/lib/commerce/cartValidation";
 import type { CartItem } from "@/types";
+import { trackCart, resetAnalyticsCart } from "@/lib/analytics/client";
 
 export type { CartItem } from "@/types";
 
@@ -222,6 +223,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
       mutationVersion.current += 1;
       requestVersion.current += 1;
       const next = transform(cartRef.current);
+      for (const item of next) {
+        const previous = cartRef.current.find((line) => isSameCartLine(line, item.id, item.variant_id));
+        if (!previous || item.quantity > previous.quantity) trackCart("add_cart", item.id, item.quantity - (previous?.quantity || 0), item.variant_id);
+        else if (item.quantity !== previous.quantity) trackCart("update_cart", item.id, item.quantity, item.variant_id);
+      }
+      for (const previous of cartRef.current) if (!next.some((line) => isSameCartLine(line, previous.id, previous.variant_id))) trackCart("remove_cart", previous.id, previous.quantity, previous.variant_id);
       cartRef.current = next;
       setCart(next);
       setValidationStatus(next.length ? "pending" : "valid");
@@ -301,9 +308,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
     [mutateCart],
   );
   const clearCart = useCallback(() => {
-    mutateCart(() => []);
+    // Successful checkout cleanup is not a customer removing every item.
+    mutationVersion.current += 1; requestVersion.current += 1;
+    cartRef.current = []; setCart([]); setValidationStatus("valid"); setValidationMessage(null);
+    resetAnalyticsCart();
     safeStorageRemove("local", "prestigeso_cart");
-  }, [mutateCart]);
+  }, []);
   const cartTotal = useMemo(
     () =>
       cart.reduce(
