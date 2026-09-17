@@ -2,6 +2,9 @@ import ShopClient from "@/components/storefront/ShopClient";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import type { Campaign, Product } from "@/types";
 import { redirect } from "next/navigation";
+import { randomUUID } from "node:crypto";
+import { getShopMetadata } from "@/lib/products/shopMetadata";
+import type { PostgrestError } from "@supabase/supabase-js";
 
 export const revalidate = 60;
 
@@ -28,12 +31,18 @@ function normalizeSearch(value: string | undefined) {
     .replace(/[^\p{L}\p{N}\s-]/gu, "");
 }
 
+export async function generateMetadata({ searchParams }: { searchParams?: Promise<Record<string, string | string[] | undefined>> }) {
+  return getShopMetadata(searchParams ? await searchParams : {});
+}
+
 export default async function ShopPage({
   searchParams,
 }: {
   searchParams?: Promise<ShopSearchParams>;
 }) {
-  const params = searchParams ? await searchParams : {};
+  const rawParams = searchParams ? await searchParams : {};
+  const params = Object.fromEntries(Object.entries(rawParams).map(([key, value]) => [key, Array.isArray(value) ? value[0] : value])) as ShopSearchParams;
+  const filterErrors: PostgrestError[] = [];
   const query = normalizeSearch(params.q);
   const category = (params.category || "").trim().slice(0, 100);
   const sort = ["newest", "price-asc", "price-desc", "name"].includes(
@@ -41,8 +50,8 @@ export default async function ShopPage({
   )
     ? String(params.sort)
     : "newest";
-  const requestedPage = Number.parseInt(params.page || "1", 10);
-  const page = Number.isFinite(requestedPage) ? Math.max(1, requestedPage) : 1;
+  const requestedPage = Number(params.page || "1");
+  const page = Number.isSafeInteger(requestedPage) ? Math.min(10000, Math.max(1, requestedPage)) : 1;
   const parsedMinPrice = Number(params.minPrice);
   const parsedMaxPrice = Number(params.maxPrice);
   const minPrice = Number.isFinite(parsedMinPrice) && parsedMinPrice >= 0 ? parsedMinPrice : null;
@@ -71,7 +80,7 @@ export default async function ShopPage({
       .select("product_id")
       .gte("rating_avg", minRating)
       .limit(10000);
-    if (ratingError) console.error("Puan filtresi yüklenemedi:", ratingError);
+    if (ratingError) filterErrors.push(ratingError);
     ratingProductIds = (ratingRows || [])
       .map((row) => Number(row.product_id))
       .filter((id) => Number.isSafeInteger(id) && id > 0);
@@ -84,21 +93,21 @@ export default async function ShopPage({
       .eq("is_active", true)
       .contains("option_values", { [optionName]: optionValue })
       .limit(10000);
-    if (optionError) console.error("Özellik filtresi yüklenemedi:", optionError);
+    if (optionError) filterErrors.push(optionError);
     optionProductIds = [
       ...new Set((optionRows || []).map((row) => Number(row.product_id))),
     ];
   }
 
   let productsQuery = supabaseAdmin
-    .from("products")
+    .from("products_public_catalog")
     .select(
-      "id,name,price,image,images,category,stock,SKU,barcode,description,is_bestseller,discount_price,created_at",
+      "id,name,price,image,images,category,stock,SKU,barcode,description,is_bestseller,discount_price,campaign_start_date,campaign_end_date,created_at,effective_price,display_base_price,available_stock,has_variants,is_discounted",
       { count: "exact" },
     );
 
-  if (availability === "in-stock") productsQuery = productsQuery.gt("stock", 0);
-  if (availability === "out-of-stock") productsQuery = productsQuery.eq("stock", 0);
+  if (availability === "in-stock") productsQuery = productsQuery.gt("available_stock", 0);
+  if (availability === "out-of-stock") productsQuery = productsQuery.eq("available_stock", 0);
   if (ratingProductIds)
     productsQuery = productsQuery.in(
       "id",
@@ -116,18 +125,19 @@ export default async function ShopPage({
     );
   }
   if (category) productsQuery = productsQuery.eq("category", category);
-  if (minPrice !== null) productsQuery = productsQuery.gte("price", minPrice);
-  if (maxPrice !== null) productsQuery = productsQuery.lte("price", maxPrice);
-  if (discounted) productsQuery = productsQuery.gt("discount_price", 0);
+  if (minPrice !== null) productsQuery = productsQuery.gte("effective_price", minPrice);
+  if (maxPrice !== null) productsQuery = productsQuery.lte("effective_price", maxPrice);
+  if (discounted) productsQuery = productsQuery.eq("is_discounted", true);
   if (bestseller) productsQuery = productsQuery.eq("is_bestseller", true);
 
   if (sort === "price-asc")
-    productsQuery = productsQuery.order("price", { ascending: true });
+    productsQuery = productsQuery.order("effective_price", { ascending: true });
   else if (sort === "price-desc")
-    productsQuery = productsQuery.order("price", { ascending: false });
+    productsQuery = productsQuery.order("effective_price", { ascending: false });
   else if (sort === "name")
     productsQuery = productsQuery.order("name", { ascending: true });
   else productsQuery = productsQuery.order("created_at", { ascending: false });
+  productsQuery = productsQuery.order("id", { ascending: true });
 
   const [productsResult, campaignsResult, categoriesResult, variantOptionsResult] = await Promise.all(
     [
@@ -157,15 +167,17 @@ export default async function ShopPage({
     { ...productsResult, error: productsError },
     campaignsResult,
     categoriesResult,
+    variantOptionsResult,
   ]
     .map((result) => result.error)
-    .filter(Boolean);
+    .filter(Boolean).concat(filterErrors);
+  const catalogErrorId = failures.length ? randomUUID() : undefined;
   if (failures.length > 0)
-    console.error("Mağaza verisi kısmen yüklenemedi:", failures);
+    console.error("Mağaza verisi yüklenemedi:", catalogErrorId, failures);
 
   const total = productsResult.count || 0;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  if (page > totalPages) {
+  if (!catalogErrorId && page > totalPages) {
     const canonical = new URLSearchParams();
     if (query) canonical.set("q", query);
     if (category) canonical.set("category", category);
@@ -185,6 +197,7 @@ export default async function ShopPage({
     <ShopClient
       key={`${query}\u0000${category}\u0000${sort}\u0000${page}`}
       initialProducts={(productsResult.data || []) as Product[]}
+      catalogErrorId={catalogErrorId}
       initialCampaigns={(campaignsResult.data || []) as Campaign[]}
       initialCategories={[
         "Tümü",

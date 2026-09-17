@@ -60,6 +60,8 @@ import {
   safeStorageSet,
 } from "@/lib/browserStorage";
 import { DISTANCE_SALES_VERSION } from "@/lib/legal/consent";
+import AccessibleDialog from "@/components/ui/AccessibleDialog";
+import { useNeighborhoods } from "@/hooks/useNeighborhoods";
 
 const CHECKOUT_IDEMPOTENCY_STORAGE_KEY = "prestigeso_checkout_idempotency";
 
@@ -92,7 +94,8 @@ function readStoredCheckoutIdempotency(): StoredCheckoutIdempotency | null {
 
 export default function CheckoutPage() {
   const router = useRouter();
-  const { items: cartItems, cartTotal, isHydrated: isCartHydrated } = useCart();
+  const { items: cartItems, cartTotal, isHydrated: isCartHydrated,
+    validationStatus, validationMessage, retryCartValidation } = useCart();
 
   const [user, setUser] = useState<User | null>(null);
   const [checkoutMode, setCheckoutMode] = useState<CheckoutMode | null>(null);
@@ -143,7 +146,8 @@ export default function CheckoutPage() {
   });
   const [cities, setCities] = useState<ProvinceOption[]>([]);
   const [districts, setDistricts] = useState<LocationOption[]>([]);
-  const [neighborhoods, setNeighborhoods] = useState<LocationOption[]>([]);
+  const { neighborhoods, status: neighborhoodsStatus, load: loadNeighborhoods,
+    reset: resetNeighborhoods, retry: retryNeighborhoods } = useNeighborhoods();
 
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -452,7 +456,7 @@ export default function CheckoutPage() {
       district: "",
       neighborhood: "",
     }));
-    setNeighborhoods([]);
+    resetNeighborhoods();
   };
 
   const handleDistrictSelect = async (district: LocationOption) => {
@@ -461,20 +465,7 @@ export default function CheckoutPage() {
       district: district.name,
       neighborhood: "",
     }));
-    try {
-      const res = await fetch(
-        `/api/turkiyeapi/neighborhoods?districtId=${district.id}&limit=1000`,
-      );
-      const json = await res.json();
-      if (json.status === "OK")
-        setNeighborhoods(
-          (json.data as LocationOption[]).sort((a, b) =>
-            a.name.localeCompare(b.name, "tr"),
-          ),
-        );
-    } catch (error) {
-      console.error("Mahalleler yüklenemedi:", error);
-    }
+    await loadNeighborhoods(district);
   };
 
   const handleNeighborhoodSelect = (neighborhoodName: string) => {
@@ -585,7 +576,7 @@ export default function CheckoutPage() {
         fullAddress: "",
       }));
       setDistricts([]);
-      setNeighborhoods([]);
+      resetNeighborhoods();
       showNotice("Adres kaydedildi.", "success");
     } catch (error: unknown) {
       showNotice("Adres kaydedilemedi: " + getErrorMessage(error), "error");
@@ -598,6 +589,8 @@ export default function CheckoutPage() {
     if (!checkoutMode)
       return "Devam etmek için giriş yapın veya üye olmadan devam edin.";
     if (!cartItems || cartItems.length === 0) return "Sepet boş.";
+    if (validationStatus !== "valid")
+      return validationMessage || "Sepet fiyatı ve stok bilgileri doğrulanıyor. Lütfen tekrar deneyin.";
     if (!shippingSettingsReady || shippingSettingsError)
       return "Kargo ve toplam tutar doğrulanamadı. Lütfen sayfayı yenileyip tekrar deneyin.";
     const email = normalizeEmail(addressData.email || user?.email || "");
@@ -830,6 +823,12 @@ export default function CheckoutPage() {
   return (
     <div className="min-h-screen bg-[#fcfcfc] py-6 md:py-12 px-4 font-sans text-black pb-28 md:pb-20">
       {notice && <NoticeToast notice={notice} />}
+      {validationStatus !== "valid" && (
+        <div role={validationStatus === "error" ? "alert" : "status"} className="max-w-6xl mx-auto mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          {validationMessage || "Sepet fiyatı ve stok bilgileri doğrulanıyor. Ürünleriniz korunuyor."}
+          {validationStatus === "error" && <button type="button" onClick={() => void retryCartValidation()} className="ml-3 font-bold underline">Sepeti tekrar doğrula</button>}
+        </div>
+      )}
       <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-6 lg:gap-10">
         <div className="flex-1 space-y-5 md:space-y-6">
           <section className="bg-white p-5 md:p-6 rounded-3xl border border-gray-100 shadow-sm">
@@ -950,11 +949,12 @@ export default function CheckoutPage() {
                 </div>
                 {isGuest && (
                   <div className="mb-6">
-                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
+                    <label htmlFor="checkout-email" className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
                       E-Posta Adresiniz *
                     </label>
                     <input
                       type="email"
+                      id="checkout-email"
                       name="email"
                       required
                       maxLength={MAX_EMAIL_LENGTH}
@@ -1132,6 +1132,7 @@ export default function CheckoutPage() {
           finalTotal={finalTotal}
           agreeTerms={agreeTerms}
           shippingSettingsReady={shippingSettingsReady && !shippingSettingsError}
+          cartReady={validationStatus === "valid"}
           onTermsChange={(checked) => {
             if (checked) openContractModal();
             else setAcceptedContractFingerprint(null);
@@ -1163,6 +1164,8 @@ export default function CheckoutPage() {
         cities={cities}
         districts={districts}
         neighborhoods={neighborhoods}
+        neighborhoodsStatus={neighborhoodsStatus}
+        onRetryNeighborhoods={() => void retryNeighborhoods()}
         onClose={() => setIsAddressModalOpen(false)}
         onSubmit={handleSaveAddressModal}
         onInputChange={handleInputChange}
@@ -1171,17 +1174,18 @@ export default function CheckoutPage() {
         onNeighborhoodSelect={handleNeighborhoodSelect}
       />
 
-      {isOtpModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-[9999] flex items-center justify-center p-4 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl relative">
+      <AccessibleDialog open={isOtpModalOpen} busy={isProcessing} onClose={() => setIsOtpModalOpen(false)} labelledBy="checkout-otp-title" className="max-w-md bg-white rounded-3xl p-8 shadow-2xl">
+          <div className="relative">
             <button
               type="button"
               onClick={() => setIsOtpModalOpen(false)}
+              aria-label="Doğrulama penceresini kapat"
+              disabled={isProcessing}
               className="absolute top-4 right-4 w-8 h-8 bg-gray-100 rounded-full font-bold hover:bg-gray-200 flex items-center justify-center"
             >
               ✕
             </button>
-            <h2 className="text-xl font-black uppercase tracking-tight text-center mb-2">
+            <h2 id="checkout-otp-title" className="text-xl font-black uppercase tracking-tight text-center mb-2">
               E-Posta Doğrulama
             </h2>
             <p className="text-sm font-medium text-gray-500 text-center mb-6">
@@ -1197,6 +1201,10 @@ export default function CheckoutPage() {
             >
               <input
                 type="text"
+                aria-label="6 haneli doğrulama kodu"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                data-dialog-autofocus
                 value={checkoutOtpCode}
                 onChange={(e) =>
                   setCheckoutOtpCode(
@@ -1216,8 +1224,7 @@ export default function CheckoutPage() {
               </button>
             </form>
           </div>
-        </div>
-      )}
+      </AccessibleDialog>
     </div>
   );
 }

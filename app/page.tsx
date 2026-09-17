@@ -3,6 +3,10 @@ import HomeClient, {
 } from "@/components/storefront/HomeClient";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import type { Campaign, HeroSlide } from "@/types";
+import { randomUUID } from "node:crypto";
+import { pageMetadata } from "@/lib/seo/pageMetadata";
+
+export const metadata = { ...pageMetadata("/", "Tarzını Yeniden Keşfet", "PrestigeSO aksesuar ve dekoratif ürün koleksiyonlarını keşfedin."), title: { absolute: "PrestigeSO | Tarzını Yeniden Keşfet" } };
 
 export const revalidate = 60;
 
@@ -15,11 +19,11 @@ type ReviewStat = {
 export default async function HomePage() {
   const now = new Date().toISOString();
   const productsResult = await supabaseAdmin
-    .from("products")
+    .from("products_public_catalog")
     .select(
-      "id,name,price,category,stock,images,image,is_bestseller,discount_price,created_at",
+      "id,name,price,category,stock,images,image,is_bestseller,discount_price,campaign_start_date,campaign_end_date,created_at,effective_price,display_base_price,available_stock,has_variants,is_discounted",
     )
-    .gt("stock", 0)
+    .gt("available_stock", 0)
     .order("created_at", { ascending: false })
     .limit(60);
   const productIds = (productsResult.data || []).map((product) => product.id);
@@ -70,6 +74,8 @@ export default async function HomePage() {
     .filter(Boolean);
   if (failures.length > 0)
     console.error("Vitrin verisi kısmen yüklenemedi:", failures);
+  const catalogErrorId = productsResult.error || campaignsResult.error ? randomUUID() : undefined;
+  if (catalogErrorId) console.error("Vitrin katalog hata kimliği:", catalogErrorId);
 
   const statsByProduct = new Map(
     ((statsResult.data || []) as ReviewStat[]).map((stat) => [
@@ -94,6 +100,7 @@ export default async function HomePage() {
   return (
     <HomeClient
       initialProducts={products}
+      catalogErrorId={catalogErrorId}
       initialCampaigns={(campaignsResult.data || []) as Campaign[]}
       initialHeroSlides={(slidesResult.data || []) as HeroSlide[]}
       initialCategories={

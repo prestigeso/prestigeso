@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAdminRequest } from "@/lib/adminRequest";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { comparePaytrStatus, queryPaytrStatus } from "@/lib/paytr/queryStatus";
+import { logServerEvent } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -25,18 +26,28 @@ export async function POST(req: NextRequest) {
       Number(order.refunded_amount || 0),
       remote,
     );
-    await supabaseAdmin
+    const persisted = await supabaseAdmin
       .from("orders")
       .update({
         last_reconciled_at: new Date().toISOString(),
         reconciliation_status: comparison.status,
         reconciliation_detail: comparison.detail,
       })
-      .eq("id", order.id);
+      .eq("id", order.id)
+      .select("id")
+      .maybeSingle();
+    if (persisted.error || !persisted.data) {
+      logServerEvent("error", "reconciliation_record_failed", { orderId: order.id, error: persisted.error });
+      return NextResponse.json(
+        { error: "PayTR karşılaştırması yapıldı ancak mutabakat kaydı saklanamadı. Sipariş çözülmüş olarak değerlendirilmemeli; yeniden kontrol edin." },
+        { status: 500 },
+      );
+    }
     return NextResponse.json(comparison);
   } catch (error) {
+    logServerEvent("error", "reconciliation_failed", { error });
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Mutabakat yapılamadı." },
+      { error: "Mutabakat doğrulanamadı. Sipariş çözülmüş olarak değerlendirilmemeli; işlem kaydını kontrol edin." },
       { status: 502 },
     );
   }

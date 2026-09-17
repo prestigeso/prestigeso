@@ -1,3 +1,4 @@
+import { logServerEvent } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 import {
   createOtpProof,
@@ -59,7 +60,7 @@ export async function POST(req: NextRequest) {
       verificationToken: createOtpProof(email, purpose),
     });
   } catch (error) {
-    console.error("verify-otp unexpected error:", error);
+logServerEvent("error", "otp_verify_failed", { error });
     return NextResponse.json(
       { error: "Doğrulama tamamlanamadı." },
       { status: 500 },

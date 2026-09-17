@@ -17,6 +17,24 @@ async function getAuthenticatedUserId(req: NextRequest) {
   return error ? null : data.user?.id || null;
 }
 
+/** Read the server-owned line ledger when opening the return dialog, never infer remaining units from the original order. */
+export async function GET(req: NextRequest) {
+  try {
+    const userId = await getAuthenticatedUserId(req);
+    if (!userId) return NextResponse.json({ error: "Oturum doğrulanamadı." }, { status: 401 });
+    const orderId = Number(req.nextUrl.searchParams.get("orderId"));
+    if (!Number.isSafeInteger(orderId) || orderId <= 0)
+      return NextResponse.json({ error: "Geçersiz sipariş." }, { status: 400 });
+    const { data, error } = await supabaseAdmin.rpc("get_return_availability", {
+      p_order_id: orderId, p_user_id: userId,
+    });
+    if (error) return NextResponse.json({ error: "İade edilebilir ürünler doğrulanamadı. Destek ekibiyle iletişime geçin." }, { status: 409 });
+    return NextResponse.json(data, { headers: { "Cache-Control": "private, no-store" } });
+  } catch {
+    return NextResponse.json({ error: "İade bilgileri yüklenemedi." }, { status: 500 });
+  }
+}
+
 export async function POST(req: NextRequest) {
   let cleanupPendingEvidence: (() => Promise<void>) | null = null;
   try {
@@ -96,8 +114,8 @@ export async function POST(req: NextRequest) {
       .select("id, items, status, created_at, delivered_at")
       .eq("id", orderId)
       .eq("user_id", userId)
-      .eq("payment_status", "paid")
-      .in("status", ["Teslim Edildi", "Tamamlandı"])
+      .in("payment_status", ["paid", "partially_refunded"])
+      .in("status", ["Teslim Edildi", "Tamamlandı", "Kısmi İade"])
       .maybeSingle();
     if (orderError) {
       await cleanupPendingEvidence();
@@ -115,6 +133,7 @@ export async function POST(req: NextRequest) {
     }
     const deliveredAt = new Date(order.delivered_at || order.created_at).getTime();
     if (
+      !Number.isFinite(deliveredAt) || deliveredAt > Date.now() ||
       Date.now() - deliveredAt > 14 * 24 * 60 * 60 * 1000
     ) {
       await cleanupPendingEvidence();
@@ -218,7 +237,7 @@ export async function POST(req: NextRequest) {
       await cleanupPendingEvidence();
       const conflict =
         requestError.code === "23505" ||
-        /RETURN_REQUEST_EXISTS|RETURN_EVIDENCE_INVALID|ORDER_NOT_RETURNABLE/.test(
+        /RETURN_REQUEST_EXISTS|RETURN_EVIDENCE_INVALID|ORDER_NOT_RETURNABLE|RETURN_QUANTITY_EXCEEDED|RETURN_FINANCIAL_RECONCILIATION_REQUIRED|RETURN_AMOUNT_INVALID/.test(
           requestError.message,
         );
       return NextResponse.json(

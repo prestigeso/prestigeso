@@ -1,7 +1,8 @@
 import { Metadata } from "next";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sanitizeImageUrl } from "@/lib/utils";
-import { getEffectiveUnitPrice } from "@/lib/commerce/pricing";
+import { buildProductStructuredData } from "@/lib/products/structuredData";
+import type { PriceCampaign, PriceVariant } from "@/lib/commerce/catalogPricing";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -57,34 +58,20 @@ export default async function ProductLayout({
   params,
 }: Props) {
   const { id } = await params;
-  const { data: product } = await supabaseAdmin
+  const productId = Number(id);
+  if (!Number.isSafeInteger(productId) || productId <= 0) return <>{children}</>;
+  const [{ data: product }, campaignResult, variantResult] = await Promise.all([supabaseAdmin
     .from("products")
-    .select("id,name,description,image,price,discount_price,stock,SKU")
-    .eq("id", id)
-    .maybeSingle();
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "").replace(/\/$/, "");
-  const structuredData = product
-    ? {
-        "@context": "https://schema.org",
-        "@type": "Product",
-        name: product.name,
-        description: product.description || undefined,
-        image: sanitizeImageUrl(product.image),
-        sku: product.SKU,
-        offers: {
-          "@type": "Offer",
-          url: `${siteUrl}/product/${product.id}`,
-          priceCurrency: "TRY",
-          price: getEffectiveUnitPrice({
-            basePrice: product.price,
-            discountPrice: product.discount_price,
-          }),
-          availability:
-            Number(product.stock) > 0
-              ? "https://schema.org/InStock"
-              : "https://schema.org/OutOfStock",
-        },
-      }
+    .select("id,name,description,image,images,price,discount_price,campaign_start_date,campaign_end_date,stock,SKU")
+    .eq("id", productId)
+    .maybeSingle(),
+    supabaseAdmin.from("campaigns").select("product_ids,discount_percent,start_date,end_date").gte("end_date", new Date().toISOString()),
+    supabaseAdmin.from("product_variants").select("id,product_id,price,stock,is_active").eq("product_id", productId).eq("is_active", true),
+  ]);
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.prestigeso.com.tr").replace(/\/$/, "");
+  // Missing pricing dependencies must not publish a misleading offer to crawlers.
+  const structuredData = product && !campaignResult.error && !variantResult.error
+    ? buildProductStructuredData(product, (campaignResult.data || []) as PriceCampaign[], (variantResult.data || []) as PriceVariant[], sanitizeImageUrl(product.images?.[0] || product.image), siteUrl)
     : null;
   return (
     <>

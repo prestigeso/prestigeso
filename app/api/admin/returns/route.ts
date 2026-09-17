@@ -3,7 +3,6 @@ import { isAdminRequest } from "@/lib/adminRequest";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { RefundError, refundOrder } from "@/lib/paytr/refundOrder";
 import { ReturnDecisionError, runReturnDecision } from "@/lib/returns/returnDecision";
-import { calculateReturnRefundAmount } from "@/lib/returns/refundAmount";
 
 export const runtime = "nodejs";
 
@@ -32,19 +31,26 @@ export async function PATCH(req: NextRequest) {
       decision?: unknown;
       note?: unknown;
       returnShippingCode?: unknown;
+      requestId?: unknown;
+      expectedRefundAmount?: unknown;
     };
     const orderId = Number(body.orderId);
     const decision = String(body.decision);
+    const requestId = Number(body.requestId);
+    const expectedRefundAmount = Number(body.expectedRefundAmount);
     const note = String(body.note || "").trim().slice(0, 1000) || null;
     const returnShippingCode =
       String(body.returnShippingCode || "").trim().slice(0, 100) || null;
-    if (!Number.isSafeInteger(orderId) || !["approve", "reject"].includes(decision))
+    if (!Number.isSafeInteger(orderId) || orderId <= 0 ||
+      !Number.isSafeInteger(requestId) || requestId <= 0 || !["approve", "reject"].includes(decision) ||
+      (decision === "approve" && (!Number.isFinite(expectedRefundAmount) || expectedRefundAmount <= 0)))
       return NextResponse.json({ error: "Geçersiz iade kararı." }, { status: 400 });
 
     const { data: request, error: requestError } = await supabaseAdmin
       .from("return_requests")
       .select("id, original_order_status, status, items")
       .eq("order_id", orderId)
+      .eq("id", requestId)
       .eq("status", "pending")
       .maybeSingle();
     if (requestError) throw new Error(requestError.message);
@@ -54,62 +60,32 @@ export async function PATCH(req: NextRequest) {
     const decidedAt = new Date().toISOString();
     if (decision === "reject") {
       await runReturnDecision({
-        claim: () => supabaseAdmin
-          .from("return_requests")
-          .update({ status: "rejected", admin_note: note, decided_at: decidedAt })
-          .eq("id", request.id)
-          .eq("status", "pending")
-          .select("id")
-          .maybeSingle(),
-        perform: async () => {
-          const restored = await supabaseAdmin
-            .from("orders")
-            .update({ status: request.original_order_status })
-            .eq("id", orderId)
-            .eq("status", "İade Talebi")
-            .select("id")
-            .maybeSingle();
-          if (restored.error || !restored.data)
-            throw new ReturnDecisionError(
-              "İade talebi reddedildi ancak sipariş durumu güncellenemedi. Manuel kontrol gerekiyor.",
-              500,
-            );
-        },
+        claim: () => supabaseAdmin.rpc("decide_return_request", {
+          p_request_id: requestId, p_decision: "reject", p_decided_at: decidedAt, p_note: note,
+        }),
+        // Rejection and restoration happen atomically under the same order lock.
+        perform: async () => undefined,
         canRetry: () => false,
       });
       return NextResponse.json({ success: true, status: request.original_order_status });
     }
 
-    const { data: order, error: orderError } = await supabaseAdmin
-      .from("orders")
-      .select("items, total_amount")
-      .eq("id", orderId)
-      .single();
-    if (orderError || !order) throw new Error(orderError?.message || "Sipariş bulunamadı.");
-    const refundAmount = calculateReturnRefundAmount({
-      orderItems: order.items,
-      returnItems: request.items,
-      totalAmount: order.total_amount,
-    });
+    let refundAmount = 0;
     const refund = await runReturnDecision({
-      claim: () => supabaseAdmin
-        .from("return_requests")
-        .update({
-          status: "approved",
-          admin_note: note,
-          return_shipping_code: returnShippingCode,
-          decided_at: decidedAt,
-        })
-        .eq("id", request.id)
-        .eq("status", "pending")
-        .select("id")
-        .maybeSingle(),
-      perform: () => refundOrder({
-        orderId,
-        newStatus: "İade Edildi",
-        refundAmount,
-        returnRequestId: Number(request.id),
-      }),
+      claim: async () => {
+        const result = await supabaseAdmin.rpc("decide_return_request", {
+          p_request_id: requestId, p_decision: "approve", p_decided_at: decidedAt,
+          p_note: note, p_shipping_code: returnShippingCode,
+        });
+        refundAmount = Number(result.data?.refund_amount);
+        return result;
+      },
+      perform: () => {
+        if (!Number.isFinite(refundAmount) || refundAmount <= 0 ||
+          Math.round(refundAmount * 100) !== Math.round(expectedRefundAmount * 100))
+          throw new RefundError("İade tutarı değişti. Listeyi yenileyip güncel tutarı yeniden onaylayın.", 409, true);
+        return refundOrder({ orderId, newStatus: "İade Edildi", refundAmount, returnRequestId: requestId });
+      },
       complete: () => supabaseAdmin
         .from("return_requests")
         .update({ status: "completed", refund_amount: refundAmount })

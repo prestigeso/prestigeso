@@ -224,7 +224,9 @@ test("return evidence has atomic quota reservations and submitted-file protectio
   );
   assert.match(migration, /for update skip locked/);
   assert.match(migration, /deletion_claim_id = p_deletion_claim_id/);
-  assert.match(route, /select\("id, created_at, delivered_at"\)/);
+  assert.match(route, /rpc\("get_return_availability"/);
+  assert.match(route, /p_order_id: orderId, p_user_id: userId/);
+  assert.match(route, /availability\?\.eligible !== true/);
   assert.match(lifecycle, /complete_return_evidence_release/);
   assert.match(lifecycle, /cancel_return_evidence_release/);
   assert.match(maintenance, /cleanupStaleReturnEvidenceUploads\(100\)/);

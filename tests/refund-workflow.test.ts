@@ -235,9 +235,12 @@ test("full refund closes the financial balance and duplicate requests do not rep
 
 test("production adapter uses financial snapshot CAS and verifies affected rows", async () => {
   const source = await readFile(new URL("../lib/paytr/refundOrder.ts", import.meta.url), "utf8");
-  assert.match(source, /eq\("refunded_amount", order\.refunded_amount\)/);
-  assert.match(source, /eq\("total_amount", order\.total_amount\)/);
-  assert.match(source, /eq\("status", order\.status\)/);
+  assert.match(source, /rpc\("claim_order_refund"/);
+  assert.match(source, /p_refunded_amount: order\.refunded_amount/);
+  assert.match(source, /p_total_amount: Number\(order\.total_amount\)/);
+  assert.match(source, /p_status: order\.status/);
+  assert.match(source, /p_request_id: returnRequestId/);
+  assert.match(source, /return data === true/);
   assert.match(source, /eq\("refund_started_at", startedAt\)/);
-  assert.equal((source.match(/select\("id"\)\.maybeSingle\(\)/g) || []).length, 4);
+  assert.equal((source.match(/select\("id"\)\.maybeSingle\(\)/g) || []).length, 3);
 });

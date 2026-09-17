@@ -4,6 +4,8 @@ export const metadata: Metadata = {
   title: "Giriş Yap",
   description: "PrestigeSO hesabınıza giriş yapın veya yeni kayıt oluşturun.",
   robots: { index: false, follow: false },
+  alternates: { canonical: "/login" },
+  referrer: "no-referrer",
 };
 
 export default function LoginLayout({

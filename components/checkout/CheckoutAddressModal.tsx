@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import SelectPopover from "./SelectPopover";
+import AccessibleDialog from "@/components/ui/AccessibleDialog";
 import {
   MAX_ADDRESS_TITLE_LENGTH,
   MAX_FULL_ADDRESS_LENGTH,
@@ -19,6 +20,8 @@ type Props = {
   cities: ProvinceOption[];
   districts: LocationOption[];
   neighborhoods: LocationOption[];
+  neighborhoodsStatus: "idle" | "loading" | "ready" | "error";
+  onRetryNeighborhoods: () => void;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onInputChange: (
@@ -39,6 +42,8 @@ export default function CheckoutAddressModal({
   cities,
   districts,
   neighborhoods,
+  neighborhoodsStatus,
+  onRetryNeighborhoods,
   onClose,
   onSubmit,
   onInputChange,
@@ -81,18 +86,24 @@ export default function CheckoutAddressModal({
     [neighborhoods, neighborhoodSearch],
   );
 
-  if (!isOpen) return null;
-
+  const close = () => {
+    setOpenSelect(null);
+    setCitySearch("");
+    setDistrictSearch("");
+    setNeighborhoodSearch("");
+    onClose();
+  };
   return (
-    <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white w-full max-w-lg rounded-3xl p-6 md:p-8 shadow-2xl max-h-[90vh] flex flex-col relative z-10">
+    <AccessibleDialog open={isOpen} onClose={close} busy={isSaving} labelledBy="checkout-address-title" className="max-w-lg rounded-3xl bg-white p-6 md:p-8 shadow-2xl">
+      <div className="flex flex-col">
         <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4 shrink-0">
-          <h2 className="text-xl font-black uppercase tracking-tight">
+          <h2 id="checkout-address-title" tabIndex={-1} data-dialog-autofocus className="text-xl font-black uppercase tracking-tight">
             Yeni Adres Ekle
           </h2>
           <button
             type="button"
-            onClick={onClose}
+            onClick={close}
+            disabled={isSaving}
             className="w-8 h-8 bg-gray-100 rounded-full font-bold hover:bg-gray-200"
             aria-label="Kapat"
           >
@@ -195,10 +206,10 @@ export default function CheckoutAddressModal({
               label="Mahalle *"
               value={address.neighborhood}
               placeholder="Mahalle Seçiniz"
-              disabled={!address.district}
+              disabled={!address.district || neighborhoodsStatus !== "ready"}
               open={openSelect === "neighborhood"}
               onToggle={() =>
-                address.district &&
+                address.district && neighborhoodsStatus === "ready" &&
                 setOpenSelect(
                   openSelect === "neighborhood" ? null : "neighborhood",
                 )
@@ -217,18 +228,27 @@ export default function CheckoutAddressModal({
                 }}
                 placeholder="Mahalle Ara..."
                 emptyText={
-                  neighborhoods.length === 0 ? "Yükleniyor..." : "Sonuç yok"
+                  neighborhoods.length === 0 ? "Bu ilçe için mahalle bulunamadı" : "Sonuç yok"
                 }
               />
             </LocationField>
           </div>
+          {neighborhoodsStatus === "loading" && <p role="status" className="text-sm text-gray-600">Mahalleler yükleniyor...</p>}
+          {neighborhoodsStatus === "error" && (
+            <div role="alert" className="rounded-xl bg-red-50 p-3 text-sm text-red-800">
+              Mahalleler yüklenemedi. Adres bilgileriniz korundu.
+              <button type="button" onClick={onRetryNeighborhoods} className="ml-2 font-bold underline">Tekrar dene</button>
+            </div>
+          )}
+          {neighborhoodsStatus === "ready" && neighborhoods.length === 0 && <p role="status" className="text-sm text-amber-800">Bu ilçe için mahalle bulunamadı. İlçe seçimini kontrol edin.</p>}
           <div>
-            <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
+            <label htmlFor="checkout-full-address" className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
               Açık Adres *
             </label>
             <textarea
               required
               name="fullAddress"
+              id="checkout-full-address"
               maxLength={MAX_FULL_ADDRESS_LENGTH}
               value={address.fullAddress}
               onChange={onInputChange}
@@ -239,14 +259,14 @@ export default function CheckoutAddressModal({
           </div>
           <button
             type="submit"
-            disabled={isSaving}
+            disabled={isSaving || neighborhoodsStatus !== "ready" || !address.neighborhood}
             className="w-full bg-black text-white py-4 rounded-xl font-black text-xs uppercase tracking-widest disabled:opacity-50 shadow-md active:scale-95 transition-all mt-4"
           >
             {isSaving ? "Kaydediliyor..." : "Adresi Kaydet 📍"}
           </button>
         </form>
       </div>
-    </div>
+    </AccessibleDialog>
   );
 }
 
@@ -256,10 +276,10 @@ function LabeledInput({
 }: React.InputHTMLAttributes<HTMLInputElement> & { label: string }) {
   return (
     <div>
-      <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
+      <label htmlFor={props.name} className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
         {label}
       </label>
-      <input {...props} className={inputClass} />
+      <input {...props} id={props.name} className={inputClass} />
     </div>
   );
 }
@@ -281,15 +301,24 @@ function LocationField({
   onToggle: () => void;
   children: React.ReactNode;
 }) {
+  const trigger = useRef<HTMLButtonElement>(null);
+  const wasOpen = useRef(false);
+  useEffect(() => {
+    if (wasOpen.current && !open) trigger.current?.focus({ preventScroll: true });
+    wasOpen.current = open;
+  }, [open]);
   return (
     <div className="relative">
       <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-2">
         {label}
       </label>
       <button
+        ref={trigger}
         type="button"
         disabled={disabled}
         onClick={onToggle}
+        aria-label={label}
+        aria-expanded={open}
         className={`w-full p-3 bg-gray-50 border border-gray-200 rounded-xl font-medium flex justify-between items-center text-left ${disabled ? "opacity-50 cursor-not-allowed" : ""}`}
       >
         <span className={value ? "text-black line-clamp-1" : "text-gray-400"}>

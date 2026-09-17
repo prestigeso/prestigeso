@@ -62,10 +62,7 @@ export async function releaseExpiredReservations() {
     "release_expired_stock_reservations",
   );
   if (error)
-    console.error(
-      "Süresi dolan stok rezervasyonları temizlenemedi:",
-      error.message,
-    );
+    logServerEvent("error", "stock_reservation_cleanup_failed", { error });
 }
 
 export async function claimPostPaymentProcessing(orderId: number) {
@@ -94,3 +91,4 @@ export async function finishPostPaymentProcessing(
       rpcErrorMessage("Ödeme sonrası işlem durumu kaydedilemedi", error),
     );
 }
+import { logServerEvent } from "@/lib/logger";

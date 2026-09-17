@@ -5,6 +5,7 @@ import { formatMoney } from "@/lib/checkout/checkoutFormatters";
 import type { AddressForm } from "@/lib/checkout/checkoutTypes";
 import { BUSINESS_INFO } from "@/lib/businessInfo";
 import type { CartItem } from "@/types";
+import AccessibleDialog from "@/components/ui/AccessibleDialog";
 
 type CheckoutContractModalProps = {
   isOpen: boolean;
@@ -29,13 +30,11 @@ export default function CheckoutContractModal({
   shippingFee,
   finalTotal,
 }: CheckoutContractModalProps) {
-  if (!isOpen) return null;
-
   return (
-    <div className="fixed inset-0 bg-black/60 z-[999] flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white w-full max-w-2xl rounded-3xl p-6 md:p-8 shadow-2xl max-h-[90vh] flex flex-col relative z-10">
+    <AccessibleDialog open={isOpen} onClose={onClose} labelledBy="checkout-contract-title" className="max-w-2xl rounded-3xl bg-white p-6 md:p-8 shadow-2xl">
+      <div className="flex flex-col max-h-[calc(90dvh-4rem)]">
         <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4 shrink-0">
-          <h2 className="text-lg font-black uppercase tracking-tight">
+          <h2 id="checkout-contract-title" tabIndex={-1} data-dialog-autofocus className="text-lg font-black uppercase tracking-tight">
             Ön Bilgilendirme ve Mesafeli Satış Sözleşmesi
           </h2>
 
@@ -157,6 +156,6 @@ export default function CheckoutContractModal({
           </button>
         </div>
       </div>
-    </div>
+    </AccessibleDialog>
   );
 }

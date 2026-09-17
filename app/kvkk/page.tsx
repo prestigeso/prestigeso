@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "KVKK Aydınlatma Metni",
+  alternates: { canonical: "/kvkk" },
   description:
     "PrestigeSO kişisel verilerin korunması ve çerez kullanımı aydınlatma metni.",
 };

@@ -1,3 +1,4 @@
+import { logServerEvent } from "@/lib/logger";
 import crypto from "crypto";
 import type { ReactElement } from "react";
 import { NextRequest, NextResponse } from "next/server";
@@ -103,7 +104,7 @@ export async function POST(req: NextRequest) {
       message: "Doğrulama kodu gönderildi.",
     });
   } catch (error) {
-    console.error("send-otp unexpected error:", error);
+logServerEvent("error", "otp_send_failed", { error });
     return NextResponse.json(
       { error: "Doğrulama kodu gönderilemedi." },
       { status: 500 },

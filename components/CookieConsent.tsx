@@ -73,14 +73,14 @@ export default function CookieConsent() {
           setShowPreferences(true);
           setIsVisible(true);
         }}
-        className="fixed bottom-3 left-3 z-40 rounded-full border border-gray-200 bg-white px-3 py-2 text-[9px] font-bold text-gray-500 shadow-sm"
+        className="fixed bottom-24 md:bottom-3 left-3 z-[110] rounded-full border border-gray-200 bg-white px-3 py-2 text-[9px] font-bold text-gray-500 shadow-sm"
       >
         Çerez tercihleri
       </button>
     );
 
   return (
-    <div className="fixed bottom-0 left-0 w-full bg-white border-t border-gray-200 p-4 md:p-6 shadow-2xl z-50 flex flex-col md:flex-row items-center justify-between gap-4">
+    <div className="fixed bottom-0 left-0 w-full max-h-[90dvh] overflow-y-auto bg-white border-t border-gray-200 p-4 md:p-6 shadow-2xl z-[150] flex flex-col md:flex-row items-center justify-between gap-4">
       <div className="flex-1 text-[11px] md:text-sm text-gray-600">
         <p>
           Sizlere daha iyi bir alışveriş deneyimi sunabilmek için sitemizde

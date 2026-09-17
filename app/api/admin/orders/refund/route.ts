@@ -1,3 +1,4 @@
+import { logServerEvent } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 import { isAdminRequest } from "@/lib/adminRequest";
 import { RefundError, refundOrder } from "@/lib/paytr/refundOrder";
@@ -35,7 +36,7 @@ export async function POST(req: NextRequest) {
     const status = error instanceof RefundError ? error.status : 500;
     const message =
       error instanceof Error ? error.message : "İade işlemi başarısız.";
-    console.error("Refund error:", error);
+logServerEvent("error", "refund_failed", { error });
     return NextResponse.json({ error: message }, { status });
   }
 }

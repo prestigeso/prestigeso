@@ -10,12 +10,19 @@ const [keyFile, certFile] = process.argv.slice(2);
 if (!keyFile || !certFile) {
   throw new Error("Usage: node scripts/local-test-https.mjs <key.pem> <cert.pem>");
 }
+// Opt-in negative HTTP tests only, with a synthetic backend and disabled provider keys.
+// The default bridge remains read-only even when a local build uses real credentials.
+const isolated = process.env.PHASE0_ISOLATED === "1";
+if (isolated) {
+  const health = await fetch("http://127.0.0.1:54321/__health").then(response => response.json());
+  if (health.fixture !== true) throw new Error("Isolated fixture is required");
+}
 
 const server = createServer({
   key: readFileSync(keyFile),
   cert: readFileSync(certFile),
 }, (incoming, outgoing) => {
-  if (!["GET", "HEAD", "OPTIONS"].includes(incoming.method || "")) {
+  if (!isolated && !["GET", "HEAD", "OPTIONS"].includes(incoming.method || "")) {
     outgoing.writeHead(405, { "Content-Type": "text/plain", Allow: "GET, HEAD, OPTIONS" });
     outgoing.end("Local browser checks are read-only.");
     return;
@@ -37,5 +44,5 @@ const server = createServer({
   incoming.pipe(upstream);
 });
 server.listen(3443, "127.0.0.1", () => {
-  console.log("Read-only HTTPS test bridge: https://127.0.0.1:3443 -> http://127.0.0.1:3100");
+  console.log(`${isolated ? "Isolated fixture" : "Read-only"} HTTPS test bridge: https://127.0.0.1:3443 -> http://127.0.0.1:3100`);
 });

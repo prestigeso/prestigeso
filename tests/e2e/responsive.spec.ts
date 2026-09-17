@@ -66,6 +66,7 @@ test("product can be added to cart and checkout opens", async ({
   page,
 }, testInfo) => {
   await page.goto(productPath, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "Yalnızca zorunlu", exact: true }).click();
   const addToCartTestId =
     testInfo.project.name === "desktop-chrome"
       ? "add-to-cart-desktop"

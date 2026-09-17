@@ -1,29 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { useAppAlert } from "@/context/AppAlertContext";
-import { safeParseIds, sanitizeImageUrl } from "@/lib/utils";
-import { getEffectiveUnitPrice } from "@/lib/commerce/pricing";
+import { sanitizeImageUrl } from "@/lib/utils";
+import { getProductUnitPrice } from "@/lib/commerce/catalogPricing";
 
 import type { Product, Campaign } from "@/types";
-
-function getActiveCampaign(productId: number | string, campaigns: Campaign[]) {
-  const now = new Date();
-
-  return campaigns.find((campaign) => {
-    const ids = safeParseIds(campaign.product_ids);
-
-    return (
-      ids.includes(Number(productId)) &&
-      now >= new Date(campaign.start_date) &&
-      now <= new Date(campaign.end_date)
-    );
-  });
-}
 
 type ShopClientProps = {
   initialProducts: Product[];
@@ -43,6 +29,7 @@ type ShopClientProps = {
   availability: string;
   option: string;
   variantOptions: string[];
+  catalogErrorId?: string;
 };
 
 export default function ShopPage({
@@ -63,8 +50,10 @@ export default function ShopPage({
   availability,
   option,
   variantOptions,
+  catalogErrorId,
 }: ShopClientProps) {
   const router = useRouter();
+  const [retrying, startRetry] = useTransition();
   const { showToast } = useAppAlert();
   const [searchInput, setSearchInput] = useState(query);
 
@@ -125,11 +114,11 @@ export default function ShopPage({
     const nextCategory = overrides.category ?? category;
     const nextSort = overrides.sort ?? sort;
     const nextPage = overrides.page ?? page;
-    const nextMinPrice = overrides.minPrice ?? minPrice;
-    const nextMaxPrice = overrides.maxPrice ?? maxPrice;
+    const nextMinPrice = overrides.minPrice === undefined ? minPrice : overrides.minPrice;
+    const nextMaxPrice = overrides.maxPrice === undefined ? maxPrice : overrides.maxPrice;
     const nextDiscounted = overrides.discounted ?? discounted;
     const nextBestseller = overrides.bestseller ?? bestseller;
-    const nextMinRating = overrides.minRating ?? minRating;
+    const nextMinRating = overrides.minRating === undefined ? minRating : overrides.minRating;
     const nextAvailability = overrides.availability ?? availability;
     const nextOption = overrides.option ?? option;
     if (nextQuery) next.set("q", nextQuery);
@@ -210,7 +199,7 @@ export default function ShopPage({
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row justify-between items-center mb-10 border-b border-gray-100 pb-8 gap-6">
           <h1 className="text-3xl font-black uppercase tracking-tighter text-black">
-            TÜM ÜRÜNLER <span className="text-gray-300 ml-2">[{total}]</span>
+            {category || "TÜM ÜRÜNLER"} {!catalogErrorId && <span className="text-gray-300 ml-2">[{total}]</span>}
           </h1>
 
           <form
@@ -340,7 +329,14 @@ export default function ShopPage({
           </select>
         </div>
 
-        {dbProducts.length === 0 ? (
+        {catalogErrorId ? (
+          <div role="alert" className="my-8 rounded-2xl border border-amber-200 bg-amber-50 p-6">
+            <h2 className="font-bold">Ürünler şu anda yüklenemedi.</h2>
+            <p className="mt-2 text-sm">Filtreleriniz korundu. Lütfen yeniden deneyin.</p>
+            <p className="mt-2 text-xs text-gray-500">Hata kimliği: {catalogErrorId}</p>
+            <button type="button" disabled={retrying} onClick={() => startRetry(() => router.refresh())} className="mt-4 rounded-lg bg-black px-4 py-3 text-sm font-bold text-white disabled:opacity-50">{retrying ? "Yükleniyor…" : "Tekrar dene"}</button>
+          </div>
+        ) : dbProducts.length === 0 ? (
           <div className="py-20 text-center font-bold text-gray-300 uppercase tracking-widest">
             Ürün bulunamadı.
           </div>
@@ -405,14 +401,8 @@ function ShopCard({
   onToggleFavorite: (productId: number, isCurrentlyFavorite: boolean) => void;
 }) {
   const displayImage = sanitizeImageUrl(product.images?.[0] || product.image);
-  const activeCampaign = getActiveCampaign(product.id, campaigns);
-
-  const originalPrice = Number(product.price || 0);
-  const activePrice = getEffectiveUnitPrice({
-    basePrice: originalPrice,
-    discountPrice: product.discount_price,
-    campaignPercent: activeCampaign?.discount_percent,
-  });
+  const originalPrice = Number(product.display_base_price ?? product.price ?? 0);
+  const activePrice = Number(product.effective_price ?? getProductUnitPrice(product, campaigns));
   const hasPriceDiscount = activePrice < originalPrice;
 
   const handleFavoriteClick = async (e: React.MouseEvent) => {
@@ -445,9 +435,7 @@ function ShopCard({
 
         {hasPriceDiscount ? (
           <div className="absolute bottom-0 w-full bg-red-600 text-white text-[10px] font-black text-center py-1.5 uppercase tracking-widest z-10">
-            {activeCampaign
-              ? `%${activeCampaign.discount_percent} İNDİRİM`
-              : "İNDİRİM"}
+            İNDİRİM
           </div>
         ) : product.is_bestseller ? (
           <div className="absolute bottom-0 w-full bg-black text-white text-[10px] font-black text-center py-1.5 uppercase tracking-widest z-10">
@@ -463,6 +451,7 @@ function ShopCard({
       <h3 className="text-sm font-bold text-black line-clamp-1 mb-1">
         {product.name}
       </h3>
+      {product.has_variants && <p className="mb-1 text-[10px] text-gray-500">Başlayan fiyatlarla</p>}
 
       {hasPriceDiscount ? (
         <div className="flex flex-col gap-1">

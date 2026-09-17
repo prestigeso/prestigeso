@@ -1,3 +1,4 @@
+import { logServerEvent } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getCustomerDisplayName } from "@/lib/customerDisplayName";
@@ -91,7 +92,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true }, { status: 201 });
   } catch (error) {
-    console.error("Question creation failed", error);
+logServerEvent("error", "question_creation_failed", { error });
     return NextResponse.json(
       { error: "Soru kaydedilemedi." },
       { status: 500 },

@@ -12,7 +12,7 @@ const LIST_CONFIG = {
   },
   orders: {
     select:
-      "id,order_no,merchant_oid,user_id,user_email,items,shipping_address,status,total_amount,created_at,shipping_carrier,tracking_number,payment_provider,payment_status,paytr_total_amount,paid_at,failed_reason,return_requests(id,reason,items,evidence_urls,status,admin_note,refund_amount,created_at)",
+      "id,order_no,merchant_oid,user_id,user_email,items,shipping_address,status,total_amount,created_at,shipping_carrier,tracking_number,payment_provider,payment_status,paytr_total_amount,paid_at,failed_reason,return_requests(id,reason,items,evidence_urls,status,admin_note,refund_amount,requested_refund_amount,created_at)",
   },
 } as const;
 

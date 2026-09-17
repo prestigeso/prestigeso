@@ -1,99 +1,47 @@
 import type { MetadataRoute } from "next";
-import { supabase } from "@/lib/supabase";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import {
+  buildSitemapEntries,
+  readSitemapRows,
+  type SitemapProduct,
+  type SitemapCategory,
+} from "@/lib/seo/sitemapData";
 
 const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL || "https://prestigeso.com.tr";
-
+  process.env.NEXT_PUBLIC_SITE_URL || "https://www.prestigeso.com.tr";
 export const revalidate = 3600;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const now = new Date();
-
-  const staticRoutes: MetadataRoute.Sitemap = [
-    {
-      url: `${SITE_URL}/`,
-      lastModified: now,
-      changeFrequency: "daily",
-      priority: 1,
-    },
-    {
-      url: `${SITE_URL}/shop`,
-      lastModified: now,
-      changeFrequency: "daily",
-      priority: 0.9,
-    },
-    {
-      url: `${SITE_URL}/hakkimizda`,
-      lastModified: now,
-      changeFrequency: "monthly",
-      priority: 0.6,
-    },
-    {
-      url: `${SITE_URL}/iletisim`,
-      lastModified: now,
-      changeFrequency: "yearly",
-      priority: 0.5,
-    },
-    {
-      url: `${SITE_URL}/teslimat-bilgileri`,
-      lastModified: now,
-      changeFrequency: "monthly",
-      priority: 0.5,
-    },
-    {
-      url: `${SITE_URL}/guvenlik-ve-iade`,
-      lastModified: now,
-      changeFrequency: "monthly",
-      priority: 0.5,
-    },
-    {
-      url: `${SITE_URL}/gizlilik-politikasi`,
-      lastModified: now,
-      changeFrequency: "yearly",
-      priority: 0.4,
-    },
-    {
-      url: `${SITE_URL}/kvkk`,
-      lastModified: now,
-      changeFrequency: "yearly",
-      priority: 0.4,
-    },
-    {
-      url: `${SITE_URL}/gizlilik-ilkeleri`,
-      lastModified: now,
-      changeFrequency: "yearly",
-      priority: 0.4,
-    },
-    {
-      url: `${SITE_URL}/uyelik-sozlesmesi`,
-      lastModified: now,
-      changeFrequency: "yearly",
-      priority: 0.4,
-    },
-    {
-      url: `${SITE_URL}/mesafeli-satis-sozlesmesi`,
-      lastModified: now,
-      changeFrequency: "yearly",
-      priority: 0.4,
-    },
-  ];
-
+  // Throw on upstream errors instead of publishing a successful but incomplete sitemap.
+  // No stock filter: temporarily sold-out product pages remain useful and indexable.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
   try {
-    const { data: products } = await supabase
-      .from("products")
-      .select("id, created_at, stock")
-      .gt("stock", 0);
-
-    const productRoutes: MetadataRoute.Sitemap =
-      products?.map((product: { id: number; created_at?: string; stock?: number }) => ({
-        url: `${SITE_URL}/product/${product.id}`,
-        lastModified: product.created_at ? new Date(product.created_at) : now,
-        changeFrequency: "weekly",
-        priority: 0.8,
-      })) || [];
-
-    return [...staticRoutes, ...productRoutes];
-  } catch {
-    return staticRoutes;
+    const [products, categories] = await Promise.all([
+      readSitemapRows<SitemapProduct>(async (afterId, limit) =>
+        supabaseAdmin
+          .from("products")
+          .select("id,updated_at,created_at")
+          .gt("id", afterId)
+          .order("id")
+          .limit(limit)
+          .abortSignal(controller.signal),
+      ),
+      readSitemapRows<SitemapCategory>(
+        async (afterId, limit) =>
+          supabaseAdmin
+            .from("categories")
+            .select("id,name")
+            .gt("id", afterId)
+            .order("id")
+            .limit(limit)
+            .abortSignal(controller.signal),
+        1000,
+      ),
+    ]);
+    return buildSitemapEntries(SITE_URL, products, categories);
+  } finally {
+    clearTimeout(timeout);
+    controller.abort();
   }
 }

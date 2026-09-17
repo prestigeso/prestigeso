@@ -17,10 +17,11 @@ export default function SelectPopover<T>({
     <>
       <div className="fixed inset-0 z-[40]" onClick={onClose} />
 
-      <div className="absolute z-[50] w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-top-2">
+      <div onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); event.preventDefault(); onClose(); } }} className="absolute z-[50] w-full mt-2 bg-white border border-gray-200 rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-top-2">
         <input
           type="text"
           placeholder={placeholder}
+          aria-label={placeholder}
           value={search}
           onChange={(event) => setSearch(event.target.value)}
           className="p-3 border-b border-gray-100 outline-none text-sm font-bold bg-gray-50 text-black"

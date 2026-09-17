@@ -21,9 +21,6 @@ export const metadata: Metadata = {
   },
   description:
     "PrestigeSO’da zanaat, kültürel simgeler ve modern tasarımın buluştuğu özel aksesuar ve dekoratif ürünleri keşfedin.",
-  alternates: {
-    canonical: "/",
-  },
   openGraph: {
     type: "website",
     locale: "tr_TR",

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { isAdminRequest } from "@/lib/adminRequest";
+import { logServerEvent } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -107,6 +108,10 @@ export async function POST(req: NextRequest) {
     const body: AdminOperation = await req.json();
     const { action, table, data, filters } = body;
 
+    if (table === "orders" && action !== "update") {
+      return NextResponse.json({ error: "Finansal sipariş kaydı bu uçtan oluşturulamaz veya silinemez." }, { status: 403 });
+    }
+
     if (!action || !table) {
       return NextResponse.json(
         { error: "action ve table zorunludur." },
@@ -173,10 +178,15 @@ export async function POST(req: NextRequest) {
         if (f.op === "eq") query = query.eq(f.column, f.value);
         else if (f.op === "neq") query = query.neq(f.column, f.value);
       }
+      if (table === "orders") query = query.neq("payment_recovery_status", "manual_review");
 
       const { data: result, error } = await query.select("id");
+      if (error && /FINANCIAL_OPERATION_IN_PROGRESS|PAYMENT_RECOVERY_REVIEW_REQUIRED/.test(error.message))
+        return NextResponse.json({ error: "Bu siparişte iade veya ödeme mutabakatı devam ediyor. İşlem tamamlanmadan teslimat durumu değiştirilemez." }, { status: 409 });
       if (error)
         return NextResponse.json({ error: error.message }, { status: 500 });
+      if (table === "orders" && !result?.length)
+        return NextResponse.json({ error: "Sipariş bulunamadı veya ödeme/stok mutabakatı tamamlanmadı. Operasyon kuyruğunu kontrol edin." }, { status: 409 });
       return NextResponse.json({ data: result });
     }
 
@@ -210,7 +220,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ error: "Geçersiz action." }, { status: 400 });
   } catch (err: unknown) {
-    console.error("Admin DB operation error:", err);
+    logServerEvent("error", "admin_database_operation_failed", { error: err });
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "İşlem başarısız." },
       { status: 500 },

@@ -106,6 +106,7 @@ export type OrderRow = {
     status: string;
     admin_note?: string | null;
     refund_amount?: number | null;
+    requested_refund_amount?: number | null;
     created_at: string;
   }>;
 };

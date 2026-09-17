@@ -17,6 +17,7 @@ import { HeaderBar, AdminNav, ProductList } from "./parts";
 import AdminDashboardSummary from "./parts/AdminDashboardSummary";
 import AdminFloatingActions from "./parts/AdminFloatingActions";
 import AdminDashboardAlerts from "./parts/AdminDashboardAlerts";
+import AdminOperationsQueue from "./parts/AdminOperationsQueue";
 import {
   AddProductModal,
   EditProductModal,
@@ -211,6 +212,7 @@ export default function AdminPanel() {
       />
 
       <div className="px-6 max-w-6xl mx-auto space-y-6">
+        <AdminOperationsQueue onOpenOrders={() => setIsOrdersOpen(true)} />
         <AdminDashboardSummary
           activeMonth={activeMonth}
           monthlyRevenue={monthlyRevenue}

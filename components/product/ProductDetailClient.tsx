@@ -7,7 +7,8 @@ import { supabase } from "@/lib/supabase";
 import { useCart } from "@/context/CartContext";
 import { useAppAlert } from "@/context/AppAlertContext";
 import { getErrorMessage } from "@/lib/utils";
-import { getEffectiveUnitPrice } from "@/lib/commerce/pricing";
+import { getProductOfferSummary, getProductUnitPrice } from "@/lib/commerce/catalogPricing";
+import { getPurchaseBlockText } from "@/lib/products/purchaseState";
 import ProductFeedbackDialogs from "@/components/product/ProductFeedbackDialogs";
 import ProductAuthModal from "@/components/product/ProductAuthModal";
 import {
@@ -45,6 +46,8 @@ export default function ProductDetailClient({
     setCurrentUser,
     hasPurchased,
     variants,
+    purchaseDataStatus,
+    retryPurchaseData,
   } = useProductDetailData(productId, initialProduct);
 
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
@@ -169,14 +172,11 @@ export default function ProductDetailClient({
   const activePrice = useMemo(() => {
     if (!product) return 0;
 
-    const basePrice = selectedVariant?.price ?? product.price;
-    return getEffectiveUnitPrice({
-      basePrice,
-      discountPrice:
-        selectedVariant?.price == null ? product.discount_price : undefined,
-      campaignPercent: activeCampaign?.discount_percent,
-    });
-  }, [activeCampaign, product, selectedVariant]);
+    const campaigns = activeCampaign ? [activeCampaign] : [];
+    return variants.length > 0 && !selectedVariant
+      ? getProductOfferSummary(product, campaigns, variants).lowPrice
+      : getProductUnitPrice(product, campaigns, selectedVariant);
+  }, [activeCampaign, product, selectedVariant, variants]);
 
   const productImages: string[] =
     product && Array.isArray(product.images) && product.images.length > 0
@@ -185,8 +185,10 @@ export default function ProductDetailClient({
   const availableStock = Number(
     variants.length > 0 ? selectedVariant?.stock || 0 : product?.stock || 0,
   );
-  const displayBasePrice = Number(selectedVariant?.price ?? product?.price ?? 0);
+  const offerSummary = product ? getProductOfferSummary(product, activeCampaign ? [activeCampaign] : [], variants) : null;
+  const displayBasePrice = variants.length > 0 && !selectedVariant ? offerSummary?.displayBasePrice || 0 : Number(selectedVariant?.price ?? product?.price ?? 0);
   const hasPriceDiscount = activePrice < displayBasePrice;
+  const purchaseBlockText = getPurchaseBlockText(purchaseDataStatus, variants.length > 0, Boolean(selectedVariant), availableStock, offerSummary?.availableStock || 0);
 
   const handleNextPrev = (dir: "prev" | "next") => {
     if (dir === "prev") {
@@ -214,6 +216,10 @@ export default function ProductDetailClient({
 
   const addProductToCart = (openCart = false) => {
     if (!product) return;
+    if (purchaseBlockText) {
+      showToast(purchaseBlockText, "warning");
+      return;
+    }
     if (variants.length > 0 && !selectedVariant) {
       showToast("Lütfen bir ürün seçeneği belirleyin.", "warning");
       return;
@@ -414,10 +420,12 @@ export default function ProductDetailClient({
     <div className="min-h-screen bg-white pt-6 md:pt-12 pb-32 md:pb-20 px-0 md:px-10">
       <button
         type="button"
-        onClick={() => router.back()}
-        className="md:hidden absolute top-4 left-4 z-50 w-10 h-10 bg-white/90 backdrop-blur-sm rounded-full shadow-md flex items-center justify-center text-xl font-bold"
+        onClick={() => window.history.length > 1 ? router.back() : router.push(`/shop?category=${encodeURIComponent(product.category)}`)}
+        aria-label="Ürünlerden önceki sayfaya dön"
+        data-testid="product-back"
+        className="md:hidden relative mb-4 ml-4 min-h-11 rounded-full border border-gray-200 bg-white px-4 flex items-center justify-center gap-2 text-sm font-bold focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-black"
       >
-        ←
+        ← Geri
       </button>
 
       <div className="max-w-6xl mx-auto flex flex-col md:flex-row gap-6 lg:gap-16">
@@ -493,9 +501,9 @@ export default function ProductDetailClient({
               </>
             )}
 
-            {activeCampaign && (
+            {purchaseDataStatus === "ready" && hasPriceDiscount && (
               <div className="absolute bottom-0 w-full bg-red-600/90 backdrop-blur-sm text-white text-xs md:text-sm font-black text-center py-2 md:py-3 uppercase tracking-[0.2em] z-10 shadow-[0_-5px_20px_rgba(220,38,38,0.3)]">
-                % {activeCampaign.discount_percent} {activeCampaign.name}
+                İNDİRİMLİ FİYAT
               </div>
             )}
           </div>
@@ -567,7 +575,12 @@ export default function ProductDetailClient({
             </button>
           </div>
 
-          <div className="flex flex-col md:flex-row md:items-baseline gap-1 md:gap-4 mb-6 md:mb-8">
+          {purchaseDataStatus !== "ready" ? (
+            <div role="status" className="mb-6 rounded-xl bg-gray-50 p-4 text-sm font-bold">
+              {purchaseDataStatus === "loading" ? "Güncel fiyat ve ürün seçenekleri yükleniyor…" : "Güncel fiyat ve ürün seçenekleri yüklenemedi. Satın almadan önce tekrar deneyin."}
+              {purchaseDataStatus === "error" && <button type="button" onClick={retryPurchaseData} className="ml-3 rounded-lg border border-black px-3 py-2">Tekrar dene</button>}
+            </div>
+          ) : <div className="flex flex-col md:flex-row md:items-baseline gap-1 md:gap-4 mb-6 md:mb-8">
             {hasPriceDiscount ? (
               <>
                 <div className="flex items-center gap-3">
@@ -588,7 +601,8 @@ export default function ProductDetailClient({
                 {displayBasePrice.toLocaleString("tr-TR")} ₺
               </p>
             )}
-          </div>
+            {variants.length > 0 && !selectedVariant && <span className="text-xs text-gray-500">başlayan fiyatlarla · seçenek seçiniz</span>}
+          </div>}
 
           {variants.length > 0 && (
             <div className="mb-6 max-w-[500px]">
@@ -615,13 +629,13 @@ export default function ProductDetailClient({
           )}
 
           <div className="hidden md:flex items-center gap-3 mt-4 w-full max-w-[500px]">
-            {availableStock <= 0 ? (
+            {purchaseBlockText ? (
               <button
                 type="button"
                 disabled
                 className="flex-1 h-[54px] bg-gray-50 text-gray-400 rounded-[18px] font-black text-[13px] uppercase border border-gray-200 cursor-not-allowed"
               >
-                TÜKENDİ
+                {purchaseBlockText}
               </button>
             ) : (
               <>
@@ -901,13 +915,13 @@ export default function ProductDetailClient({
 
       <div className="md:hidden fixed bottom-0 left-0 w-full bg-white/95 backdrop-blur-md border-t border-gray-200 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] z-[100] shadow-[0_-10px_40px_rgba(0,0,0,0.05)]">
         <div className="flex items-center gap-3">
-            {availableStock <= 0 ? (
+            {purchaseBlockText ? (
             <button
               type="button"
               disabled
               className="flex-1 py-3.5 bg-gray-100 text-gray-400 rounded-xl font-black text-xs uppercase tracking-widest border border-gray-200"
             >
-              TÜKENDİ
+              {purchaseBlockText}
             </button>
           ) : (
             <>

@@ -1,3 +1,4 @@
+import { logServerEvent } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 import { consumeRateLimit, getClientIp } from "@/lib/rateLimit";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -26,7 +27,7 @@ export async function POST(req: NextRequest) {
     if (error) throw error;
     return NextResponse.json({ ok: true });
   } catch (error) {
-    console.error("Page view error:", error);
+logServerEvent("error", "page_view_failed", { error });
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 },

@@ -20,6 +20,11 @@ export interface Product {
   discount_price?: number;
   campaign_start_date?: string;
   campaign_end_date?: string;
+  effective_price?: number;
+  display_base_price?: number;
+  available_stock?: number;
+  has_variants?: boolean;
+  is_discounted?: boolean;
   created_at?: string;
 }
 

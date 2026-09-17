@@ -6,6 +6,7 @@ import Image from "next/image";
 import type { Order } from "@/types";
 import { supabase } from "@/lib/supabase";
 import { safeParseAddress } from "@/lib/utils";
+import { parseAvailableReturnItems } from "@/lib/returns/availability";
 import {
   formatOrderAddress as formatAddress,
   getOrderCouponInfo as getCouponInfo,
@@ -43,6 +44,30 @@ export default function OrdersTab({
   const [returnFiles, setReturnFiles] = useState<File[]>([]);
   const [returnSubmitting, setReturnSubmitting] = useState(false);
   const [returnError, setReturnError] = useState("");
+  const [returnLoadingId, setReturnLoadingId] = useState<number | null>(null);
+  const [returnLoadError, setReturnLoadError] = useState<{ orderId: number; message: string } | null>(null);
+
+  const openReturnDialog = async (orderId: number) => {
+    if (returnLoadingId !== null) return;
+    setReturnLoadingId(orderId);
+    setReturnLoadError(null);
+    try {
+      const { data } = await supabase.auth.getSession();
+      if (!data.session?.access_token) throw new Error("Oturum bulunamadı.");
+      const response = await fetch(`/api/orders/action?orderId=${orderId}`, {
+        headers: { Authorization: `Bearer ${data.session.access_token}` }, cache: "no-store",
+      });
+      const result: unknown = await response.json();
+      if (!response.ok) throw new Error("İade edilebilir ürünler doğrulanamadı. Lütfen siparişleri yenileyin veya destek ekibiyle iletişime geçin.");
+      const items = parseAvailableReturnItems(result);
+      setReturnQuantities(Object.fromEntries(items.map((item) => [item.lineId,item.quantity])));
+      setReturnOrder({ id: orderId, items });
+    } catch (error) {
+      setReturnLoadError({ orderId, message: error instanceof Error ? error.message : "İade bilgileri yüklenemedi." });
+    } finally {
+      setReturnLoadingId(null);
+    }
+  };
 
   const closeReturnDialog = () => {
     setReturnOrder(null);
@@ -261,38 +286,16 @@ export default function OrdersTab({
 
                     {onOrderAction &&
                       (status === "Teslim Edildi" ||
-                        status === "Tamamlandı") && (
+                        status === "Tamamlandı" || status === "Kısmi İade") && (
                         <button
-                          onClick={() => {
-                            const items = safeItems
-                              .map((item) => ({
-                                id: Number(item.id),
-                                ...(item.variant_id
-                                  ? { variant_id: Number(item.variant_id) }
-                                  : {}),
-                                lineId: `${Number(item.id)}:${Number(item.variant_id || 0)}`,
-                                name: String(item.name || "Ürün"),
-                                quantity: Number(item.quantity),
-                              }))
-                              .filter(
-                                (item) =>
-                                  Number.isSafeInteger(item.id) &&
-                                  item.id > 0 &&
-                                  Number.isSafeInteger(item.quantity) &&
-                                  item.quantity > 0,
-                              );
-                            setReturnQuantities(
-                              Object.fromEntries(
-                                items.map((item) => [item.lineId, item.quantity]),
-                              ),
-                            );
-                            setReturnOrder({ id: order.id, items });
-                          }}
+                          disabled={returnLoadingId !== null}
+                          onClick={() => void openReturnDialog(order.id)}
                           className="mt-2 text-[10px] font-bold text-orange-500 hover:text-orange-700 underline"
                         >
-                          İade Talebi Oluştur
+                          {returnLoadingId === order.id ? "İade edilebilir adetler yükleniyor..." : "İade Talebi Oluştur"}
                         </button>
                       )}
+                    {returnLoadError?.orderId === order.id && <p role="alert" className="max-w-sm text-xs text-red-700">{returnLoadError.message}</p>}
                   </div>
                 </div>
 
@@ -452,11 +455,12 @@ export default function OrdersTab({
           <div className="w-full max-w-lg rounded-3xl bg-white p-6 shadow-2xl">
             <div className="mb-5 flex items-center justify-between">
               <h4 className="text-lg font-black uppercase">İade talebi</h4>
-              <button type="button" onClick={closeReturnDialog} aria-label="Kapat">
+              <button type="button" disabled={returnSubmitting} onClick={closeReturnDialog} aria-label="Kapat">
                 ✕
               </button>
             </div>
             <div className="space-y-3">
+              <p className="text-xs text-gray-600">Yalnızca önceki taleplere ayrılmamış adetler gösterilir. İade tutarı, ödenen toplamın (indirim ve kargo dahil) seçilen ürünlere orantılı payıdır; son talepte kalan kuruş farkı tamamlanır.</p>
               {returnOrder.items.map((item) => (
                 <label key={item.lineId} className="flex items-center justify-between gap-4 rounded-xl bg-gray-50 p-3 text-sm font-bold">
                   <span className="min-w-0 truncate">{item.name}</span>

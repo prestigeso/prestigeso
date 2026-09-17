@@ -32,6 +32,8 @@ type Props = {
     decision: "approve" | "reject",
     note: string,
     returnShippingCode?: string,
+    requestId?: number,
+    expectedRefundAmount?: number,
   ) => void | Promise<void>;
   onShippingSaved: (
     orderId: number,
@@ -92,6 +94,7 @@ export default function OrdersModal({
   const [trackingNo, setTrackingNo] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [sendingInvoiceId, setSendingInvoiceId] = useState<number | null>(null);
+  const invoiceInFlightRef = useRef(false);
   const [reconcilingId, setReconcilingId] = useState<number | null>(null);
   const financialActionRef = useRef<number | null>(null);
   const [financialActionId, setFinancialActionId] = useState<number | null>(null);
@@ -154,32 +157,28 @@ export default function OrdersModal({
     e: React.ChangeEvent<HTMLInputElement>,
   ) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || invoiceInFlightRef.current) return;
 
     const order = orders.find((o) => o.id === orderId);
     if (!order) return;
+    const recipient = order.user_email;
+    if (!recipient || !order.order_no) {
+      showToast("Sipariş alıcısı veya sipariş numarası doğrulanamadı. Listeyi yenileyin.", "error");
+      e.target.value = "";
+      return;
+    }
+    if (!window.confirm(`Sipariş: ${order.order_no}\nAlıcı: ${recipient}\nPDF: ${file.name}\n\nPDF içeriğinin bu siparişe ve alıcıya ait olduğunu kontrol ettiniz mi? Onaylarsanız fatura gönderim kuyruğuna alınacak.`)) {
+      e.target.value = "";
+      return;
+    }
 
     try {
+      invoiceInFlightRef.current = true;
       setSendingInvoiceId(orderId);
-
-      const shipping =
-        typeof order.shipping_address === "string"
-          ? JSON.parse(order.shipping_address)
-          : order.shipping_address;
-
-      const email = shipping?.email;
-      const customerName =
-        `${shipping?.firstName || ""} ${shipping?.lastName || ""}`.trim();
-
-      if (!email) {
-        showToast("Müşterinin e-posta adresi bulunamadı.", "error");
-        return;
-      }
 
       const formData = new FormData();
       formData.append("orderId", String(orderId));
-      formData.append("email", email);
-      formData.append("customerName", customerName);
+      formData.append("confirmedOrderNo", order.order_no);
       formData.append("invoice", file);
 
       const res = await fetch("/api/admin/orders/invoice", {
@@ -192,11 +191,12 @@ export default function OrdersModal({
         throw new Error(data.error || "Fatura gönderilemedi");
       }
 
-      showToast("Fatura başarıyla e-posta olarak gönderildi.", "success");
+      showToast(data.deliveryStatus === "sent" ? "Fatura e-posta sağlayıcısına iletildi." : "Fatura kuyruğa kaydedildi; gönderim sonucu için İşlem Güvenliği panelini kontrol edin.", data.deliveryStatus === "sent" ? "success" : "info");
     } catch (error: unknown) {
       showToast(getErrorMessage(error, "Fatura gönderilemedi."), "error");
     } finally {
       e.target.value = "";
+      invoiceInFlightRef.current = false;
       setSendingInvoiceId(null);
     }
   };
@@ -265,7 +265,7 @@ export default function OrdersModal({
       if (!request || request.status !== "pending")
         throw new Error("Onaylanabilir bekleyen iade talebi bulunamadı. Siparişleri yenileyin; başlatılmış iadeyi tekrar göndermeyin.");
       // Use the server's calculation rules; invalid or stale item data must never open an approval.
-      const refundAmount = calculateReturnRefundAmount({
+      const refundAmount = request.requested_refund_amount ?? calculateReturnRefundAmount({
         orderItems: order.items,
         returnItems: request.items,
         totalAmount: order.total_amount,
@@ -298,7 +298,7 @@ export default function OrdersModal({
           confirm: (message) => window.confirm(message),
         },
         ({ note, returnShippingCode }) =>
-          onReturnDecision(order.id, "approve", note, returnShippingCode),
+          onReturnDecision(order.id, "approve", note, returnShippingCode, request.id, refundAmount),
       );
     } catch (error) {
       showToast(getErrorMessage(error, "İade kararı uygulanamadı."), "error");
@@ -491,6 +491,9 @@ export default function OrdersModal({
                             }
                             className={`text-xs font-black uppercase tracking-widest px-3 py-1.5 rounded-lg border outline-none cursor-pointer transition-colors ${getStatusClass(order.status)}`}
                           >
+                            {order.status && !["Bekliyor","Hazırlanıyor","Kargolandı","Teslim Edildi","İptal Edildi","İade Talebi","İade Edildi"].includes(order.status) && (
+                              <option value={order.status} disabled>{order.status}</option>
+                            )}
                             <option value="Bekliyor">⏳ Bekliyor</option>
                             <option value="Hazırlanıyor">
                               📦 Hazırlanıyor
@@ -544,7 +547,7 @@ export default function OrdersModal({
                               disabled={financialActionId !== null}
                               onClick={() => {
                                 const note = prompt("Ret sebebini yazın:")?.trim();
-                                if (note) onReturnDecision(order.id, "reject", note);
+                                if (note && returnRequest) onReturnDecision(order.id, "reject", note, "", returnRequest.id);
                               }}
                               className="rounded-xl bg-red-600 px-3 py-2 text-[10px] font-black uppercase text-white"
                             >

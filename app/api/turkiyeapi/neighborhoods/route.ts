@@ -1,3 +1,4 @@
+import { logServerEvent } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 import { consumeRateLimit, getClientIp } from "@/lib/rateLimit";
 
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
     const data = await res.json();
     return NextResponse.json(data);
   } catch (error) {
-    console.error("Neighborhoods proxy error:", error);
+logServerEvent("error", "neighborhood_lookup_failed", { error });
     return NextResponse.json(
       { status: "ERROR", message: "Failed to fetch neighborhoods" },
       { status: 500 },

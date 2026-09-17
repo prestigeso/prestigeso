@@ -32,7 +32,7 @@ export type RefundUpdate = {
 export type RefundRepository = {
   getOrder: (id: number, userId?: string) => Promise<RefundOrderRow | null>;
   /** Compare-and-set against the read financial/status snapshot. */
-  claimOrder: (order: RefundOrderRow, startedAt: string) => Promise<boolean>;
+  claimOrder: (order: RefundOrderRow, startedAt: string, returnRequestId?: number, refundAmount?: number) => Promise<boolean>;
   releaseClaim: (id: number, startedAt: string) => Promise<boolean>;
   saveRefund: (order: RefundOrderRow, startedAt: string, update: RefundUpdate) => Promise<boolean>;
   markStockReleased: (id: number, at: string) => Promise<void>;
@@ -117,7 +117,7 @@ export async function runRefundWorkflow(input: RefundInput, deps: RefundDependen
 
   const startedAt = deps.now();
   let claimed: boolean;
-  try { claimed = await repository.claimOrder(order, startedAt); }
+  try { claimed = await repository.claimOrder(order, startedAt, returnRequestId, requested / 100); }
   catch { throw reconciliation("İade kilidinin sonucu doğrulanamadı.", 500); }
   if (!claimed)
     throw new RefundError("Sipariş değişti veya başka bir iade devam ediyor; durumu yenileyin.", 409);

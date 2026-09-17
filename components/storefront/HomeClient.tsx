@@ -1,15 +1,16 @@
 "use client";
 
 import { useCart } from "@/context/CartContext";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
 import { useSearch } from "@/context/SearchContext";
 import { useAppAlert } from "@/context/AppAlertContext";
 import { supabase } from "@/lib/supabase";
-import { safeParseIds, sanitizeImageUrl } from "@/lib/utils";
-import { getEffectiveUnitPrice } from "@/lib/commerce/pricing";
-import { safeStorageGet, safeStorageSet } from "@/lib/browserStorage";
+import { sanitizeImageUrl } from "@/lib/utils";
+import { getProductUnitPrice } from "@/lib/commerce/catalogPricing";
+import { useConsentedView } from "@/hooks/useConsentedView";
 import type { Product, Campaign, HeroSlide } from "@/types";
 
 export type HomepageProduct = Partial<Product> & {
@@ -24,6 +25,7 @@ export type HomeClientProps = {
   initialHeroSlides: HeroSlide[];
   initialCategories: Array<{ name: string; slug: string }>;
   initialMarquee: string;
+  catalogErrorId?: string;
 };
 
 export default function Home({
@@ -32,7 +34,11 @@ export default function Home({
   initialHeroSlides,
   initialCategories,
   initialMarquee,
+  catalogErrorId,
 }: HomeClientProps) {
+  const router = useRouter();
+  const [retrying, startRetry] = useTransition();
+  useConsentedView();
   const { searchQuery, setSearchQuery, selectedCategory, setSelectedCategory } =
     useSearch();
 
@@ -103,23 +109,6 @@ export default function Home({
         setFavoriteIds(() => new Set());
       }
 
-      try {
-        const isHere = safeStorageGet("session", "prestige_session_active");
-        const lastView = Number(
-          safeStorageGet("local", "prestige_last_view") || 0,
-        );
-        const now = Date.now();
-        const THROTTLE_MS = 30 * 60 * 1000; // 30 dakika
-
-        if (!isHere && now - lastView > THROTTLE_MS) {
-          safeStorageSet("session", "prestige_session_active", "true");
-          safeStorageSet("local", "prestige_last_view", String(now));
-
-          await fetch("/api/page_views", { method: "POST" });
-        }
-      } catch (error) {
-        console.error("Sayfa görüntüleme kaydı oluşturulamadı:", error);
-      }
     };
 
     void loadAccountAndCount();
@@ -136,21 +125,7 @@ export default function Home({
   }, [heroSlides.length]);
 
   const discountedFull = useMemo(() => {
-    const now = new Date();
-    return dbProducts.filter((p) => {
-      const manualDiscount =
-        Number(p.discount_price || 0) > 0 &&
-        Number(p.discount_price) < Number(p.price || 0);
-      return manualDiscount || dbCampaigns.some((c) => {
-        const ids = safeParseIds(c.product_ids);
-
-        return (
-          ids.includes(Number(p.id)) &&
-          now >= new Date(c.start_date) &&
-          now <= new Date(c.end_date)
-        );
-      });
-    });
+    return dbProducts.filter((product) => Number(product.effective_price ?? getProductUnitPrice(product, dbCampaigns)) < Number(product.display_base_price ?? product.price ?? 0));
   }, [dbProducts, dbCampaigns]);
 
   const bestsellersFull = useMemo(
@@ -250,6 +225,11 @@ export default function Home({
 
   return (
     <div className="min-h-screen bg-white font-sans text-black pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-24">
+      {catalogErrorId && <div role="alert" className="mx-auto my-6 max-w-5xl rounded-2xl border border-amber-200 bg-amber-50 p-6">
+        <h2 className="font-bold">Ürünler şu anda yüklenemedi.</h2>
+        <p className="mt-2 text-sm">Lütfen tekrar deneyin. Hata kimliği: {catalogErrorId}</p>
+        <button type="button" disabled={retrying} onClick={() => startRetry(() => router.refresh())} className="mt-3 rounded-lg bg-black px-4 py-3 text-sm font-bold text-white">{retrying ? "Yükleniyor…" : "Tekrar dene"}</button>
+      </div>}
       {localCampaign && (
         <div className="bg-black text-white text-[10px] md:text-xs font-bold uppercase tracking-[0.2em] py-2.5 overflow-hidden w-full sticky top-0 z-40">
           <div className="flex animate-marquee whitespace-nowrap">
@@ -664,22 +644,9 @@ function PrestigeCard({
   const ratingCount = product.reviewCount || 0;
   const avgRating = product.ratingAvg || 0;
 
-  const activeCamp = campaigns?.find((c) => {
-    const ids = safeParseIds(c.product_ids);
-
-    return (
-      ids.includes(Number(product.id)) &&
-      now >= new Date(c.start_date) &&
-      now <= new Date(c.end_date)
-    );
-  });
-
-  const activePrice = getEffectiveUnitPrice({
-    basePrice: product.price,
-    discountPrice: product.discount_price,
-    campaignPercent: activeCamp?.discount_percent,
-  });
-  const hasPriceDiscount = activePrice < Number(product.price);
+  const activePrice = Number(product.effective_price ?? getProductUnitPrice(product, campaigns, undefined, now.valueOf()));
+  const basePrice = Number(product.display_base_price ?? product.price);
+  const hasPriceDiscount = activePrice < basePrice;
 
   const handleFavoriteClick = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -724,7 +691,7 @@ function PrestigeCard({
 
         {hasPriceDiscount ? (
           <div className="absolute bottom-0 w-full bg-red-600 text-white text-[9px] md:text-[10px] font-black text-center py-1.5 uppercase tracking-widest z-10 shadow-[0_-2px_10px_rgba(220,38,38,0.4)]">
-            {activeCamp ? `% ${activeCamp.discount_percent} İNDİRİM` : "İNDİRİM"}
+            İNDİRİM
           </div>
         ) : badgeLabel ? (
           <div className="absolute bottom-0 w-full bg-black text-white text-[9px] md:text-[10px] font-black text-center py-1.5 uppercase tracking-widest z-10">
@@ -741,6 +708,7 @@ function PrestigeCard({
         <h3 className="text-[11px] md:text-sm font-medium text-gray-900 line-clamp-2 leading-snug mb-1">
           {product.name}
         </h3>
+        {product.has_variants && <p className="mb-1 text-[10px] text-gray-500">Başlayan fiyatlarla</p>}
 
         <div className="flex items-center gap-1 mb-2">
           <span
@@ -761,7 +729,7 @@ function PrestigeCard({
           {hasPriceDiscount ? (
             <>
               <p className="text-[9px] md:text-[10px] text-gray-400 line-through leading-none mb-0.5">
-                {Number(product.price).toLocaleString("tr-TR")} ₺
+                {basePrice.toLocaleString("tr-TR")} ₺
               </p>
               <p className="text-sm md:text-base font-black text-red-600 leading-none">
                 {activePrice.toLocaleString("tr-TR")} ₺

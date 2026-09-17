@@ -18,6 +18,7 @@ export default async function ProductDetailPage({
     .select("*")
     .eq("id", productId)
     .maybeSingle();
-  if (error || !product) notFound();
+  if (error) throw new Error("Ürün bilgileri şu anda yüklenemedi. Lütfen tekrar deneyin.");
+  if (!product) notFound();
   return <ProductDetailClient initialProduct={product as Product} />;
 }

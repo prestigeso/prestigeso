@@ -12,6 +12,7 @@ type CheckoutSummaryProps = {
   finalTotal: number;
   agreeTerms: boolean;
   shippingSettingsReady: boolean;
+  cartReady: boolean;
   onTermsChange: (checked: boolean) => void;
   openContractModal: () => void;
   handleCompleteOrder: () => void | Promise<void>;
@@ -28,6 +29,7 @@ export default function CheckoutSummary({
   finalTotal,
   agreeTerms,
   shippingSettingsReady,
+  cartReady,
   onTermsChange,
   openContractModal,
   handleCompleteOrder,
@@ -116,7 +118,7 @@ export default function CheckoutSummary({
         <button
           type="button"
           onClick={handleCompleteOrder}
-          disabled={isProcessing || !checkoutMode || !shippingSettingsReady}
+          disabled={isProcessing || !checkoutMode || !shippingSettingsReady || !cartReady}
           className="w-full bg-black text-white font-black py-5 rounded-2xl shadow-xl active:scale-95 disabled:opacity-50 uppercase tracking-widest text-sm flex items-center justify-center gap-2"
         >
           {isProcessing ? "Ödeme Başlatılıyor..." : "Ödemeye Geç 💳"}

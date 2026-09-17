@@ -5,6 +5,8 @@ export const metadata: Metadata = {
   description:
     "Siparişlerinizi takip edin, adreslerinizi ve hesap bilgilerinizi yönetin.",
   robots: { index: false, follow: false },
+  alternates: { canonical: "/profile" },
+  referrer: "no-referrer",
 };
 
 export default function ProfileLayout({

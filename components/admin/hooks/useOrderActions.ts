@@ -98,13 +98,15 @@ export function useOrderActions({
     decision: "approve" | "reject",
     note: string,
     returnShippingCode = "",
+    requestId?: number,
+    expectedRefundAmount?: number,
   ) => {
     try {
       const response = await fetch("/api/admin/returns", {
         method: "PATCH",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orderId, decision, note, returnShippingCode }),
+        body: JSON.stringify({ orderId, requestId, decision, note, returnShippingCode, expectedRefundAmount }),
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "İade kararı uygulanamadı.");

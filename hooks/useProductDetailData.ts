@@ -1,12 +1,19 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
-import { safeParseIds } from "@/lib/utils";
+import { getActivePriceCampaign } from "@/lib/commerce/catalogPricing";
+import { useConsentedView } from "@/hooks/useConsentedView";
 import { parsePurchasedItems } from "@/lib/products/productDetail";
 import { safeStorageGet, safeStorageSet } from "@/lib/browserStorage";
-import type { Campaign, Product, ProductVariant, Question, Review } from "@/types";
+import type {
+  Campaign,
+  Product,
+  ProductVariant,
+  Question,
+  Review,
+} from "@/types";
 
 function rememberProduct(product: Product) {
   try {
@@ -30,26 +37,13 @@ function rememberProduct(product: Product) {
   }
 }
 
-async function recordProductView(productId: number) {
-  try {
-    const key = `viewed_product_log_${productId}`;
-    if (safeStorageGet("session", key)) return;
-    const response = await fetch("/api/product-views", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ productId }),
-    });
-    if (response.ok) safeStorageSet("session", key, "true");
-  } catch (error) {
-    console.warn("Ürün görüntüleme kaydı oluşturulamadı:", error);
-  }
-}
-
 export function useProductDetailData(
   productId: string,
   initialProduct?: Product | null,
 ) {
-  const [product, setProduct] = useState<Product | null>(initialProduct || null);
+  const [product, setProduct] = useState<Product | null>(
+    initialProduct || null,
+  );
   const [loading, setLoading] = useState(!initialProduct);
   const [isFavorite, setIsFavorite] = useState(false);
   const [activeCampaign, setActiveCampaign] = useState<Campaign | null>(null);
@@ -58,9 +52,24 @@ export function useProductDetailData(
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [hasPurchased, setHasPurchased] = useState(false);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
+  const [purchaseDataStatus, setPurchaseDataStatus] = useState<
+    "loading" | "ready" | "error"
+  >("loading");
+  const [retryVersion, setRetryVersion] = useState(0);
+  const retryPurchaseData = useCallback(
+    () => setRetryVersion((version) => version + 1),
+    [],
+  );
+  const remember = useCallback(() => {
+    if (product) rememberProduct(product);
+  }, [product]);
+  useConsentedView(product?.id || 0, remember);
 
   useEffect(() => {
     let cancelled = false;
+    let criticalReady = false;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
 
     const load = async () => {
       if (!productId) {
@@ -77,6 +86,7 @@ export function useProductDetailData(
       setCurrentUser(null);
       setHasPurchased(false);
       setVariants([]);
+      setPurchaseDataStatus("loading");
 
       const productData =
         initialProduct ||
@@ -85,6 +95,7 @@ export function useProductDetailData(
             .from("products")
             .select("*")
             .eq("id", Number(productId))
+            .abortSignal(controller.signal)
             .maybeSingle()
         ).data;
 
@@ -95,53 +106,68 @@ export function useProductDetailData(
 
       const typedProduct = productData as Product;
       setProduct(typedProduct);
-      rememberProduct(typedProduct);
-      void recordProductView(Number(typedProduct.id));
 
-      const [campaignResult, variantResult, reviewResult, questionResult, sessionResult] =
-        await Promise.all([
-          supabase
-            .from("campaigns")
-            .select("*")
-            .gte("end_date", new Date().toISOString())
-            .limit(100),
-          supabase
-            .from("product_variants")
-            .select("id,product_id,sku,barcode,option_values,price,stock,is_active")
-            .eq("product_id", typedProduct.id)
-            .eq("is_active", true)
-            .order("id")
-            .limit(100),
-          supabase
-            .from("public_product_reviews")
-            .select(
-              "id,product_id,rating,comment,user_name,images,is_approved,created_at",
-            )
-            .eq("product_id", typedProduct.id)
-            .order("created_at", { ascending: false })
-            .limit(100),
-          supabase
-            .from("public_product_questions")
-            .select(
-              "id,product_id,question,user_name,answer,is_approved,answered_at,created_at",
-            )
-            .eq("product_id", typedProduct.id)
-            .order("created_at", { ascending: false })
-            .limit(100),
-          supabase.auth.getSession(),
-        ]);
+      const [campaignResult, variantResult] = await Promise.all([
+        supabase
+          .from("campaigns")
+          .select("*")
+          .gte("end_date", new Date().toISOString())
+          .abortSignal(controller.signal),
+        supabase
+          .from("product_variants")
+          .select(
+            "id,product_id,sku,barcode,option_values,price,stock,is_active",
+          )
+          .eq("product_id", typedProduct.id)
+          .eq("is_active", true)
+          .order("id")
+          .abortSignal(controller.signal),
+      ]);
+      if (cancelled) return;
+      if (
+        campaignResult.error ||
+        variantResult.error ||
+        !campaignResult.data ||
+        !variantResult.data
+      ) {
+        setPurchaseDataStatus("error");
+        setLoading(false);
+        return;
+      }
+      setActiveCampaign(
+        getActivePriceCampaign(
+          Number(typedProduct.id),
+          campaignResult.data as Campaign[],
+        ),
+      );
+      setVariants(variantResult.data as ProductVariant[]);
+      criticalReady = true;
+      setPurchaseDataStatus("ready");
+      setLoading(false);
+      clearTimeout(timeout);
+
+      const [reviewResult, questionResult, sessionResult] = await Promise.all([
+        supabase
+          .from("public_product_reviews")
+          .select(
+            "id,product_id,rating,comment,user_name,images,is_approved,created_at",
+          )
+          .eq("product_id", typedProduct.id)
+          .order("created_at", { ascending: false })
+          .limit(100),
+        supabase
+          .from("public_product_questions")
+          .select(
+            "id,product_id,question,user_name,answer,is_approved,answered_at,created_at",
+          )
+          .eq("product_id", typedProduct.id)
+          .order("created_at", { ascending: false })
+          .limit(100),
+        supabase.auth.getSession(),
+      ]);
 
       if (cancelled) return;
 
-      const now = new Date();
-      const campaign = ((campaignResult.data || []) as Campaign[]).find(
-        (item) =>
-          safeParseIds(item.product_ids).includes(Number(typedProduct.id)) &&
-          now >= new Date(item.start_date) &&
-          now <= new Date(item.end_date),
-      );
-      setActiveCampaign(campaign || null);
-      setVariants((variantResult.data || []) as ProductVariant[]);
       setReviews((reviewResult.data || []) as Review[]);
       setQuestions((questionResult.data || []) as Question[]);
 
@@ -182,13 +208,18 @@ export function useProductDetailData(
 
     void load().catch((error) => {
       console.error("Ürün detay verisi yüklenemedi:", error);
-      if (!cancelled) setLoading(false);
+      if (!cancelled) {
+        setLoading(false);
+        if (!criticalReady) setPurchaseDataStatus("error");
+      }
     });
 
     return () => {
       cancelled = true;
+      clearTimeout(timeout);
+      controller.abort();
     };
-  }, [initialProduct, productId]);
+  }, [initialProduct, productId, retryVersion]);
 
   return {
     product,
@@ -202,5 +233,7 @@ export function useProductDetailData(
     setCurrentUser,
     hasPurchased,
     variants,
+    purchaseDataStatus,
+    retryPurchaseData,
   };
 }

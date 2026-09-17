@@ -1,3 +1,4 @@
+import { logServerEvent } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { consumeRateLimit, getClientIp } from "@/lib/rateLimit";
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
     ]);
 
     if (error) {
-      console.error("İletişim mesajı kaydedilemedi:", error.message);
+logServerEvent("error", "contact_record_failed", { error });
       return NextResponse.json(
         { error: "Mesajınız gönderilemedi. Lütfen daha sonra tekrar deneyin." },
         { status: 500 },
@@ -81,7 +82,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error("İletişim API hatası:", err);
+logServerEvent("error", "contact_failed", { error: err });
     return NextResponse.json(
       { error: "Beklenmeyen bir hata oluştu." },
       { status: 500 },

@@ -16,20 +16,20 @@ const repository: RefundRepository = {
     if (error) throw error;
     return data as RefundOrderRow | null;
   },
-  async claimOrder(order, startedAt) {
-    let query = supabaseAdmin.from("orders")
-      .update({ refund_started_at: startedAt })
-      .eq("id", order.id)
-      .eq("payment_status", order.payment_status)
-      .eq("status", order.status)
-      .eq("total_amount", order.total_amount)
-      .is("refund_started_at", null);
-    query = order.refunded_amount == null
-      ? query.is("refunded_amount", null)
-      : query.eq("refunded_amount", order.refunded_amount);
-    const { data, error } = await query.select("id").maybeSingle();
+  async claimOrder(order, startedAt, returnRequestId, refundAmount) {
+    // One DB transaction verifies both the financial snapshot and the reserved return units.
+    const { data, error } = await supabaseAdmin.rpc("claim_order_refund", {
+      p_order_id: order.id,
+      p_started_at: startedAt,
+      p_payment_status: order.payment_status,
+      p_status: order.status,
+      p_total_amount: Number(order.total_amount),
+      p_refunded_amount: order.refunded_amount == null ? null : Number(order.refunded_amount),
+      p_request_id: returnRequestId ?? null,
+      p_refund_amount: refundAmount ?? null,
+    });
     if (error) throw error;
-    return Boolean(data);
+    return data === true;
   },
   async releaseClaim(id, startedAt) {
     const { data, error } = await supabaseAdmin.from("orders")

@@ -116,27 +116,11 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { data: order } = await supabaseAdmin
-    .from("orders")
-    .select("id, created_at, delivered_at")
-    .eq("id", orderId)
-    .eq("user_id", userId)
-    .eq("payment_status", "paid")
-    .in("status", ["Teslim Edildi", "Tamamlandı"])
-    .maybeSingle();
-  if (!order)
+  const { data: availability, error: availabilityError } = await supabaseAdmin.rpc("get_return_availability", {
+    p_order_id: orderId, p_user_id: userId,
+  });
+  if (availabilityError || availability?.eligible !== true)
     return NextResponse.json({ error: "Sipariş iade için uygun değil." }, { status: 409 });
-  const returnWindowStartedAt = new Date(
-    order.delivered_at || order.created_at,
-  ).getTime();
-  if (
-    !Number.isFinite(returnWindowStartedAt) ||
-    Date.now() > returnWindowStartedAt + 14 * 24 * 60 * 60 * 1000
-  )
-    return NextResponse.json(
-      { error: "14 günlük iade talebi süresi dolmuş." },
-      { status: 409 },
-    );
 
   const uploaded: string[] = [];
   let reserved: string[] = [];

@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
     supabaseAdmin
       .from("orders")
       .select(
-        "id,order_no,merchant_oid,user_id,user_email,items,shipping_address,status,total_amount,created_at,shipping_carrier,tracking_number,payment_provider,payment_status,paytr_total_amount,paid_at,failed_reason,return_requests(id,reason,items,evidence_urls,status,admin_note,refund_amount,created_at)",
+        "id,order_no,merchant_oid,user_id,user_email,items,shipping_address,status,total_amount,created_at,shipping_carrier,tracking_number,payment_provider,payment_status,paytr_total_amount,paid_at,failed_reason,return_requests(id,reason,items,evidence_urls,status,admin_note,refund_amount,requested_refund_amount,created_at)",
       )
       .in("payment_status", ["paid", "partially_refunded", "refunded"])
       .order("created_at", { ascending: false })
@@ -164,10 +164,7 @@ export async function GET(req: NextRequest) {
   ];
   const countError = countResults.find((result) => result.error)?.error;
   if (firstError || countError) {
-    console.error(
-      "Admin dashboard query failed:",
-      firstError || countError,
-    );
+    logServerEvent("error", "admin_dashboard_failed", { error: firstError || countError });
     return NextResponse.json(
       { error: "Admin verileri yüklenemedi." },
       { status: 500 },
@@ -202,3 +199,4 @@ export async function GET(req: NextRequest) {
     { headers: { "Cache-Control": "no-store" } },
   );
 }
+import { logServerEvent } from "@/lib/logger";

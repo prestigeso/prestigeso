@@ -1,8 +1,9 @@
+import { logServerEvent } from "@/lib/logger";
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { createClient } from "@supabase/supabase-js";
-import { safeParseIds, normalizePhone, isValidTurkishPhone } from "@/lib/utils";
+import { normalizePhone, isValidTurkishPhone } from "@/lib/utils";
 import { releaseExpiredReservations } from "@/lib/orderInventory";
 import { verifyOtpProof } from "@/lib/otpProof";
 import {
@@ -16,7 +17,7 @@ import {
   calculateShipping,
   roundMoney,
 } from "@/lib/commerce/orderRules";
-import { getEffectiveUnitPrice } from "@/lib/commerce/pricing";
+import { getProductUnitPrice, type PriceCampaign } from "@/lib/commerce/catalogPricing";
 import { DISTANCE_SALES_VERSION } from "@/lib/legal/consent";
 
 export const runtime = "nodejs";
@@ -50,6 +51,8 @@ type ProductRow = {
   name: string;
   price: number | string;
   discount_price?: number | string | null;
+  campaign_start_date?: string | null;
+  campaign_end_date?: string | null;
   stock: number | string | null;
   image?: string | null;
   images?: string[] | null;
@@ -230,7 +233,7 @@ async function failCheckoutIdempotency(
     p_request_fingerprint: context.requestFingerprint,
   });
   if (error)
-    console.error("Checkout idempotency kilidi bırakılamadı:", error.message);
+logServerEvent("error", "checkout_lock_release_failed", { error });
 }
 
 function normalizeEmail(value: unknown) {
@@ -755,7 +758,7 @@ export async function POST(req: NextRequest) {
 
     const { data: products, error: productError } = await supabaseAdmin
       .from("products")
-      .select("id, name, price, discount_price, stock, image, images")
+      .select("id, name, price, discount_price, campaign_start_date, campaign_end_date, stock, image, images")
       .in("id", productIds);
 
     const variantIds = cartLines.flatMap((line) =>
@@ -796,7 +799,7 @@ export async function POST(req: NextRequest) {
         { error: "Güncel kampanya fiyatları doğrulanamadı." },
         500,
       );
-    const nowIso = new Date().toISOString();
+    const priceCheckedAt = Date.now();
 
     if (products.length !== productIds.length) {
       return failIdempotently(
@@ -856,27 +859,7 @@ export async function POST(req: NextRequest) {
         if (availableStock < quantity)
           throw new Error(`${product.name} stokta yetersiz.`);
 
-        const activeCampaign = campaigns?.find(
-          (campaign: Record<string, unknown>) => {
-            const ids = safeParseIds(campaign.product_ids);
-            return (
-              ids.includes(Number(product.id)) &&
-              nowIso >= String(campaign.start_date) &&
-              nowIso <= String(campaign.end_date)
-            );
-          },
-        );
-
-        const basePrice =
-          variant?.price == null
-            ? Number(product.price)
-            : Number(variant.price);
-        const activePrice = getEffectiveUnitPrice({
-          basePrice,
-          discountPrice:
-            variant?.price == null ? product.discount_price : undefined,
-          campaignPercent: activeCampaign?.discount_percent,
-        });
+        const activePrice = getProductUnitPrice(product, (campaigns || []) as PriceCampaign[], variant, priceCheckedAt);
 
         return {
           id: product.id,
@@ -1277,7 +1260,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(finalizedResponse);
   } catch (err: unknown) {
     if (!finalizationStarted) await failCheckoutIdempotency(idempotencyContext);
-    console.error("PayTR ödeme başlangıcı tamamlanamadı:", err);
+logServerEvent("error", "checkout_start_failed", { error: err });
     return NextResponse.json(
       finalizationStarted
         ? {
