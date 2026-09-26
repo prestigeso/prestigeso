@@ -84,7 +84,7 @@ test('Google connection clears stale success and offers calendar presets', async
   await page.getByRole('button', { name: '28 günlük aralık', exact: true }).click();
   await expect(page.getByLabel('Başlangıç (PT)').filter({ visible: true })).not.toHaveValue('');
   await expect(page.getByRole('button', { name: 'Google raporunu getir', exact: true })).toBeEnabled();
-  await page.getByText('Bağlantı ve veri kapsamı', { exact: true }).click();
+  await page.getByRole('main').getByText('Bağlantı ve veri kapsamı', { exact: true }).click();
   await expect(page.getByRole('button', { name: 'Google bağlantısını kontrol et', exact: true })).toBeEnabled();
   await page.getByRole('button', { name: 'Google bağlantısını kontrol et', exact: true }).click();
   await expect(page.getByRole('status').filter({ hasText: 'Google bağlantısı doğrulandı' })).toBeVisible();
