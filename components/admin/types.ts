@@ -67,6 +67,7 @@ export type QuestionRow = {
 };
 
 export type OrderRow = {
+  payment_status?: string;
   id: number;
   order_no?: string | null;
   user_id?: string | null;

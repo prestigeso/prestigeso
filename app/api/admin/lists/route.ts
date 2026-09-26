@@ -54,7 +54,35 @@ export async function GET(req: NextRequest) {
     .select(LIST_CONFIG[resource].select, { count: "exact" });
 
   if (resource === "orders") {
-    query = query.in("payment_status", ["paid", "partially_refunded", "refunded"]);
+    const id = req.nextUrl.searchParams.get('id');
+    if (id) {
+      if (!/^\d+$/.test(id) || !Number.isSafeInteger(Number(id)) || Number(id)<1) return NextResponse.json({error:'Geçersiz sipariş.'},{status:400});
+      query = query.eq('id',Number(id));
+    }
+    query = query.in("payment_status", [
+      "paid",
+      "partially_refunded",
+      "refunded",
+    ]);
+    const status = req.nextUrl.searchParams.get("status");
+    const allowed = ["Bekliyor", "Hazırlanıyor", "Kargolandı", "Teslim Edildi"];
+    if (status && allowed.includes(status)) query = query.eq("status", status);
+    else if (status === "returns")
+      query = query.in("status", [
+        "İptal Edildi",
+        "İade Edildi",
+        "İade Talebi",
+      ]);
+    else if (status && status !== "all")
+      return NextResponse.json(
+        { error: "Geçersiz sipariş durumu." },
+        { status: 400 },
+      );
+    const q = (req.nextUrl.searchParams.get("q") || "")
+      .trim()
+      .slice(0, 80)
+      .replace(/[^\p{L}\p{N}@.\s_-]/gu, "");
+    if (q) query = query.or(`order_no.ilike.%${q}%,user_email.ilike.%${q}%`);
   }
 
   const { data, error, count } = await query

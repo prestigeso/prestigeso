@@ -40,9 +40,30 @@ jobs:
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
-      - run: npm run build
       - run: npx playwright install --with-deps chromium webkit
-      - run: npm run test:browser
+      - name: Build and browser-test against isolated read-only fixtures
+        env:
+          PHASE0_ADMIN_TEST_SECRET: ci-isolated-admin-secret-2026-at-least-32-characters
+          PLAYWRIGHT_BASE_URL: https://127.0.0.1:3443
+          PHASE0_ISOLATED: "1"
+        run: |
+          mkdir -p tmp/local-https-test
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -keyout tmp/local-https-test/key.pem \
+            -out tmp/local-https-test/cert.pem \
+            -subj '/CN=127.0.0.1' \
+            -addext 'subjectAltName=IP:127.0.0.1'
+          node scripts/phase0-fixture-server.mjs tmp/local-https-test/key.pem tmp/local-https-test/cert.pem > /tmp/prestigeso-fixture.log 2>&1 &
+          fixture_pid=$!
+          trap 'kill "${bridge_pid:-}" "${app_pid:-}" "$fixture_pid" 2>/dev/null || true' EXIT
+          curl --retry 20 --retry-connrefused --retry-delay 1 --fail http://127.0.0.1:54321/__health
+          node scripts/phase0-local.mjs build
+          node scripts/phase0-local.mjs start > /tmp/prestigeso-next.log 2>&1 &
+          app_pid=$!
+          node scripts/local-test-https.mjs tmp/local-https-test/key.pem tmp/local-https-test/cert.pem > /tmp/prestigeso-bridge.log 2>&1 &
+          bridge_pid=$!
+          curl --insecure --retry 20 --retry-connrefused --retry-delay 1 --fail https://127.0.0.1:3443/admin/login > /dev/null
+          npm run test:browser
 
   database:
     runs-on: ubuntu-latest

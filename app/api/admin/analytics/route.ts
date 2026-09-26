@@ -13,8 +13,8 @@ export async function GET(req: NextRequest) {
     if (!limit.allowed) return NextResponse.json({ error: "Rapor istek sınırı." }, { status: 429, headers });
     const q = req.nextUrl.searchParams;
     const days = Number(q.get("days") || 7), device = q.get("device") || "all", source = q.get("source") || "all", traffic = q.get("traffic") || "normal", audience = q.get("audience") || "all";
-    if (![1, 7, 14, 30].includes(days) || !["all", "ios", "android", "desktop_other"].includes(device) || !["all", "direct", "search", "social", "internal", "other"].includes(source) || !["normal", "all", "staff", "suspected"].includes(traffic) || !["all", "new", "returning"].includes(audience)) return NextResponse.json({ error: "Geçersiz filtre." }, { status: 400, headers });
-    const now = Date.now(), since = new Date(now - 30 * 86400000).toISOString();
+    if (![1, 2, 7, 14, 28, 30, 90, 365].includes(days) || !["all", "ios", "android", "desktop_other"].includes(device) || !["all", "direct", "search", "social", "internal", "other"].includes(source) || !["normal", "all", "staff", "suspected"].includes(traffic) || !["all", "new", "returning"].includes(audience)) return NextResponse.json({ error: "Geçersiz filtre." }, { status: 400, headers });
+    const now = Date.now(), since = new Date(now - Math.max(30, days) * 86400000).toISOString();
     async function read(table: string, fields: string, dateColumn: string, order: string) {
       const rows: Record<string, unknown>[] = [];
       for (let offset = 0; offset <= 20000;) {

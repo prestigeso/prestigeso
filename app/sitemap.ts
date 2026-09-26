@@ -7,8 +7,9 @@ import {
   type SitemapCategory,
 } from "@/lib/seo/sitemapData";
 
-const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL || "https://www.prestigeso.com.tr";
+import { getSeoSiteOrigin } from "@/lib/seo/siteOrigin";
+
+const SITE_URL = getSeoSiteOrigin();
 export const revalidate = 3600;
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {

@@ -29,7 +29,7 @@ const apply=async(database,name)=>{
   await sql(database,sources.get(name));
   console.log(`PASS migration ${database}: ${name}`);
 };
-const suites=["tests/db/remaining-returns.sql","supabase/tests/payment_recovery_outbox_test.sql","supabase/tests/admin_operation_audit_test.sql","tests/sql/catalog-pricing.sql"];
+const suites=["tests/db/remaining-returns.sql","tests/db/payment_recovery_outbox_test.sql","tests/db/admin_operation_audit_test.sql","tests/sql/catalog-pricing.sql"];
 const checkSuites=async(database)=>{
   for(const file of suites){
     const result=await run("psql",[...common,"-X","-qAt","-d",database,"-v","ON_ERROR_STOP=1","-f","-"],await readFile(file,"utf8"));

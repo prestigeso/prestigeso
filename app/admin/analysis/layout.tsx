@@ -1,4 +1,6 @@
 import { pageMetadata } from "@/lib/seo/pageMetadata";
+import AdminSectionNav from "@/components/admin/AdminSectionNav";
+import styles from "@/components/admin/AdminDesign.module.css";
 
 export const metadata = pageMetadata(
   "/admin/analysis",
@@ -8,5 +10,5 @@ export const metadata = pageMetadata(
 );
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  return children;
+  return <><AdminSectionNav current="analysis" /><div className={styles.report}>{children}</div></>;
 }

@@ -90,6 +90,7 @@ test("phase1 populated admin report exposes real denominators and a readable jou
   await page.goto("/admin/analytics");
   await page.getByRole("button", { name: "Yalnızca zorunlu", exact: true }).click();
   await expect(page.getByText("Ürün → sepet: %100 (1/1)", { exact: true })).toBeVisible();
+  await page.screenshot({ path: `tmp/admin-design-overview-${info.project.name}.png`, fullPage: true });
   await page.getByRole("button", { name: "Yolculuklar", exact: true }).click();
   await page.getByRole("button", { name: /gözlenen oturum/ }).click();
   await expect(page.getByRole("heading", { name: /Seçili takma ziyaretçi/ })).toBeVisible();

@@ -42,6 +42,14 @@ const securityHeaders = [
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["127.0.0.1"],
+  async redirects() {
+    return [{
+      source: "/:path*",
+      has: [{ type: "host" as const, value: "prestigeso\\.com\\.tr" }],
+      destination: "https://www.prestigeso.com.tr/:path*",
+      permanent: true,
+    }];
+  },
   async headers() {
     return [
       {

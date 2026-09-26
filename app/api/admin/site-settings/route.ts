@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { isAdminRequest } from "@/lib/adminRequest";
+import {normalizeShippingSettings} from '@/lib/checkout/checkoutShipping';
 
 export const runtime = "nodejs";
 
-type ShippingSettings = {
-  shipping_fee: number;
-  free_shipping_threshold: number;
-  shipping_enabled: boolean;
-};
 
 async function getAdminErrorResponse(
   req: NextRequest,
@@ -23,24 +19,6 @@ async function getAdminErrorResponse(
   return null;
 }
 
-function toPositiveNumber(value: unknown) {
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) && numberValue > 0
-    ? Math.round(numberValue * 100) / 100
-    : 0;
-}
-
-function normalizeShippingSettings(value: unknown): ShippingSettings {
-  const body =
-    value && typeof value === "object"
-      ? (value as Record<string, unknown>)
-      : {};
-  return {
-    shipping_fee: toPositiveNumber(body?.shipping_fee),
-    free_shipping_threshold: toPositiveNumber(body?.free_shipping_threshold),
-    shipping_enabled: body?.shipping_enabled !== false,
-  };
-}
 
 export async function PATCH(req: NextRequest): Promise<Response> {
   const adminErrorResponse = await getAdminErrorResponse(req);
@@ -59,6 +37,13 @@ export async function PATCH(req: NextRequest): Promise<Response> {
   const shipping = hasShipping
     ? normalizeShippingSettings(body.shipping)
     : null;
+  if (hasShipping) {
+    const raw=body.shipping;
+    const money=(value:unknown)=>typeof value==='number'&&Number.isFinite(value)&&value>=0&&value<=1000000&&Math.abs(value*100-Math.round(value*100))<0.00001;
+    if (!money(raw.shipping_fee) || !(raw.free_shipping_threshold===null && raw.rules_version===2 || money(raw.free_shipping_threshold)) || typeof raw.shipping_enabled!=='boolean' || (raw.rules_version!==undefined&&raw.rules_version!==2)) {
+      return NextResponse.json({error:'Kargo tutarları geçerli, negatif olmayan ve en fazla iki ondalıklı olmalı.'},{status:400});
+    }
+  }
   const marquee = hasMarquee
     ? String(body.marquee || "")
         .trim()

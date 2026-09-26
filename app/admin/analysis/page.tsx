@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { formatMoney } from "@/lib/utils";
+import { StudioChart } from "@/components/admin/StudioOverview";
 
 type AnalysisTab = "overview" | "revenue" | "orders" | "visits" | "products";
 type RangeKey = "24h" | "7d" | "28d" | "90d" | "365d" | "all";
@@ -145,23 +146,11 @@ function getPrimaryMetricLabel(activeTab: AnalysisTab) {
   return "Ciro";
 }
 
-function getPrimaryMetricColor(activeTab: AnalysisTab) {
-  if (activeTab === "orders") return "bg-black";
-  if (activeTab === "visits") return "bg-blue-500";
-  return "bg-green-500";
-}
-
 function getPrimaryMetricTextColor(activeTab: AnalysisTab) {
   if (activeTab === "orders") return "text-black";
   if (activeTab === "visits") return "text-blue-600";
   if (activeTab === "products") return "text-purple-600";
   return "text-green-600";
-}
-
-function formatPrimaryMetric(value: number, activeTab: AnalysisTab) {
-  if (activeTab === "orders" || activeTab === "visits")
-    return formatNumber(value);
-  return formatMoney(value);
 }
 
 function buildDailyMetrics(orders: OrderMetric[], visits: VisitMetric[]) {
@@ -390,13 +379,6 @@ export default function AdminAnalysisPage() {
     if (range === "365d" || range === "all") return dailyMetrics.slice(-30);
     return dailyMetrics;
   }, [dailyMetrics, range]);
-
-  const maxPrimaryMetric = useMemo(() => {
-    const values = visibleDailyMetrics.map((metric) =>
-      getPrimaryMetricValue(metric, activeTab),
-    );
-    return Math.max(...values, 1);
-  }, [visibleDailyMetrics, activeTab]);
 
   const bestRevenueDay = useMemo(
     () => getBestMetric(dailyMetrics, "revenue"),
@@ -678,36 +660,7 @@ export default function AdminAnalysisPage() {
                     </p>
                   </div>
                 ) : (
-                  <div className="h-80 flex items-end gap-2 border-b border-gray-100 pb-4 overflow-x-auto">
-                    {visibleDailyMetrics.map((metric) => {
-                      const value = getPrimaryMetricValue(metric, activeTab);
-                      const height = Math.max(
-                        (value / maxPrimaryMetric) * 100,
-                        value > 0 ? 8 : 3,
-                      );
-
-                      return (
-                        <div
-                          key={metric.key}
-                          className="min-w-10 flex-1 flex flex-col items-center justify-end gap-2 h-full"
-                        >
-                          <div className="text-[10px] font-black text-gray-400 whitespace-nowrap">
-                            {formatPrimaryMetric(value, activeTab)}
-                          </div>
-                          <div className="w-full h-56 flex items-end justify-center">
-                            <div
-                              className={`w-full max-w-12 rounded-t-2xl ${getPrimaryMetricColor(activeTab)} transition-all`}
-                              style={{ height: `${height}%` }}
-                              title={`${metric.label} - ${getPrimaryMetricLabel(activeTab)}: ${formatPrimaryMetric(value, activeTab)}`}
-                            />
-                          </div>
-                          <div className="text-[10px] font-black text-gray-400 whitespace-nowrap">
-                            {metric.label}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <StudioChart key={`${activeTab}-${range}`} rows={visibleDailyMetrics.map(metric => ({label: metric.label, value: getPrimaryMetricValue(metric, activeTab)}))} unit={getPrimaryMetricLabel(activeTab)} />
                 )}
               </div>
             )}

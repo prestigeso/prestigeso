@@ -1,42 +1,8 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { normalizeShippingSettings as normalizeSettings } from '@/lib/checkout/checkoutShipping';
 
 export const runtime = "nodejs";
-
-type ShippingSettings = {
-  shipping_fee: number;
-  free_shipping_threshold: number;
-  shipping_enabled: boolean;
-};
-
-const DEFAULT_SHIPPING_SETTINGS: ShippingSettings = {
-  shipping_fee: 0,
-  free_shipping_threshold: 0,
-  shipping_enabled: true,
-};
-
-function normalizeSettings(value: unknown): ShippingSettings {
-  const source = value && typeof value === "object" ? value : {};
-  const settings = source as Record<string, unknown>;
-
-  const shippingFee = Number(
-    settings.shipping_fee ?? DEFAULT_SHIPPING_SETTINGS.shipping_fee,
-  );
-  const freeShippingThreshold = Number(
-    settings.free_shipping_threshold ??
-      DEFAULT_SHIPPING_SETTINGS.free_shipping_threshold,
-  );
-
-  return {
-    shipping_fee:
-      Number.isFinite(shippingFee) && shippingFee > 0 ? shippingFee : 0,
-    free_shipping_threshold:
-      Number.isFinite(freeShippingThreshold) && freeShippingThreshold > 0
-        ? freeShippingThreshold
-        : 0,
-    shipping_enabled: settings.shipping_enabled !== false,
-  };
-}
 
 export async function GET(): Promise<Response> {
   const { data, error } = await supabaseAdmin

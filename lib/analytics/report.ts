@@ -124,7 +124,32 @@ export function buildAnalyticsReport(data: Dataset, filter: ReportFilter, now = 
     lastSeen: new Date(c.last).toISOString(), checkout: c.checkout }));
   const finance = data.orders.filter((o) => paid(o) && Date.parse(o.paid_at!) >= from && Date.parse(o.paid_at!) < now);
   const linked = new Set(data.links.map((l) => l.order_id));
+  const dayFormatter = new Intl.DateTimeFormat("en-CA", {timeZone:"Europe/Istanbul",year:"numeric",month:"2-digit",day:"2-digit"});
+  const calendarDay = (timestamp: string | number) => dayFormatter.format(new Date(timestamp));
+  const dailyCounts = new Map<string,{sessions:number;gross:number;orders:number}>();
+  const dayCounts = (day:string) => {let count=dailyCounts.get(day);if(!count){count={sessions:0,gross:0,orders:0};dailyCounts.set(day,count);}return count;};
+  for(const session of sessions)dayCounts(calendarDay(session.started_at)).sessions++;
+  for(const order of finance){const count=dayCounts(calendarDay(order.paid_at!));count.orders++;count.gross+=Number(order.total_amount);}
+  const daily = Array.from({length:filter.days+1},(_,i)=>{
+    const day=calendarDay(from+i*86400000);
+    return {day,...(dailyCounts.get(day)||{sessions:0,gross:0,orders:0})};
+  }).filter((row,index,all)=>all.findIndex(x=>x.day===row.day)===index);
+  const sources=[...new Set(sessions.map(s=>s.source))].map(source=>{
+    const summary=summarize(sessions.filter(s=>s.source===source));
+    return {source,sessions:summary.sessions,linkedPaidSessions:summary.linkedPaidSessions};
+  }).sort((a,b)=>b.sessions-a.sessions);
+  const interval=filter.days<=2?3600000:86400000;
+  const bucketStart=filter.days<=2?Math.floor(from/interval)*interval:Date.parse(calendarDay(from)+'T00:00:00+03:00');
+  const series=Array.from({length:Math.ceil((now-bucketStart)/interval)},(_,i)=>{
+    const start=bucketStart+i*interval,end=start+interval;
+    const selected=sessions.filter(s=>Date.parse(s.started_at)>=start&&Date.parse(s.started_at)<end);
+    const summary=summarize(selected);
+    const orders=finance.filter(o=>Date.parse(o.paid_at!)>=start&&Date.parse(o.paid_at!)<end);
+    return {timestamp:start,...summary,search:selected.filter(s=>s.source==='search').length,social:selected.filter(s=>s.source==='social').length,
+      gross:orders.reduce((n,o)=>n+Number(o.total_amount),0),refunds:orders.reduce((n,o)=>n+Number(o.refunded_amount||0),0),orders:orders.length};
+  });
   return { generatedAt: new Date(now).toISOString(), from: new Date(from).toISOString(), filter,
+    daily, sources, series, granularity:filter.days<=2?'hour':'day',
     current: summarize(sessions), previous: summarize(previousSessions), home: summarize(sessions.filter((s) => s.entry_page === "home")),
     finance: { orders: finance.length, gross: finance.reduce((n, o) => n + Number(o.total_amount), 0), refunds: finance.reduce((n, o) => n + Number(o.refunded_amount || 0), 0), unmeasuredOrders: finance.filter((o) => !linked.has(o.id)).length },
     quality: { unfilteredSessions: data.sessions.filter((s) => Date.parse(s.started_at) >= from).length, measuredEvents: events.length,

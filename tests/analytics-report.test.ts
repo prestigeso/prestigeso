@@ -4,6 +4,26 @@ import { buildAnalyticsReport, type Dataset, type SessionRow } from "../lib/anal
 const now = Date.parse("2026-09-17T12:00:00Z");
 const session: SessionRow = { id: "session", visitor_id: "visitor", started_at: "2026-09-17T10:00:00Z", last_seen: "2026-09-17T10:20:00Z", entry_page: "home", source: "direct", device: "android", traffic: "normal" };
 const filter = { days: 7, device: "all", source: "all", traffic: "normal", audience: "all" };
+test('studio hourly and daily selectable metrics reconcile with report totals',()=>{
+ for(const days of [1,2,7,28,30,90,365]){
+ const r=buildAnalyticsReport(fixture(),{...filter,days},now);
+ assert.equal(r.granularity,days<=2?'hour':'day');
+ for(const key of ['sessions','viewed','added','paid'] as const)assert.equal(r.series.reduce((n,x)=>n+x[key],0),r.current[key]);
+ assert.equal(r.series.reduce((n,x)=>n+x.gross,0),r.finance.gross);
+ assert.equal(r.series.reduce((n,x)=>n+x.refunds,0),r.finance.refunds);
+ }
+});
+test("studio daily and source summaries reconcile with existing totals",()=>{
+ const d=fixture();d.sessions.push({...session,id:'staff',visitor_id:'staff',traffic:'staff',source:'social'});
+ const r=buildAnalyticsReport(d,filter,now);
+ assert.equal(r.daily.reduce((n,x)=>n+x.sessions,0),r.current.sessions);
+ assert.equal(r.daily.reduce((n,x)=>n+x.gross,0),r.finance.gross);
+ assert.equal(r.daily.reduce((n,x)=>n+x.orders,0),r.finance.orders);
+ assert.deepEqual(r.sources,[{source:'direct',sessions:1,linkedPaidSessions:1}]);
+ assert.equal(r.daily.at(-1)?.day,'2026-09-17');
+ const empty=buildAnalyticsReport({sessions:[],events:[],orders:[],links:[]},filter,now);
+ assert.equal(empty.sources.length,0);assert.ok(empty.daily.every(x=>x.sessions===0&&x.gross===0));
+});
 function fixture(): Dataset {
   const types = ["product_view", "add_cart", "begin_checkout"] as const;
   return { sessions: [session], events: types.map((type, i) => ({ sequence: i + 1, session_id: session.id, visitor_id: session.visitor_id, received_at: `2026-09-17T10:0${i}:00Z`, payload: { version: 1, eventId: `event${i}`, visitorId: session.visitor_id, sessionId: session.id, sequence: i + 1, type, page: "product", productId: 1, quantity: 1, cartId: "cart", attemptId: "attempt" } })),

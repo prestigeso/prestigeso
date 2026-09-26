@@ -21,6 +21,10 @@ const env = { ...process.env,
   PAYTR_TEST_MODE: "1", PAYTR_DEBUG_ON: "0", PAYTR_MERCHANT_ID: "phase0-disabled",
   PAYTR_MERCHANT_KEY: "phase0-disabled", PAYTR_MERCHANT_SALT: "phase0-disabled",
   RESEND_API_KEY: "re_phase0_disabled", RESEND_FROM_EMAIL: "Test <test@example.invalid>",
+  TRENDYOL_READ_ONLY_ENABLED: "0", TRENDYOL_API_KEY: "", TRENDYOL_API_SECRET: "", TRENDYOL_SELLER_ID: "",
+  GSC_READ_ONLY_ENABLED: "0", GSC_CLIENT_ID: "", GSC_CLIENT_SECRET: "", GSC_REFRESH_TOKEN: "",
+  TRENDYOL_SYNC_ENABLED: "0",
+  MARKETING_PREPARATION_ENABLED: "0",
 };
 const args = ["node_modules/next/dist/bin/next", action, ...(action === "start" ? ["--hostname", "127.0.0.1", "--port", "3100"] : [])];
 const child = spawn(process.execPath, args, { env, stdio: "inherit", windowsHide: true });

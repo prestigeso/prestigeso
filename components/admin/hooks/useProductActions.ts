@@ -400,8 +400,10 @@ export function useProductActions({
         `${field === "price" ? "Fiyat" : "Stok"} başarıyla güncellendi.`,
         "success",
       );
+      return true;
     } catch (error: unknown) {
       showToast("Güncelleme hatası: " + getErrorMessage(error), "error");
+      return false;
     }
   };
 

@@ -32,8 +32,9 @@ export type { CouponRow, CouponUsageRow } from "@/types";
 
 export type ShippingSettings = {
   shipping_fee: number;
-  free_shipping_threshold: number;
+  free_shipping_threshold: number | null;
   shipping_enabled: boolean;
+  rules_version?: 2;
 };
 
 export type LocationOption = {

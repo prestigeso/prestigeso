@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
     stalePaymentCount,
     failedPaymentCount,
     reconciliationCount,
+    actionablePaymentCount,
   ] = await Promise.all([
     supabaseAdmin
       .from("products")
@@ -135,6 +136,9 @@ export async function GET(req: NextRequest) {
         // A previous partial refund (or a saved refund awaiting stock) must not hide a retained lock.
         `reconciliation_status.in.(mismatch,error),refund_started_at.lt.${new Date(Date.now() - 15 * 60000).toISOString()},and(post_payment_processing_at.lt.${new Date(Date.now() - 15 * 60000).toISOString()},post_payment_processed_at.is.null)`,
       ),
+    supabaseAdmin.from('orders').select('id',{count:'exact',head:true}).or(
+      `and(payment_status.eq.pending,reservation_expires_at.lt.${now.toISOString()},stock_released_at.is.null),reconciliation_status.in.(mismatch,error),refund_started_at.lt.${new Date(now.getTime()-15*60000).toISOString()},and(post_payment_processing_at.lt.${new Date(now.getTime()-15*60000).toISOString()},post_payment_processed_at.is.null)`,
+    ),
   ]);
 
   const results = [
@@ -151,6 +155,7 @@ export async function GET(req: NextRequest) {
   ];
   const firstError = results.find((result) => result.error)?.error;
   const countResults = [
+    actionablePaymentCount,
     monthlyVisits,
     allVisits,
     productCount,
@@ -186,6 +191,7 @@ export async function GET(req: NextRequest) {
       monthlyVisits: monthlyVisits.count || 0,
       allVisits: allVisits.count || 0,
       counts: {
+        actionablePayments: actionablePaymentCount.count || 0,
         products: productCount.count || 0,
         unreadMessages: unreadMessageCount.count || 0,
         unansweredQuestions: unansweredQuestionCount.count || 0,

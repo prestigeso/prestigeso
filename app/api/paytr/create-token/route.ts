@@ -1,6 +1,7 @@
 import { logServerEvent } from "@/lib/logger";
 import { NextRequest, NextResponse, after } from "next/server";
 import { readVisitor, linkAnalyticsOrder } from "@/lib/analytics/server";
+import { linkMarketingOrder } from "@/lib/marketing/server";
 import crypto from "crypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { createClient } from "@supabase/supabase-js";
@@ -20,6 +21,8 @@ import {
 } from "@/lib/commerce/orderRules";
 import { getProductUnitPrice, type PriceCampaign } from "@/lib/commerce/catalogPricing";
 import { DISTANCE_SALES_VERSION } from "@/lib/legal/consent";
+import {normalizeShippingSettings} from '@/lib/checkout/checkoutShipping';
+import type {ShippingSettings} from '@/lib/checkout/checkoutTypes';
 
 export const runtime = "nodejs";
 
@@ -41,11 +44,6 @@ type CouponRow = {
   is_member_only: boolean;
 };
 
-type ShippingSettings = {
-  shipping_fee: number;
-  free_shipping_threshold: number;
-  shipping_enabled: boolean;
-};
 
 type ProductRow = {
   id: number;
@@ -282,22 +280,6 @@ function isCouponInDateRange(coupon: CouponRow) {
   return true;
 }
 
-function normalizeShippingSettings(value: unknown): ShippingSettings {
-  const source = value && typeof value === "object" ? value : {};
-  const settings = source as Record<string, unknown>;
-  const shippingFee = Number(settings.shipping_fee || 0);
-  const freeShippingThreshold = Number(settings.free_shipping_threshold || 0);
-
-  return {
-    shipping_fee:
-      Number.isFinite(shippingFee) && shippingFee > 0 ? shippingFee : 0,
-    free_shipping_threshold:
-      Number.isFinite(freeShippingThreshold) && freeShippingThreshold > 0
-        ? freeShippingThreshold
-        : 0,
-    shipping_enabled: settings.shipping_enabled !== false,
-  };
-}
 
 async function getShippingSettings(): Promise<ShippingSettings> {
   const { data, error } = await supabaseAdmin
@@ -315,6 +297,7 @@ function calculateShippingFee(
   settings: ShippingSettings,
   subtotalAfterCoupon: number,
 ) {
+  if (settings.rules_version===2 && settings.free_shipping_threshold===0) return 0;
   return calculateShipping({
     enabled: settings.shipping_enabled,
     threshold: Number(settings.free_shipping_threshold || 0),
@@ -704,7 +687,7 @@ export async function POST(req: NextRequest) {
     if (claim.action === "completed") {
       const visitor = readVisitor(req);
       const replayOrder = String((claim.response as Record<string, unknown> | undefined)?.merchant_oid || "");
-      if (replayOrder) after(() => linkAnalyticsOrder(visitor, body.analytics, replayOrder));
+      if (replayOrder) after(async () => { await linkAnalyticsOrder(visitor, body.analytics, replayOrder); await linkMarketingOrder(req, replayOrder); });
       const replayStatus = Number(claim.status || 200);
       return NextResponse.json(claim.response, {
         status:
@@ -1234,7 +1217,7 @@ export async function POST(req: NextRequest) {
       if (recovered.action === "completed") {
         const visitor = readVisitor(req);
         const recoveredOrder = String((recovered.response as Record<string, unknown> | undefined)?.merchant_oid || "");
-        if (recoveredOrder) after(() => linkAnalyticsOrder(visitor, body.analytics, recoveredOrder));
+        if (recoveredOrder) after(async () => { await linkAnalyticsOrder(visitor, body.analytics, recoveredOrder); await linkMarketingOrder(req, recoveredOrder); });
         const recoveredStatus = Number(recovered.status || 200);
         return NextResponse.json(recovered.response, {
           status:
@@ -1266,7 +1249,7 @@ export async function POST(req: NextRequest) {
         { status: 503, headers: { "Retry-After": "3" } },
       );
     const analyticsVisitor = readVisitor(req);
-    after(() => linkAnalyticsOrder(analyticsVisitor, body.analytics, merchantOid));
+    after(async () => { await linkAnalyticsOrder(analyticsVisitor, body.analytics, merchantOid); await linkMarketingOrder(req, merchantOid); });
     return NextResponse.json(finalizedResponse);
   } catch (err: unknown) {
     if (!finalizationStarted) await failCheckoutIdempotency(idempotencyContext);

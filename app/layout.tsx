@@ -9,9 +9,11 @@ import AppAlertProvider from "@/components/ui/AppAlertProvider";
 import CookieConsent from "@/components/CookieConsent";
 import { Suspense } from "react";
 import AnalyticsTracker from "@/components/AnalyticsTracker";
+import MarketingPreparation from "@/components/MarketingPreparation";
 
-const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL || "https://prestigeso.com.tr";
+import { getSeoSiteOrigin } from "@/lib/seo/siteOrigin";
+
+const SITE_URL = getSeoSiteOrigin();
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -74,6 +76,7 @@ export default async function RootLayout({
           </SearchProvider>
         </AppAlertProvider>
         <CookieConsent />
+        <MarketingPreparation enabled={process.env.MARKETING_PREPARATION_ENABLED === '1'} />
         <Suspense fallback={null}><AnalyticsTracker /></Suspense>
       </body>
     </html>

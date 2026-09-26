@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useAppAlert } from "@/context/AppAlertContext";
 
 import { useAdminData } from "./hooks/useAdminData";
-import { useAdminNotifications } from "./hooks/useAdminNotifications";
+import { useTrendyolEntrySync } from "./hooks/useTrendyolEntrySync";
 import { useProductActions } from "./hooks/useProductActions";
 import { useCampaignActions } from "./hooks/useCampaignActions";
 import { useSettingsActions } from "./hooks/useSettingsActions";
@@ -13,10 +13,29 @@ import { useOrderActions } from "./hooks/useOrderActions";
 import { useReviewActions } from "./hooks/useReviewActions";
 import { usePerformanceData } from "./hooks/usePerformanceData";
 
-import { HeaderBar, AdminNav, ProductList } from "./parts";
-import AdminDashboardSummary from "./parts/AdminDashboardSummary";
-import AdminFloatingActions from "./parts/AdminFloatingActions";
-import AdminDashboardAlerts from "./parts/AdminDashboardAlerts";
+import AdminStudioShell, {
+  isAdminSection,
+  type AdminSection,
+} from "./AdminStudioShell";
+import StudioOverview from "./StudioOverview";
+import StudioProducts from "./StudioProducts";
+import StudioOrders from "./StudioOrders";
+import StudioCustomers from "./StudioCustomers";
+import StudioPane from "./StudioPane";
+import StudioInsights from "./StudioInsights";
+import AnalyticsDashboard from "./AnalyticsDashboard";
+import Phase2Records from "./Phase2Records";
+import SearchConsoleReport from "./SearchConsoleReport";
+import SearchInspection from "./SearchInspection";
+import SearchConnection from "./SearchConnection";
+import MarketingPreparationStatus from "./MarketingPreparationStatus";
+import OrderContribution from "./OrderContribution";
+import PriceScenario from "./PriceScenario";
+import ProfitAnalysis from "./ProfitAnalysis";
+import ProfitSettings from "./ProfitSettings";
+import TrendyolSync from "./TrendyolSync";
+import s from "./AdminStudio.module.css";
+import type { OrderRow } from "./types";
 import AdminOperationsQueue from "./parts/AdminOperationsQueue";
 import {
   AddProductModal,
@@ -33,15 +52,38 @@ import {
 } from "./modals";
 
 export default function AdminPanel() {
+  const trendyolSync = useTrendyolEntrySync();
   const { showToast, showConfirm } = useAppAlert();
 
-  const activeMonth = new Date()
-    .toLocaleString("tr-TR", { month: "long" })
-    .toUpperCase();
+  const [section, setSection] = useState<AdminSection>("overview");
+  const [customerTab, setCustomerTab] = useState("messages");
+  const [customerChannel,setCustomerChannel]=useState('all');
+  const [marketingTab, setMarketingTab] = useState("google");
+  const [financeTab, setFinanceTab] = useState("orders");
+  const [financeView, setFinanceView] = useState("sales");
+  const [settingsTab, setSettingsTab] = useState("shipping");
+  const [selectedOrder, setSelectedOrder] = useState<OrderRow | null>(null);
+  const [showOperations, setShowOperations] = useState(false);
+  const [orderRevision, setOrderRevision] = useState(0);
+  const navigate = (next: AdminSection) => {
+    setSection(next);
+    setShowOperations(false);
+    window.history.pushState(null, "", `/admin?view=${next}`);
+  };
+  useEffect(() => {
+    const read = () => {
+      const value = new URLSearchParams(window.location.search).get("view");
+      setSection(isAdminSection(value) ? value : "overview");
+    };
+    read();
+    window.addEventListener("popstate", read);
+    return () => window.removeEventListener("popstate", read);
+  }, []);
 
   // ── Data ─────────────────────────────────────────────────────
   const {
     loading,
+    error: dashboardError,
     dbProducts,
     dbSlides,
     dbCampaigns,
@@ -66,12 +108,6 @@ export default function AdminPanel() {
   } = useAdminData();
 
   // ── UI state (modal open/close) ──────────────────────────────
-  const [searchTerm, setSearchTerm] = useState("");
-  const [stockTab, setStockTab] = useState<"all" | "in" | "out">("all");
-  const [activeNavMenu, setActiveNavMenu] = useState<string | null>(null);
-
-  const [isFabOpen, setIsFabOpen] = useState(false);
-  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
   const [isAddProductOpen, setIsAddProductOpen] = useState(false);
   const [isCampaignOpen, setIsCampaignOpen] = useState(false);
@@ -90,41 +126,6 @@ export default function AdminPanel() {
   );
 
   // ── Domain hooks ─────────────────────────────────────────────
-  const {
-    unifiedNotifications,
-    totalNotifications,
-    unreadMessagesCount,
-    unansweredQuestionsCount,
-    pendingReviewsCount,
-    pendingOrdersCount,
-  } = useAdminNotifications({
-    dbOrders,
-    dbQuestions,
-    dbReviews,
-    dbMessages,
-    dbProducts,
-    exactCounts: dashboardCounts,
-    onOpenOrders: () => {
-      setIsNotificationsOpen(false);
-      setIsOrdersOpen(true);
-    },
-    onOpenQuestions: () => {
-      setIsNotificationsOpen(false);
-      setIsQuestionsOpen(true);
-    },
-    onOpenReviews: () => {
-      setIsNotificationsOpen(false);
-      setIsReviewsOpen(true);
-    },
-    onOpenMessages: () => {
-      setIsNotificationsOpen(false);
-      setIsMessagesOpen(true);
-    },
-    onShowOutOfStock: () => {
-      setIsNotificationsOpen(false);
-      setStockTab("out");
-    },
-  });
 
   const productActions = useProductActions({
     dbProducts,
@@ -146,7 +147,22 @@ export default function AdminPanel() {
   const orderActions = useOrderActions({
     setDbOrders,
     showToast,
-    refreshOrders: () => loadAdminList("orders", listMeta.orders.page),
+    refreshOrders: async () => {
+      if (!selectedOrder) {
+        await loadAdminList("orders", listMeta.orders.page);
+        return;
+      }
+      const response = await fetch(
+        `/api/admin/lists?resource=orders&id=${selectedOrder.id}`,
+        { cache: "no-store" },
+      );
+      const result = await response.json();
+      if (!response.ok) throw new Error("Sipariş yenilenemedi.");
+      setDbOrders((previous) => [
+        ...previous.filter((o) => o.id !== selectedOrder.id),
+        ...result.items,
+      ]);
+    },
   });
   const reviewActions = useReviewActions({
     setDbReviews,
@@ -156,16 +172,24 @@ export default function AdminPanel() {
   const performanceData = usePerformanceData({ dbProducts, productMetrics });
 
   useEffect(() => {
-    if (isMessagesOpen) void loadAdminList("messages", 1);
-  }, [isMessagesOpen, loadAdminList]);
+    if (
+      isMessagesOpen ||
+      (section === "customers" && customerTab === "messages")
+    )
+      void loadAdminList("messages", 1);
+  }, [isMessagesOpen, section, customerTab, loadAdminList]);
 
   useEffect(() => {
-    if (isQuestionsOpen) void loadAdminList("questions", 1);
-  }, [isQuestionsOpen, loadAdminList]);
+    if (
+      isQuestionsOpen ||
+      (section === "customers" && customerTab === "questions")
+    )
+      void loadAdminList("questions", 1);
+  }, [isQuestionsOpen, section, customerTab, loadAdminList]);
 
   useEffect(() => {
-    if (isOrdersOpen) void loadAdminList("orders", 1);
-  }, [isOrdersOpen, loadAdminList]);
+    if (isOrdersOpen && !selectedOrder) void loadAdminList("orders", 1);
+  }, [isOrdersOpen, selectedOrder, loadAdminList]);
 
   // ── handleAddProduct wrapper (closes modal on success) ──────
   const handleAddProduct = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -175,92 +199,319 @@ export default function AdminPanel() {
 
   // ── Render ───────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-100 font-sans text-black pb-32">
-      <HeaderBar
-        unreadMessagesCount={unreadMessagesCount}
-        onOpenMessages={() => setIsMessagesOpen(true)}
-        totalNotifications={totalNotifications}
-        isNotificationsOpen={isNotificationsOpen}
-        setIsNotificationsOpen={setIsNotificationsOpen}
-        notifications={unifiedNotifications}
-        avatarLetter="A"
-      />
-
-      <AdminNav
-        activeNavMenu={activeNavMenu}
-        setActiveNavMenu={setActiveNavMenu}
-        unansweredQuestionsCount={unansweredQuestionsCount}
-        pendingReviewsCount={pendingReviewsCount}
-        pendingOrdersCount={pendingOrdersCount}
-        unreadMessagesCount={unreadMessagesCount}
-        onOpenQuestions={() => setIsQuestionsOpen(true)}
-        onOpenReviews={() => setIsReviewsOpen(true)}
-        onOpenMessages={() => setIsMessagesOpen(true)}
-        onOpenOrders={() => setIsOrdersOpen(true)}
-        onOpenPerformanceFavorites={() => {
-          setPerfTab("favorites");
-          setIsPerformanceOpen(true);
-        }}
-        onOpenPerformanceReviews={() => {
-          setPerfTab("reviews");
-          setIsPerformanceOpen(true);
-        }}
-        onOpenPerformanceViews={() => {
-          setPerfTab("views");
-          setIsPerformanceOpen(true);
-        }}
-      />
-
-      <div className="px-6 max-w-6xl mx-auto space-y-6">
-        <AdminOperationsQueue onOpenOrders={() => setIsOrdersOpen(true)} />
-        <AdminDashboardSummary
-          activeMonth={activeMonth}
-          monthlyRevenue={monthlyRevenue}
-          monthlyOrders={monthlyOrders}
-          monthlyVisits={monthlyVisits}
-          totalProducts={dashboardCounts.products}
-        />
-
-        <AdminDashboardAlerts
-          pendingOrdersCount={pendingOrdersCount}
-          unansweredQuestionsCount={unansweredQuestionsCount}
-          pendingReviewsCount={pendingReviewsCount}
-          unreadMessagesCount={unreadMessagesCount}
-          paymentIssuesCount={
-            dashboardCounts.stalePayments +
-            dashboardCounts.failedPayments +
-            dashboardCounts.reconciliationIssues
-          }
-          onOpenOrders={() => setIsOrdersOpen(true)}
-          onOpenQuestions={() => setIsQuestionsOpen(true)}
-          onOpenReviews={() => setIsReviewsOpen(true)}
-          onOpenMessages={() => setIsMessagesOpen(true)}
-        />
-
-        <ProductList
+    <AdminStudioShell section={section} onNavigate={navigate}>
+      {section === "overview" && (
+        <StudioOverview
+          revision={trendyolSync.revision}
           loading={loading}
-          dbProducts={dbProducts}
-          dbCampaigns={dbCampaigns}
-          dbCategories={dbCategories}
-          stockTab={stockTab}
-          setStockTab={setStockTab}
-          searchTerm={searchTerm}
-          setSearchTerm={setSearchTerm}
-          onEditProduct={productActions.openEditProduct}
-          onRefresh={loadAllData}
-          onInlineUpdate={productActions.handleInlineUpdate}
+          error={dashboardError}
+          revenue={monthlyRevenue}
+          orders={monthlyOrders}
+          visits={monthlyVisits}
+          issues={dashboardCounts.actionablePayments ?? null}
+          onIssues={() => setShowOperations(!showOperations)}
+          recentOrders={dbOrders}
+          onOrders={() => navigate("orders")}
+          onOrder={(order) => {
+            setSelectedOrder(order);
+            setIsOrdersOpen(true);
+          }}
         />
-      </div>
-
-      <AdminFloatingActions
-        isFabOpen={isFabOpen}
-        setIsFabOpen={setIsFabOpen}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-        onOpenAddProduct={() => setIsAddProductOpen(true)}
-        onOpenCampaign={() => setIsCampaignOpen(true)}
-        onOpenCoupons={() => setIsCouponsOpen(true)}
-        onOpenCategories={() => setIsCategoriesOpen(true)}
-      />
+      )}
+      {showOperations && (
+        <AdminOperationsQueue
+          onOpenOrders={() => {
+            setSelectedOrder(null);
+            setIsOrdersOpen(true);
+          }}
+        />
+      )}
+      {section === "products" && (
+        <>
+          <header className={s.heading}>
+            <div>
+              <h1>Ürünler</h1>
+              <p>Kataloğunuzu, fiyatları ve stokları yönetin.</p>
+            </div>
+            <div className={s.row}>
+              <button
+                className={s.button}
+                onClick={() => setIsCategoriesOpen(true)}
+              >
+                Kategoriler
+              </button>
+              <button
+                className={s.primary}
+                onClick={() => setIsAddProductOpen(true)}
+              >
+                Ürün ekle
+              </button>
+            </div>
+          </header>
+          <StudioProducts
+            dbProducts={dbProducts}
+            categories={dbCategories}
+            onEdit={productActions.openEditProduct}
+            onSave={productActions.handleInlineUpdate}
+          />
+        </>
+      )}
+      {section === "orders" && (
+        <>
+          <header className={s.heading}>
+            <div>
+              <h1>Siparişler</h1>
+              <p>
+                Tüm siparişleri tek listede görün, satış kanalına göre
+                filtreleyin.
+              </p>
+            </div>
+          </header>
+          <StudioOrders
+            products={dbProducts}
+            revision={orderRevision + trendyolSync.revision}
+            syncMessage={trendyolSync.message}
+            syncBusy={trendyolSync.busy}
+            onSync={trendyolSync.refresh}
+            onOpen={(order) => {
+              setSelectedOrder(order);
+              setDbOrders((previous) => [
+                order,
+                ...previous.filter((o) => o.id !== order.id),
+              ]);
+              setIsOrdersOpen(true);
+            }}
+          />
+        </>
+      )}
+      {section === "customers" && (
+        <StudioCustomers onChannelChange={setCustomerChannel}>
+          <div className={s.tabs}>
+            {[
+              ["messages", "Mesajlar"],
+              ["questions", "Ürün soruları / sorunları"],
+              ["reviews", "Yorumlar"],
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                aria-pressed={customerTab === key}
+                onClick={() => setCustomerTab(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </StudioCustomers>
+      )}
+      {section === "performance" && (
+        <>
+          <header className={s.heading}>
+            <div>
+              <h1>Mağaza performansı</h1>
+            </div>
+            <button
+              className={s.button}
+              onClick={() => setIsPerformanceOpen(true)}
+            >
+              Ürün beğeni ve favorileri
+            </button>
+          </header>
+          <StudioInsights mode="performance" />
+          <details className={s.panel}>
+            <summary>Detaylı performans raporları</summary>
+            <div className={s.embeddedReport}>
+              <AnalyticsDashboard embedded />
+            </div>
+          </details>
+        </>
+      )}
+      <StudioPane active={section === "marketing"}>
+        <>
+          <header className={s.heading}>
+            <div>
+              <h1>Pazarlama</h1>
+            </div>
+          </header>
+          <StudioInsights mode="marketing" active={section === "marketing"} />
+          <details className={s.panel}>
+            <summary>Google aramaları ve kampanya araçları</summary>
+            <div className={s.tabs}>
+              {[
+                ["ads", "Reklamlar", "Ölçüm ve bağlantı durumu"],
+                [
+                  "google",
+                  "Google aramaları",
+                  "Sorgular, gösterimler ve tıklamalar",
+                ],
+                ["campaigns", "Kampanyalar", "İndirim dönemleri ve kuponlar"],
+              ].map(([key, label, description]) => (
+                <button
+                  key={key}
+                  aria-label={label}
+                  aria-pressed={marketingTab === key}
+                  onClick={() => setMarketingTab(key)}
+                >
+                  {label}
+                  <small>{description}</small>
+                </button>
+              ))}
+            </div>
+            <div hidden={marketingTab !== "ads"}>
+              <details>
+                <summary>Reklam ölçümü teknik hazırlığı</summary>
+                <MarketingPreparationStatus />
+              </details>
+            </div>
+            <div hidden={marketingTab !== "google"}>
+              <SearchConsoleReport active={section==='marketing' && marketingTab==='google'} />
+              <details className={s.panel}>
+                <summary>URL denetimi</summary>
+                <SearchInspection />
+              </details>
+            </div>
+            <div hidden={marketingTab !== "campaigns"} className={s.panel}>
+              <h2>Kampanya ve kuponlar</h2>
+              <p>İndirim dönemlerini ve kullanılabilir kuponları yönetin.</p>
+              <div className={s.row}>
+                <button
+                  className={s.primary}
+                  onClick={() => setIsCampaignOpen(true)}
+                >
+                  Kampanyaları yönet
+                </button>
+                <button
+                  className={s.button}
+                  onClick={() => setIsCouponsOpen(true)}
+                >
+                  Kuponları yönet
+                </button>
+              </div>
+            </div>
+          </details>
+        </>
+      </StudioPane>
+      <StudioPane active={section === "finance"}>
+        <>
+          <header className={s.heading}>
+            <div>
+              <h1>Finans</h1>
+              <p>Gerçekleşen giderleri ve tahminleri ayrı görün.</p>
+            </div>
+          </header>
+          <div className={s.tabs} aria-label="Finans görünümü">
+            <button aria-pressed={financeView === "sales"} onClick={() => setFinanceView("sales")}>Satış özeti</button>
+            <button aria-pressed={financeView === "profit"} onClick={() => setFinanceView("profit")}>Kâr analizi</button>
+          </div>
+          <div hidden={financeView !== "sales"}><StudioInsights mode="finance" active={section === "finance" && financeView === "sales"} /></div>
+          <div hidden={financeView !== "profit"}><ProfitAnalysis active={section === "finance" && financeView === "profit"} syncRevision={trendyolSync.revision} onOpenSettings={()=>{navigate("settings");setSettingsTab("profit");}} /></div>
+          <details className={s.panel}>
+            <summary>Sipariş katkısı ve fiyat araçları</summary>
+            <div className={s.tabs}>
+              {[
+                [
+                  "orders",
+                  "Sipariş katkısı",
+                  "Gerçekleşen satış ve kayıtlı giderler",
+                ],
+                [
+                  "scenario",
+                  "Fiyat senaryosu",
+                  "Satış yapmadan maliyeti karşılaştırın",
+                ],
+              ].map(([key, label, description]) => (
+                <button
+                  key={key}
+                  aria-label={label}
+                  aria-pressed={financeTab === key}
+                  onClick={() => setFinanceTab(key)}
+                >
+                  {label}
+                  <small>{description}</small>
+                </button>
+              ))}
+            </div>
+            <div hidden={financeTab !== "orders"}>
+              <OrderContribution />
+            </div>
+            <div hidden={financeTab !== "scenario"}>
+              <PriceScenario />
+            </div>
+            <p className={s.notice}>
+              Eksik maliyet, vergi veya reklam verisi sıfır kabul edilmez. Bu
+              ekran muhasebesel net kâr beyanı değildir.
+            </p>
+            <button
+              className={s.button}
+              onClick={() => {
+                navigate("settings");
+                setSettingsTab("costs");
+              }}
+            >
+              Maliyet ayarlarına git
+            </button>
+          </details>
+        </>
+      </StudioPane>
+      <StudioPane active={section === "settings"}>
+        <>
+          <header className={s.heading}>
+            <div>
+              <h1>Ayarlar</h1>
+              <p>Mağaza, maliyetler ve bağlantı ayarları.</p>
+            </div>
+          </header>
+          <div className={s.tabs}>
+            {[
+              [
+                "shipping",
+                "Kargo ve vitrin",
+                "Teslimat kuralları ve ana sayfa",
+              ],
+              ["costs", "Maliyet kayıtları", "Ürün maliyetleri ve giderler"],
+              ["profit", "Kâr ayarları", "Kanala ve tarihe göre gider kuralları"],
+              [
+                "integrations",
+                "Bağlantılar",
+                "Google ve Trendyol bağlantıları",
+              ],
+              ["security", "Güvenlik", "Oturum ve erişim bilgileri"],
+            ].map(([key, label, description]) => (
+              <button
+                key={key}
+                aria-label={label}
+                aria-pressed={settingsTab === key}
+                onClick={() => setSettingsTab(key)}
+              >
+                {label}
+                <small>{description}</small>
+              </button>
+            ))}
+          </div>
+          <div hidden={settingsTab !== "costs"}>
+            <Phase2Records />
+          </div>
+          <div hidden={settingsTab !== "profit"}>
+            <ProfitSettings active={section === "settings" && settingsTab === "profit"} />
+          </div>
+          <div hidden={settingsTab !== "integrations"}>
+            <SearchConnection />
+            <TrendyolSync />
+          </div>
+          {settingsTab === "security" && (
+            <section className={s.panel}>
+              <h2>Güvenli yönetim</h2>
+              <p>
+                Admin oturumu ve Authenticator doğrulaması mevcut güvenlik
+                akışıyla korunur. Anahtarlar ve parola bu ekranda gösterilmez.
+              </p>
+              <p>
+                Güvenlik değişkenleri yalnızca sunucu ortamında yönetilir.
+                Bağlantı anahtarlarını sohbete veya ürün alanlarına yazmayın.
+              </p>
+            </section>
+          )}
+        </>
+      </StudioPane>
 
       <AddProductModal
         open={isAddProductOpen}
@@ -323,59 +574,90 @@ export default function AdminPanel() {
         showToast={showToast}
         showConfirm={showConfirm}
       />
-      <SettingsModal
-        open={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        marquee={settingsActions.marquee}
-        setMarquee={settingsActions.setMarquee}
-        onSaveMarquee={settingsActions.handleSaveMarquee}
-        dbSlides={dbSlides}
-        setDbSlides={(updater) => setDbSlides(updater)}
-        setNewSlideFiles={settingsActions.setNewSlideFiles}
-        newSlidePreviews={settingsActions.newSlidePreviews}
-        setNewSlidePreviews={settingsActions.setNewSlidePreviews}
-        newSlide={settingsActions.newSlide}
-        setNewSlide={settingsActions.setNewSlide}
-        onAddSlide={settingsActions.handleAddSlide}
-        onUpdateSlide={settingsActions.handleUpdateSlide}
-        onDeleteSlide={settingsActions.handleDeleteSlide}
-        dbCategories={dbCategories}
-      />
-      <MessagesModal
-        open={isMessagesOpen}
-        onClose={() => setIsMessagesOpen(false)}
-        messages={dbMessages}
-        replyingTo={messagingActions.replyingTo}
-        setReplyingTo={messagingActions.setReplyingTo}
-        replyText={messagingActions.replyText}
-        setReplyText={messagingActions.setReplyText}
-        onSendReply={messagingActions.handleSendMessageReply}
-        page={listMeta.messages.page}
-        total={listMeta.messages.total}
-        loading={listMeta.messages.loading}
-        pageSize={listMeta.messages.limit}
-        onPageChange={(page) => loadAdminList("messages", page)}
-      />
-      <QuestionsModal
-        open={isQuestionsOpen}
-        onClose={() => setIsQuestionsOpen(false)}
-        questions={dbQuestions}
-        replyingToQ={messagingActions.replyingToQ}
-        setReplyingToQ={messagingActions.setReplyingToQ}
-        qReplyText={messagingActions.qReplyText}
-        setQReplyText={messagingActions.setQReplyText}
-        onSendReply={messagingActions.handleSendQuestionReply}
-        onToggleApproval={messagingActions.handleToggleQuestionApproval}
-        page={listMeta.questions.page}
-        total={listMeta.questions.total}
-        loading={listMeta.questions.loading}
-        pageSize={listMeta.questions.limit}
-        onPageChange={(page) => loadAdminList("questions", page)}
-      />
+      <div className={section === "settings" ? s.inlineModal : undefined}>
+        <SettingsModal
+          open={
+            isSettingsOpen ||
+            (section === "settings" && settingsTab === "shipping")
+          }
+          onClose={() => setIsSettingsOpen(false)}
+          marquee={settingsActions.marquee}
+          setMarquee={settingsActions.setMarquee}
+          onSaveMarquee={settingsActions.handleSaveMarquee}
+          dbSlides={dbSlides}
+          setDbSlides={(updater) => setDbSlides(updater)}
+          setNewSlideFiles={settingsActions.setNewSlideFiles}
+          newSlidePreviews={settingsActions.newSlidePreviews}
+          setNewSlidePreviews={settingsActions.setNewSlidePreviews}
+          newSlide={settingsActions.newSlide}
+          setNewSlide={settingsActions.setNewSlide}
+          onAddSlide={settingsActions.handleAddSlide}
+          onUpdateSlide={settingsActions.handleUpdateSlide}
+          onDeleteSlide={settingsActions.handleDeleteSlide}
+          dbCategories={dbCategories}
+        />
+      </div>
+      <div className={section === "customers" ? s.inlineModal : undefined}>
+        <MessagesModal
+          open={
+            isMessagesOpen ||
+            (section === "customers" && customerChannel!=='trendyol' && customerTab === "messages")
+          }
+          onClose={() => setIsMessagesOpen(false)}
+          messages={dbMessages}
+          replyingTo={messagingActions.replyingTo}
+          setReplyingTo={messagingActions.setReplyingTo}
+          replyText={messagingActions.replyText}
+          setReplyText={messagingActions.setReplyText}
+          onSendReply={messagingActions.handleSendMessageReply}
+          page={listMeta.messages.page}
+          total={listMeta.messages.total}
+          loading={listMeta.messages.loading}
+          pageSize={listMeta.messages.limit}
+          onPageChange={(page) => loadAdminList("messages", page)}
+        />
+        <QuestionsModal
+          open={
+            isQuestionsOpen ||
+            (section === "customers" && customerChannel!=='trendyol' && customerTab === "questions")
+          }
+          onClose={() => setIsQuestionsOpen(false)}
+          questions={dbQuestions}
+          replyingToQ={messagingActions.replyingToQ}
+          setReplyingToQ={messagingActions.setReplyingToQ}
+          qReplyText={messagingActions.qReplyText}
+          setQReplyText={messagingActions.setQReplyText}
+          onSendReply={messagingActions.handleSendQuestionReply}
+          onToggleApproval={messagingActions.handleToggleQuestionApproval}
+          page={listMeta.questions.page}
+          total={listMeta.questions.total}
+          loading={listMeta.questions.loading}
+          pageSize={listMeta.questions.limit}
+          onPageChange={(page) => loadAdminList("questions", page)}
+        />
+        <ReviewsModal
+          open={
+            isReviewsOpen ||
+            (section === "customers" && customerChannel!=='trendyol' && customerTab === "reviews")
+          }
+          onClose={() => setIsReviewsOpen(false)}
+          reviews={dbReviews}
+          onApprove={reviewActions.handleApproveReview}
+          onDelete={reviewActions.handleDeleteReview}
+        />
+      </div>
       <OrdersModal
         open={isOrdersOpen}
-        onClose={() => setIsOrdersOpen(false)}
-        orders={dbOrders}
+        onClose={() => {
+          setIsOrdersOpen(false);
+          setSelectedOrder(null);
+          setOrderRevision((value) => value + 1);
+        }}
+        orders={
+          selectedOrder
+            ? dbOrders.filter((order) => order.id === selectedOrder.id)
+            : dbOrders
+        }
         onUpdateStatus={orderActions.handleUpdateOrderStatus}
         onReturnDecision={orderActions.handleReturnDecision}
         onShippingSaved={(orderId, carrier, trackingNumber) =>
@@ -392,18 +674,11 @@ export default function AdminPanel() {
             ),
           )
         }
-        page={listMeta.orders.page}
-        total={listMeta.orders.total}
+        page={selectedOrder ? 1 : listMeta.orders.page}
+        total={selectedOrder ? 1 : listMeta.orders.total}
         loading={listMeta.orders.loading}
         pageSize={listMeta.orders.limit}
         onPageChange={(page) => loadAdminList("orders", page)}
-      />
-      <ReviewsModal
-        open={isReviewsOpen}
-        onClose={() => setIsReviewsOpen(false)}
-        reviews={dbReviews}
-        onApprove={reviewActions.handleApproveReview}
-        onDelete={reviewActions.handleDeleteReview}
       />
       <PerformanceModal
         open={isPerformanceOpen}
@@ -414,6 +689,6 @@ export default function AdminPanel() {
         reviewsRank={performanceData.reviewsRank}
         viewsRank={performanceData.viewsRank}
       />
-    </div>
+    </AdminStudioShell>
   );
 }

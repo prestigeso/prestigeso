@@ -79,11 +79,13 @@ export default function SettingsModal({
   const [shippingEnabled, setShippingEnabled] = useState(true);
   const [shippingSaving, setShippingSaving] = useState(false);
   const [shippingStatus, setShippingStatus] = useState("");
+  const [shippingLoaded, setShippingLoaded] = useState(false);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || shippingLoaded) return;
 
     const loadShippingSettings = async () => {
+      setShippingLoaded(false);
       try {
         const response = await fetch("/api/site-settings", {
           method: "GET",
@@ -91,20 +93,24 @@ export default function SettingsModal({
         });
 
         const result = await response.json();
+        if (!response.ok) throw new Error("Kargo ayarları alınamadı.");
         const shipping = result?.shipping || {};
 
         setShippingFee(toMoneyInput(shipping.shipping_fee));
         setFreeShippingThreshold(
-          toMoneyInput(shipping.free_shipping_threshold),
+          shipping.rules_version === 2 && shipping.free_shipping_threshold === 0
+            ? "0"
+            : toMoneyInput(shipping.free_shipping_threshold),
         );
         setShippingEnabled(shipping.shipping_enabled !== false);
+        setShippingLoaded(true);
       } catch {
         setShippingStatus("Kargo ayarları yüklenemedi.");
       }
     };
 
     loadShippingSettings();
-  }, [open]);
+  }, [open, shippingLoaded]);
 
   if (!open) return null;
 
@@ -117,8 +123,12 @@ export default function SettingsModal({
   };
 
   const handleSaveShipping = async () => {
+    if (!shippingLoaded) return;
     const shippingFeeValue = Number(shippingFee || 0);
-    const freeShippingThresholdValue = Number(freeShippingThreshold || 0);
+    const freeShippingThresholdValue =
+      freeShippingThreshold.trim() === ""
+        ? null
+        : Number(freeShippingThreshold);
 
     if (!Number.isFinite(shippingFeeValue) || shippingFeeValue < 0) {
       setShippingStatus("Kargo ücreti geçerli değil.");
@@ -126,8 +136,9 @@ export default function SettingsModal({
     }
 
     if (
-      !Number.isFinite(freeShippingThresholdValue) ||
-      freeShippingThresholdValue < 0
+      freeShippingThresholdValue !== null &&
+      (!Number.isFinite(freeShippingThresholdValue) ||
+        freeShippingThresholdValue < 0)
     ) {
       setShippingStatus("Ücretsiz kargo alt limiti geçerli değil.");
       return;
@@ -146,6 +157,7 @@ export default function SettingsModal({
             shipping_fee: shippingFeeValue,
             free_shipping_threshold: freeShippingThresholdValue,
             shipping_enabled: shippingEnabled,
+            rules_version: 2,
           },
         }),
       });
@@ -170,7 +182,7 @@ export default function SettingsModal({
     <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
       <div className="bg-white w-full max-w-md rounded-3xl p-6 shadow-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6 border-b border-gray-100 pb-4">
-          <h2 className="text-xl font-black">⚙️ Özel Sayfa Paneli</h2>
+          <h2 className="text-xl font-semibold">Kargo ve vitrin yönetimi</h2>
           <button
             type="button"
             onClick={handleClose}
@@ -212,6 +224,7 @@ export default function SettingsModal({
               <input
                 type="checkbox"
                 checked={shippingEnabled}
+                disabled={!shippingLoaded || shippingSaving}
                 onChange={(event) => setShippingEnabled(event.target.checked)}
                 className="w-4 h-4 accent-black"
               />
@@ -225,6 +238,7 @@ export default function SettingsModal({
                 type="text"
                 inputMode="decimal"
                 value={shippingFee}
+                disabled={!shippingLoaded || shippingSaving}
                 onChange={(event) =>
                   setShippingFee(sanitizeMoneyInput(event.target.value))
                 }
@@ -241,6 +255,8 @@ export default function SettingsModal({
                 type="text"
                 inputMode="decimal"
                 value={freeShippingThreshold}
+                disabled={!shippingLoaded || shippingSaving}
+                aria-label="Ücretsiz kargo alt limiti"
                 onChange={(event) =>
                   setFreeShippingThreshold(
                     sanitizeMoneyInput(event.target.value),
@@ -249,6 +265,12 @@ export default function SettingsModal({
                 placeholder="Örn: 750"
                 className="w-full p-3 bg-white border border-gray-200 rounded-xl font-bold outline-none focus:border-black"
               />
+              <p className="text-sm text-gray-600 mt-2">
+                Boş: her siparişte kargo ücretli. 0: tüm siparişlerde ücretsiz.
+                Pozitif tutar: indirim sonrası ürün toplamı bu tutara
+                ulaştığında ücretsiz. Bu ücret, işletmenin kargo maliyetinden
+                ayrıdır.
+              </p>
             </div>
 
             {shippingStatus && (
@@ -260,7 +282,7 @@ export default function SettingsModal({
             <button
               type="button"
               onClick={handleSaveShipping}
-              disabled={shippingSaving}
+              disabled={shippingSaving || !shippingLoaded}
               className="w-full bg-black text-white py-3 rounded-xl font-bold text-xs uppercase tracking-widest disabled:opacity-50 shadow-md"
             >
               {shippingSaving ? "Kaydediliyor..." : "Kargo Ayarlarını Kaydet"}

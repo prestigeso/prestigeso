@@ -1,4 +1,5 @@
 import { Metadata } from "next";
+import { getSeoSiteOrigin } from "@/lib/seo/siteOrigin";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sanitizeImageUrl } from "@/lib/utils";
 import { buildProductStructuredData } from "@/lib/products/structuredData";
@@ -68,7 +69,7 @@ export default async function ProductLayout({
     supabaseAdmin.from("campaigns").select("product_ids,discount_percent,start_date,end_date").gte("end_date", new Date().toISOString()),
     supabaseAdmin.from("product_variants").select("id,product_id,price,stock,is_active").eq("product_id", productId).eq("is_active", true),
   ]);
-  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.prestigeso.com.tr").replace(/\/$/, "");
+  const siteUrl = getSeoSiteOrigin();
   // Missing pricing dependencies must not publish a misleading offer to crawlers.
   const structuredData = product && !campaignResult.error && !variantResult.error
     ? buildProductStructuredData(product, (campaignResult.data || []) as PriceCampaign[], (variantResult.data || []) as PriceVariant[], sanitizeImageUrl(product.images?.[0] || product.image), siteUrl)

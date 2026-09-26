@@ -35,6 +35,7 @@ type DashboardData = {
 };
 
 export type DashboardCounts = {
+  actionablePayments?: number;
   products: number;
   unreadMessages: number;
   unansweredQuestions: number;
@@ -72,6 +73,7 @@ const INITIAL_LIST_META: ListMeta = {
 };
 
 export function useAdminData() {
+  const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
   const [dbProducts, setDbProducts] = useState<ProductRow[]>([]);
   const [dbSlides, setDbSlides] = useState<Slide[]>([]);
@@ -146,6 +148,7 @@ export function useAdminData() {
 
   const loadAllData = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
       const response = await fetch("/api/admin/dashboard", {
         credentials: "include",
@@ -174,6 +177,7 @@ export function useAdminData() {
       setDashboardCounts(data.counts || EMPTY_COUNTS);
     } catch (error) {
       console.error(error);
+      setError(error instanceof Error ? error.message : 'Admin verileri yüklenemedi.');
     } finally {
       setLoading(false);
     }
@@ -184,6 +188,7 @@ export function useAdminData() {
   }, [loadAllData]);
 
   return {
+    error,
     loading,
     dbProducts,
     dbSlides,

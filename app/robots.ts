@@ -1,7 +1,8 @@
 import type { MetadataRoute } from "next";
 
-const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL || "https://prestigeso.com.tr";
+import { getSeoSiteOrigin } from "@/lib/seo/siteOrigin";
+
+const SITE_URL = getSeoSiteOrigin();
 
 export default function robots(): MetadataRoute.Robots {
   return {

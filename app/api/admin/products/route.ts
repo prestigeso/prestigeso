@@ -49,6 +49,7 @@ export async function GET(req: NextRequest) {
   else if (sort === "price_desc")
     query = query.order("price", { ascending: false });
   else query = query.order("created_at", { ascending: false });
+  query = query.order("id", { ascending: sort === "oldest" || sort === "price_asc" });
 
   const [products, outOfStock] = await Promise.all([
     query.range(from, from + PAGE_SIZE - 1),

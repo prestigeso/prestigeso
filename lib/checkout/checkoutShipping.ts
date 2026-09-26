@@ -15,10 +15,11 @@ export function normalizeShippingSettings(value: unknown): ShippingSettings {
   const freeShippingThreshold = Number(source.free_shipping_threshold || 0);
 
   return {
+    ...(source.rules_version === 2 ? {rules_version: 2 as const} : {}),
     shipping_fee:
       Number.isFinite(shippingFee) && shippingFee > 0 ? shippingFee : 0,
     free_shipping_threshold:
-      Number.isFinite(freeShippingThreshold) && freeShippingThreshold > 0
+      source.rules_version === 2 && source.free_shipping_threshold == null ? null : Number.isFinite(freeShippingThreshold) && freeShippingThreshold > 0
         ? freeShippingThreshold
         : 0,
     shipping_enabled: source.shipping_enabled !== false,
@@ -30,6 +31,7 @@ export function calculateShippingFee(
   subtotalAfterCoupon: number,
 ) {
   if (!settings.shipping_enabled) return 0;
+  if (settings.rules_version === 2 && settings.free_shipping_threshold === 0) return 0;
 
   const threshold = Number(settings.free_shipping_threshold || 0);
   const fee = Number(settings.shipping_fee || 0);
