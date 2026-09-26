@@ -6,6 +6,7 @@ import {
   storageObjectPathFromPublicUrl,
   validateImageFile,
 } from "@/lib/uploads/imageFiles";
+import { optimizeAdminImage } from "@/lib/uploads/optimizeAdminImage";
 
 export const runtime = "nodejs";
 const MAX_ADMIN_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -21,10 +22,15 @@ export async function POST(req: NextRequest) {
     if (!(file instanceof File))
       return NextResponse.json({ error: "Dosya bulunamadı." }, { status: 400 });
 
-    const extension = await validateImageFile(file, MAX_ADMIN_IMAGE_BYTES);
-    const path = createImageObjectPath(`admin/${prefix}`, extension);
-    const { error } = await supabaseAdmin.storage.from("products").upload(path, file, {
-      contentType: file.type,
+    await validateImageFile(file, MAX_ADMIN_IMAGE_BYTES);
+    const optimized = await optimizeAdminImage(
+      Buffer.from(await file.arrayBuffer()),
+      file.type,
+      prefix,
+    );
+    const path = createImageObjectPath(`admin/${prefix}`, optimized.extension);
+    const { error } = await supabaseAdmin.storage.from("products").upload(path, optimized.body, {
+      contentType: optimized.contentType,
       cacheControl: "31536000",
       upsert: false,
     });
