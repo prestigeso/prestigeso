@@ -10,8 +10,8 @@ function harness(blockedStorage = false) {
   const storage = new Map<string, string>();
   const calls: { url: string; method: string; body?: unknown }[] = [];
   const document = { documentElement: { dataset: { consentAnalytics: "true" } }, referrer: "" };
-  const location = { pathname: "/product/247", hostname: "test.invalid" };
-  const timers = new Map<number, () => void>(); let timerId = 0, failDelete = false;
+  const location = { pathname: "/product/247", hostname: "test.invalid", search: "" };
+  const timers = new Map<number, () => void>(); let timerId = 0, failDelete = false, failSession = false;
   const stubs: Record<string, unknown> = {
     "@/lib/legal/consent": consent,
     "@/lib/analytics/contract": contract,
@@ -26,13 +26,14 @@ function harness(blockedStorage = false) {
   const fetch = async (url: string, init: RequestInit) => {
     calls.push({ url, method: init.method!, ...(init.body ? { body: JSON.parse(String(init.body)) } : {}) });
     if (init.method === "DELETE") { const status = failDelete ? 503 : 204; failDelete = false; return new Response(null, { status }); }
+    if (url.endsWith("/session") && failSession) return new Response(null, { status: 503 });
     return url.endsWith("/session") ? Response.json({ visitorId: id, sessionId: id }) : new Response(null, { status: 204 });
   };
   new Function("require", "module", "exports", "document", "location", "fetch", "crypto", "setTimeout", "clearTimeout", source)(
     (key: string) => { if (!(key in stubs)) throw new Error(key); return stubs[key]; }, loaded, loaded.exports,
     document, location, fetch, webcrypto, (fn: () => void) => { const n = ++timerId; timers.set(n, fn); return n; }, (n: number) => timers.delete(n),
   );
-  return { api: loaded.exports as typeof import("../lib/analytics/client.ts"), document, location, storage, calls, failDeletion: () => { failDelete = true; } };
+  return { api: loaded.exports as typeof import("../lib/analytics/client.ts"), document, location, storage, calls, failDeletion: () => { failDelete = true; }, failSessions: () => { failSession = true; } };
 }
 const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
 test("client never opens tracking without permission", async () => {
@@ -67,4 +68,23 @@ test("reconsent completes failed deletion before opening a new identity", async 
   h.document.documentElement.dataset.consentAnalytics = "true";
   h.api.trackAnalytics("page_view"); await settle();
   assert.deepEqual(h.calls.slice(0, 3).map((c) => c.method), ["DELETE", "DELETE", "POST"]);
+});
+test("known search and social campaigns preserve attribution when referrers are stripped", async () => {
+  const google = harness(); google.document.referrer = "https://www.google.com/search?q=prestigeso";
+  google.api.trackAnalytics("page_view"); await settle();
+  assert.equal((google.calls[0].body as { source: string }).source, "search");
+  const instagram = harness(); instagram.location.search = "?utm_source=instagram";
+  instagram.api.trackAnalytics("page_view"); await settle();
+  assert.equal((instagram.calls[0].body as { source: string }).source, "social");
+  const whatsapp = harness(); whatsapp.location.search = "?utm_source=whatsapp";
+  whatsapp.api.trackAnalytics("page_view"); await settle();
+  assert.equal((whatsapp.calls[0].body as { source: string }).source, "social");
+  const untagged = harness(); untagged.api.trackAnalytics("page_view"); await settle();
+  assert.equal((untagged.calls[0].body as { source: string }).source, "direct");
+});
+test("a failed session open does not send an event or immediately retry the endpoint", async () => {
+  const h = harness(); h.failSessions();
+  h.api.trackAnalytics("product_view", { productId: 247 }); await settle();
+  h.api.trackAnalytics("product_view", { productId: 247 }); await settle();
+  assert.deepEqual(h.calls.map((call) => call.url), ["/api/analytics/session"]);
 });

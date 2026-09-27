@@ -7,6 +7,7 @@ type Fields = Partial<Pick<BrowserEvent, "productId" | "variantId" | "categoryId
 let context: Context | null = null, opening: Promise<Context | null> | null = null;
 let memoryCartId: string | null = null, memoryAttemptId: string | null = null;
 let sequence = 0, lastActivity = 0, generation = 0, sending = false;
+let nextOpenAttemptAt = 0;
 let queue: BrowserEvent[] = [];
 let timer: ReturnType<typeof setTimeout> | null = null;
 const controllers = new Set<AbortController>();
@@ -29,11 +30,16 @@ export function analyticsPage(): BrowserEvent["page"] {
 }
 function source() {
   try {
+    // In-app browsers often omit the referrer. Only recognized campaign tags
+    // supply a source in that case; an untagged visit remains direct.
+    const campaign = new URLSearchParams(location.search).get("utm_source")?.trim().toLowerCase();
+    if (campaign && ["instagram", "ig", "facebook", "fb", "tiktok", "whatsapp", "wa", "telegram", "x", "twitter"].includes(campaign)) return "social";
+    if (campaign && ["google", "google_ads", "bing", "duckduckgo"].includes(campaign)) return "search";
     if (!document.referrer) return "direct";
     const host = new URL(document.referrer).hostname;
     if (host === location.hostname) return "internal";
     if (/(^|\.)(google\.[a-z.]+|bing.com|duckduckgo.com)$/.test(host)) return "search";
-    if (/(^|\.)(instagram.com|facebook.com|t.co|x.com|reddit.com|tiktok.com)$/.test(host)) return "social";
+    if (host === "wa.me" || /(^|\.)(whatsapp.com|instagram.com|facebook.com|t.co|x.com|reddit.com|tiktok.com)$/.test(host)) return "social";
   } catch { /* no raw referrer stored */ }
   return "other";
 }
@@ -42,19 +48,21 @@ async function open(): Promise<Context | null> {
   if (pendingDeletion && !await deleteTracking()) return null;
   if (!analyticsAllowed()) return null;
   if (context && Date.now() - lastActivity < 30 * 60000) return context;
+  if (Date.now() < nextOpenAttemptAt) return null;
   if (opening) return opening;
   const current = generation, controller = new AbortController(); controllers.add(controller);
   const timeout = setTimeout(() => controller.abort(), 2000);
   opening = (async () => {
     try {
       const response = await fetch("/api/analytics/session", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ consent: true, page: analyticsPage(), source: source() }), signal: controller.signal });
-      if (!response.ok) return null;
+      if (!response.ok) { nextOpenAttemptAt = Date.now() + 60_000; return null; }
       const result = await response.json() as Context;
       if (current !== generation || !analyticsAllowed()) return null;
-      if (typeof result.visitorId !== "string" || typeof result.sessionId !== "string") return null;
+      if (typeof result.visitorId !== "string" || typeof result.sessionId !== "string") { nextOpenAttemptAt = Date.now() + 60_000; return null; }
+      nextOpenAttemptAt = 0;
       context = result; lastActivity = Date.now();
       return context;
-    } catch { return null; }
+    } catch { nextOpenAttemptAt = Date.now() + 60_000; return null; }
     finally { clearTimeout(timeout); controllers.delete(controller); if (current === generation) opening = null; }
   })();
   return opening;
@@ -132,7 +140,7 @@ export function trackCategory(name: string) {
   void open().then((ctx) => { const category = ctx?.categories?.find((c) => c.name === name); if (category) trackAnalytics("category_view", { categoryId: Number(category.id) }); }).catch(() => undefined);
 }
 export function revokeAnalytics() {
-  generation++; context = null; opening = null; queue = []; lastActivity = 0;
+  generation++; context = null; opening = null; queue = []; lastActivity = 0; nextOpenAttemptAt = 0;
   for (const controller of controllers) controller.abort(); controllers.clear();
   if (timer) clearTimeout(timer); timer = null;
   const applied = document.documentElement.dataset.consentAnalytics;

@@ -6,8 +6,11 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 export const ANALYTICS_COOKIE = "prestigeso_measurement";
 export const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function secret() {
-  const value = process.env.RATE_LIMIT_SECRET || "";
-  if (value.length < 32) throw new Error("ANALYTICS_CONFIGURATION");
+  // Rate limiting already permits this strong fallback. Keep visitor signing
+  // consistent so an omitted optional rate-limit secret cannot orphan sessions.
+  const value = [process.env.RATE_LIMIT_SECRET, process.env.ADMIN_COOKIE_SECRET]
+    .find((candidate) => candidate && candidate.length >= 32);
+  if (!value) throw new Error("ANALYTICS_CONFIGURATION");
   return value;
 }
 export function signVisitor(id: string) {

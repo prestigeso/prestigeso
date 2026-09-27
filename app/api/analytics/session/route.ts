@@ -16,6 +16,8 @@ export async function POST(req: NextRequest) {
     const limit = await consumeRateLimit({ bucket: "analytics-session", identifier: getClientIp(req), maxRequests: 60, windowSeconds: 3600 });
     if (!limit.allowed) return new NextResponse(null, { status: 429 });
     const visitorId = readVisitor(req) || randomUUID();
+    // Validate signing configuration before the RPC creates a persistent row.
+    const signedVisitor = signVisitor(visitorId);
     const ua = req.headers.get("user-agent") || "";
     const device = /iPhone|iPad/i.test(ua) ? "ios" : /Android/i.test(ua) ? "android" : "desktop_other";
     const traffic = await isAdminRequest(req) ? "staff" : /bot|crawler|spider|headless/i.test(ua) ? "suspected" : "normal";
@@ -23,7 +25,7 @@ export async function POST(req: NextRequest) {
     if (error) throw error;
     const categories = await supabaseAdmin.from("categories").select("id,name").limit(500);
     const response = NextResponse.json({ visitorId, sessionId: data, categories: categories.data || [] }, { headers });
-    response.cookies.set(ANALYTICS_COOKIE, signVisitor(visitorId), { httpOnly: true, secure: new URL(req.url).protocol === "https:", sameSite: "strict", path: "/", maxAge: 30 * 86400 });
+    response.cookies.set(ANALYTICS_COOKIE, signedVisitor, { httpOnly: true, secure: new URL(req.url).protocol === "https:", sameSite: "strict", path: "/", maxAge: 30 * 86400 });
     return response;
   } catch { return NextResponse.json({ error: "Ölçüm kullanılamıyor." }, { status: 503, headers }); }
 }
