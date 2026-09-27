@@ -19,12 +19,12 @@ export default function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [categories, setCategories] = useState<string[]>([
     "Setler",
-    "Masa Süsleri",
+    "Masa Setleri",
     "Kolyeler",
     "Yüzükler",
     "Bilezikler",
     "Küpeler",
-    "Tesbihler",
+    "Tespihler",
   ]);
 
   useEffect(() => {

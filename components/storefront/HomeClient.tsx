@@ -69,12 +69,12 @@ export default function Home({
 
   const baseCategories = [
     "Setler",
-    "Masa Süsleri",
+    "Masa Setleri",
     "Kolyeler",
     "Yüzükler",
     "Bilezikler",
     "Küpeler",
-    "Tesbihler",
+    "Tespihler",
   ];
 
   const handleCloseShowcase = () => {

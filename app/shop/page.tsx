@@ -1,10 +1,11 @@
 import ShopClient from "@/components/storefront/ShopClient";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import type { Campaign, Product } from "@/types";
-import { redirect } from "next/navigation";
+import { permanentRedirect, redirect } from "next/navigation";
 import { randomUUID } from "node:crypto";
 import { getShopMetadata } from "@/lib/products/shopMetadata";
 import type { PostgrestError } from "@supabase/supabase-js";
+import { currentCategoryName } from "@/lib/catalog/categoryAliases";
 
 export const revalidate = 60;
 
@@ -45,6 +46,12 @@ export default async function ShopPage({
   const filterErrors: PostgrestError[] = [];
   const query = normalizeSearch(params.q);
   const category = (params.category || "").trim().slice(0, 100);
+  const currentCategory = currentCategoryName(category);
+  if (currentCategory !== category) {
+    const canonical = new URLSearchParams(Object.entries(params).filter((entry): entry is [string, string] => typeof entry[1] === 'string'));
+    canonical.set('category', currentCategory);
+    permanentRedirect(`/shop?${canonical.toString()}`);
+  }
   const sort = ["newest", "price-asc", "price-desc", "name"].includes(
     params.sort || "",
   )
