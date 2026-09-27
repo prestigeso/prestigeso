@@ -6,6 +6,7 @@ import { profileAt, snapshotGoods, validateProfitSettings, type ProfitProfile } 
 import type { projectPackages } from '@/lib/trendyol/packages';
 import { financeCoverage, returnHoldOrders, type FinanceWindow } from '@/lib/trendyol/finance';
 import { archiveCoverage, type ArchiveJob } from '@/lib/trendyol/archive-coverage';
+import { classifyTrendyolProfitPackage } from '@/lib/finance/trendyol-profit';
 export const runtime = 'nodejs';
 export async function GET(req: NextRequest) {
   const headers = { 'Cache-Control': 'no-store' };
@@ -73,12 +74,11 @@ export async function GET(req: NextRequest) {
           const p = row.payload as ReturnType<typeof projectPackages>['packages'][number];
           archived.push(p);
           const at = new Date(p.orderDate).toISOString();
-          // Only zero-discount packages are unambiguous in projection v2: seller vs platform funding is not retained.
           // Order-level hold is conservative for split/partial returns until line-level ledger reconciliation exists.
           const returned = heldOrders.has(p.orderNumber);
-          const eligible = !returned && p.currency === 'TRY' && ['Created','Picking','Invoiced','Shipped','Delivered','AtCollectionPoint'].includes(p.status) && p.discount === 0 && p.lines.every(l => !l.cancelReason && !['Cancelled','Returned','UnDelivered'].includes(l.status || ''));
+          const classification = classifyTrendyolProfitPackage(p, returned);
           const cost = historicalGoods(p.lines, history, at, catalog.data);
-          sales.push({ id: `${p.orderNumber} / ${p.packageId}`, platform: 'trendyol', at, amount: p.amount, eligible, exclusion: returned ? 'İade kaydı var; gider ve geri ödeme mutabakatı gerekli' : p.discount !== 0 ? 'Kupon/indirim finansmanı doğrulanmadı' : 'İptal veya desteklenmeyen para birimi', goods: cost.amount, currentCostEstimate: cost.currentCostEstimate });
+          sales.push({ id: `${p.orderNumber} / ${p.packageId}`, platform: 'trendyol', at, amount: p.amount, ...classification, goods: cost.amount, currentCostEstimate: cost.currentCostEstimate });
         }
         if (offset + r.data.length >= r.count) break;
         if (!r.data.length) throw new Error('INCOMPLETE');
