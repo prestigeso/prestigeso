@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateManualMeta, manualMetaEntry, manualMetaSpend, matchingManualMetaEntries } from '../lib/finance/manual-meta.ts';
+import { validateManualMeta, manualMetaEntry, manualMetaSpend, optionalManualMetaSpend, matchingManualMetaEntries } from '../lib/finance/manual-meta.ts';
 const startDate='2026-09-01',key=`${startDate}:meta-12345678-1234-4123-8123-123456789012`;
 const base={requestId:'22345678-1234-4123-8123-123456789012',key,expectedVersion:0,startDate,endDate:'2026-09-03',channel:'store',amount:'100,01',note:'Meta kampanyası'};
 test('manual Meta interval validates dates, channel and exact minor units',()=>{
@@ -22,4 +22,11 @@ test('daily allocation preserves cents and channel separation',()=>{
   assert.equal(matchingManualMetaEntries([entry],day('2026-09-04'),day('2026-09-05'),'all').length,0);
   assert.equal(matchingManualMetaEntries([entry],day('2026-09-01'),day('2026-09-04'),'trendyol').length,0);
   assert.equal(manualMetaEntry({resource_key:key,version:1,payload:{...p,source:'other'}}),null);
+});
+test('a period without a Meta entry has zero advertising spend',()=>{
+  const since=Date.parse('2026-09-01T00:00:00+03:00');
+  const until=Date.parse('2026-09-02T00:00:00+03:00');
+  assert.deepEqual(matchingManualMetaEntries([],since,until,'all'),[]);
+  assert.equal(optionalManualMetaSpend([],since,until,'all'),0);
+  assert.equal(optionalManualMetaSpend(null,since,until,'all'),null);
 });

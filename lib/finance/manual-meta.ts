@@ -44,6 +44,9 @@ export function manualMetaSpend(entries: ManualMetaEntry[], since: number, until
   }
   return minor;
 }
+export function optionalManualMetaSpend(entries: ManualMetaEntry[] | null, since: number, until: number, channel: ManualMetaChannel) {
+  return entries === null ? null : manualMetaSpend(entries,since,until,channel);
+}
 export function matchingManualMetaEntries(entries: ManualMetaEntry[], since: number, until: number, channel: ManualMetaChannel) {
   return entries.filter(entry => (channel === 'all' || entry.channel === channel) && istanbulDay(entry.startDate) < until && istanbulDay(entry.endDate)+86400000 > since);
 }
