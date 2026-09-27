@@ -43,11 +43,15 @@ test('snapshot requires all quantities and inclusive TRY costs',()=>{
  assert.equal(snapshotGoods([{quantity:2,unitCost}]),40000);
  for(const lines of [[],[{quantity:0,unitCost}],[{quantity:1,unitCost:null}],[{quantity:1,unitCost:{...unitCost,taxBasis:'exclusive'}}]])assert.equal(snapshotGoods(lines),null);
 });
-test('Trendyol history never takes later cost or later SKU mapping',()=>{
+test('Trendyol exact SKU uses historical cost, or labels later cost as a retrospective estimate',()=>{
  const h=[{kind:'product_cost',resource_key:'A',recorded_at:'2026-01-01',version:1,payload:{amountMinor:20000,taxBasis:'inclusive',currency:'TRY'}},{kind:'product_cost',resource_key:'A',recorded_at:'2026-10-01',version:2,payload:{amountMinor:30000,taxBasis:'inclusive',currency:'TRY'}}];
- assert.equal(historicalGoods([{sku:'A',quantity:2}],h,'2026-09-01'),40000);
- assert.equal(historicalGoods([{sku:'A',quantity:2}],h,'2025-09-01'),null);
- assert.equal(historicalGoods([{sku:'B',quantity:2}],h,'2026-09-01'),null);
+ const products=[{SKU:'A',barcode:'123'}];
+ assert.deepEqual(historicalGoods([{sku:'A',quantity:2}],h,'2026-09-01',products),{amount:40000,currentCostEstimate:false});
+ assert.deepEqual(historicalGoods([{sku:'A',quantity:2}],h,'2025-09-01',products),{amount:60000,currentCostEstimate:true});
+ assert.deepEqual(historicalGoods([{sku:'B',quantity:2}],h,'2026-09-01',products),{amount:null,currentCostEstimate:false});
+ assert.deepEqual(historicalGoods([{sku:'B',barcode:'123',quantity:2}],h,'2026-09-01',products),{amount:40000,currentCostEstimate:false});
+ const mapped=[...h,{kind:'sku_mapping',resource_key:'TRENDYOL-OTHER',recorded_at:'2026-10-02',version:1,payload:{siteSku:'A'}}];
+ assert.deepEqual(historicalGoods([{sku:'TRENDYOL-OTHER',quantity:2}],mapped,'2026-09-01',products),{amount:40000,currentCostEstimate:false});
 });
 test('report excludes refunds, missing profiles and costs from totals',()=>{
  const profile={platform:'store' as const,version:1,effective_from:'2026-01-01',settings};

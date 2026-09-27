@@ -21,7 +21,16 @@ export async function POST(req: NextRequest) {
     const rate = await consumeRateLimit({ bucket: 'profit-settings', identifier: getClientIp(req), maxRequests: 10, windowSeconds: 60 });
     if (!rate.allowed) return NextResponse.json({ error: 'İstek sınırı.' }, { status: 429, headers });
     const { data, error } = await supabaseAdmin.rpc('save_profit_profile', { p_request: r.requestId, p_platform: r.platform, p_expected: r.expectedVersion, p_effective: r.effectiveFrom, p_settings: settings });
-    if (error) return NextResponse.json({ error: /CONFLICT/.test(error.message) ? 'Ayar sürümü değişmiş. Güncel ayarları yükleyip tekrar deneyin.' : 'Ayar kaydedilemedi. Kâr profili tarih ve gider SQL güncellemesini kontrol edin.' }, { status: /CONFLICT/.test(error.message) ? 409 : 503, headers });
+    if (error) {
+      const conflict = /CONFLICT/.test(error.message);
+      const invalid = /INVALID_PROFILE|INVALID_SETTINGS|INVALID_GIFT_RULE|HISTORICAL_CHANGE_FORBIDDEN/.test(error.message);
+      const message = conflict ? 'Ayar sürümü değişmiş. Sayfayı yenileyip tekrar deneyin.'
+        : /INVALID_GIFT_RULE/.test(error.message) ? 'Hediye gideri girildiyse hediye eşiği 0’dan büyük olmalı.'
+        : /HISTORICAL_CHANGE_FORBIDDEN/.test(error.message) ? 'Veritabanındaki eski kâr profili kuralı geriye dönük tarihi reddediyor; son tarih güncellemesi uygulanmalı.'
+        : invalid ? 'Gider değerleri veya seçilen tarih geçersiz. Oranların 0–100 aralığında olduğunu kontrol edin.'
+        : 'Kâr ayarı veritabanına kaydedilemedi. Bağlantıyı ve kâr profili SQL güncellemesini kontrol edin.';
+      return NextResponse.json({ error: message }, { status: conflict ? 409 : invalid ? 400 : 503, headers });
+    }
     return NextResponse.json({ version: data }, { headers });
   } catch { return NextResponse.json({ error: 'Geçerli tutar, oran ve başlangıç tarihi girin.' }, { status: 400, headers }); }
 }

@@ -8,7 +8,7 @@ test('profit report shows coverage and VAT inclusive platform draft',async({page
  const settings={vatBps:2000,commissionBps:1500,shippingMinor:13000,packagingMinor:0,logisticsMinor:0,giftThresholdMinor:0,giftCostMinor:0,hiddenBps:1000,advertisingBps:0};
  const profiles=[{platform:'store' as const,version:1,effective_from:'2026-01-01T00:00:00Z',settings}];
  const period={since:Date.parse('2026-09-23T21:00:00Z'),until:Date.parse('2026-09-26T21:00:00Z')};
- const report={...buildProfitReport([{id:'TEST-1',platform:'store',at:'2026-09-24T10:00:00Z',amount:650,eligible:true,goods:20000},{id:'TEST-2',platform:'trendyol',at:'2026-09-24T10:00:00Z',amount:650,eligible:true,goods:null}],profiles),returns:{count:1,debtMinor:80000,covered:true,salesCovered:true,archiveCovered:true},period};
+ const report={...buildProfitReport([{id:'TEST-1',platform:'store',at:'2026-09-24T10:00:00Z',amount:650,eligible:true,goods:20000},{id:'TEST-2',platform:'trendyol',at:'2026-09-24T10:00:00Z',amount:650,eligible:true,goods:null}],profiles),returns:{count:1,debtMinor:80000,shippingEstimateMinor:null,covered:true,salesCovered:true,archiveCovered:true},period};
  await page.route('**/api/admin/finance/profit?**',r=>r.fulfill({json:report}));
  await page.route('**/api/admin/finance/profit-settings',r=>r.fulfill({json:{profiles}}));
  const metaEntries:Record<string,unknown>[]=[];
@@ -33,11 +33,13 @@ test('profit report shows coverage and VAT inclusive platform draft',async({page
  await config.getByLabel('Satıcının karşıladığı kupon (TL)',{exact:true}).fill('50');
  await config.getByLabel('KDV dahil toplam ürün maliyeti (TL)',{exact:true}).fill('200');
  await expect(config.locator('[aria-live]')).toContainText('49,17');
- await expect(config.getByRole('button',{name:'Yeni ayar sürümünü kaydet'})).toBeDisabled();
+ await expect(config.getByRole('button',{name:'Yeni ayar sürümünü kaydet'})).toBeEnabled();
+ await config.getByRole('button',{name:'Yeni ayar sürümünü kaydet'}).click();
+ await expect(config.getByRole('alert')).toContainText('başlangıç tarihini seçin');
  let saved:Record<string,unknown>|null=null;
  await page.route('**/api/admin/finance/profit-settings',r=>{if(r.request().method()==='POST'){saved=r.request().postDataJSON();return r.fulfill({json:{version:2}});}return r.fulfill({json:{profiles}});});
  await config.getByLabel('Yeni sürümün geçerli olacağı gün').fill('2026-09-20');
- await config.getByRole('checkbox').check();await config.getByRole('button',{name:'Yeni ayar sürümünü kaydet'}).click();
+ await config.getByRole('button',{name:'Yeni ayar sürümünü kaydet'}).click();
  await expect(config.getByRole('status').filter({hasText:'Sürüm 2 kaydedildi'})).toBeVisible();
  expect(saved).toMatchObject({platform:'store',expectedVersion:1,settings,effectiveFrom:'2026-09-19T21:00:00.000Z'});
  await config.getByLabel('KDV dahil toplam ürün maliyeti (TL)',{exact:true}).fill('');
@@ -48,7 +50,7 @@ test('profit report shows coverage and VAT inclusive platform draft',async({page
  await expect(region).toContainText('39,17');
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
  await region.screenshot({path:info.outputPath('profit-analysis.png')});
- await page.route('**/api/admin/finance/profit?**',r=>r.fulfill({json:{...buildProfitReport([],profiles),returns:{count:0,debtMinor:0,covered:true,salesCovered:true,archiveCovered:true},period}}));
+ await page.route('**/api/admin/finance/profit?**',r=>r.fulfill({json:{...buildProfitReport([],profiles),returns:{count:0,debtMinor:0,shippingEstimateMinor:null,covered:true,salesCovered:true,archiveCovered:true},period}}));
  await region.getByRole('button',{name:'Yenile',exact:true}).click();
  await expect(region.getByText('Hesaplanamadı',{exact:true}).first()).toBeVisible();
  await page.route('**/api/admin/finance/profit?**',r=>r.fulfill({status:503,json:{error:'Sentetik rapor hatası'}}));

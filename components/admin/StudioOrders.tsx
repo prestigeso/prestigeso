@@ -12,7 +12,8 @@ import AdminPagination from "./parts/AdminPagination";
 import TrendyolOrderDetail from "./TrendyolOrderDetail";
 import s from "./AdminStudio.module.css";
 
-type Packages = ReturnType<typeof projectPackages>;
+type ArchivedPackage = ReturnType<typeof projectPackages>["packages"][number] & { returnState?: "none" | "requested" | "refunded"; displayStatus?: string };
+type Packages = Omit<ReturnType<typeof projectPackages>, "packages"> & { packages: ArchivedPackage[] };
 const states = [
   ["all", "Tümü"],
   ["Bekliyor", "Sipariş alındı"],
@@ -174,7 +175,7 @@ export default function StudioOrders({
       : (ty?.packages || [])
           .filter(
             (p) =>
-              (status === "all" || tyStates[p.status] === status) &&
+              (status === "all" || (status === "returns" ? p.returnState === "requested" || p.returnState === "refunded" || tyStates[p.status] === "returns" : p.returnState !== "requested" && p.returnState !== "refunded" && tyStates[p.status] === status)) &&
               (!needle ||
                 [
                   p.orderNumber,
@@ -183,7 +184,7 @@ export default function StudioOrders({
                 ].some((v) => v.toLocaleLowerCase("tr-TR").includes(needle))),
           )
           .map((p) => {
-            const product = products.find((x) => x.SKU === p.lines[0]?.sku);
+            const product = products.find((x) => x.SKU === p.lines[0]?.sku || Boolean(p.lines[0]?.barcode && x.barcode === p.lines[0].barcode));
             return {
               key: `ty-${p.packageId}`,
               number: p.orderNumber,
@@ -193,11 +194,11 @@ export default function StudioOrders({
               amount: p.amount,
               currency: p.currency,
               customer: "Trendyol müşterisi",
-              status: stateLabel(tyStates[p.status] || p.status),
+              status: p.displayStatus && p.returnState !== "none" ? p.displayStatus : stateLabel(tyStates[p.status] || p.status),
               source: "Trendyol",
               open: () => setSelected(p.packageId),
               note: `Paket #${p.packageId}`,
-              payment: "",
+              payment: p.returnState === "refunded" ? "Finansal iade kaydı var" : p.returnState === "requested" ? "İade talebi var" : "",
             };
           });
   const rows = [...storeRows, ...tyRows].sort(

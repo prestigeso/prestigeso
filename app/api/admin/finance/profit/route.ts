@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isAdminRequest } from '@/lib/adminRequest';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { buildProfitReport, historicalGoods, type CostHistory, type ProfitSale } from '@/lib/finance/profit-report';
-import { snapshotGoods, type ProfitProfile } from '@/lib/finance/profit';
+import { profileAt, snapshotGoods, validateProfitSettings, type ProfitProfile } from '@/lib/finance/profit';
 import type { projectPackages } from '@/lib/trendyol/packages';
 import { financeCoverage, returnHoldOrders, type FinanceWindow } from '@/lib/trendyol/finance';
 import { archiveCoverage, type ArchiveJob } from '@/lib/trendyol/archive-coverage';
@@ -30,10 +30,12 @@ export async function GET(req: NextRequest) {
       if (!r.data.length) throw new Error('INCOMPLETE');
     }
     const seller = process.env.TRENDYOL_SELLER_ID, environment = process.env.TRENDYOL_ENVIRONMENT;
-    const returns: { count:number; debtMinor:number; covered:boolean; salesCovered:boolean; archiveCovered:boolean } = { count:0,debtMinor:0,covered:false,salesCovered:false,archiveCovered:true };
+    const returns = { count:0, debtMinor:0, shippingEstimateMinor:null as number|null, covered:false, salesCovered:false, archiveCovered:true };
     if (seller) {
       if (!['production', 'stage'].includes(environment || '')) throw new Error('CONFIG');
       const history: CostHistory[] = [];
+      const catalog = await supabaseAdmin.from('products').select('"SKU",barcode').order('id').limit(1001).abortSignal(AbortSignal.timeout(8000));
+      if (catalog.error || !catalog.data || catalog.data.length > 1000) throw Error('CATALOG');
       const claimRows: { order_number:string; original_package_id:string|null; statuses:string[] }[] = [];
       for (let offset = 0;;offset += 500) {
         const r = await supabaseAdmin.from('trendyol_claim_mirror').select('order_number,original_package_id,statuses',{count:'exact'}).eq('seller_id',seller).eq('environment',environment!).order('claim_id').range(offset,offset+499).abortSignal(AbortSignal.timeout(8000));
@@ -42,9 +44,9 @@ export async function GET(req: NextRequest) {
         if (offset+r.data.length >= r.count) break;
         if (!r.data.length) throw Error('INCOMPLETE');
       }
-      const settlementRows: { order_number:string; package_id:string|null; debt:string|number; credit:string|number }[] = [];
+      const settlementRows: { order_number:string; package_id:string|null; transaction_at:string; debt:string|number; credit:string|number }[] = [];
       for (let offset = 0;;offset += 500) {
-        const r = await supabaseAdmin.from('trendyol_return_settlement_mirror').select('order_number,package_id,debt,credit',{count:'exact'}).eq('seller_id',seller).eq('environment',environment!).gte('transaction_at',new Date(since).toISOString()).lt('transaction_at',new Date(now).toISOString()).order('transaction_id').range(offset,offset+499).abortSignal(AbortSignal.timeout(8000));
+        const r = await supabaseAdmin.from('trendyol_return_settlement_mirror').select('order_number,package_id,transaction_at,debt,credit',{count:'exact'}).eq('seller_id',seller).eq('environment',environment!).gte('transaction_at',new Date(since).toISOString()).lt('transaction_at',new Date(now).toISOString()).order('transaction_id').range(offset,offset+499).abortSignal(AbortSignal.timeout(8000));
         if (r.error || r.count === null || r.count > 10000) throw Error('RETURNS');
         settlementRows.push(...r.data);
         if (offset+r.data.length >= r.count) break;
@@ -75,7 +77,8 @@ export async function GET(req: NextRequest) {
           // Order-level hold is conservative for split/partial returns until line-level ledger reconciliation exists.
           const returned = heldOrders.has(p.orderNumber);
           const eligible = !returned && p.currency === 'TRY' && ['Created','Picking','Invoiced','Shipped','Delivered','AtCollectionPoint'].includes(p.status) && p.discount === 0 && p.lines.every(l => !l.cancelReason && !['Cancelled','Returned','UnDelivered'].includes(l.status || ''));
-          sales.push({ id: `${p.orderNumber} / ${p.packageId}`, platform: 'trendyol', at, amount: p.amount, eligible, exclusion: returned ? 'İade kaydı var; gider ve geri ödeme mutabakatı gerekli' : p.discount !== 0 ? 'Kupon/indirim finansmanı doğrulanmadı' : 'İptal veya desteklenmeyen para birimi', goods: historicalGoods(p.lines, history, at) });
+          const cost = historicalGoods(p.lines, history, at, catalog.data);
+          sales.push({ id: `${p.orderNumber} / ${p.packageId}`, platform: 'trendyol', at, amount: p.amount, eligible, exclusion: returned ? 'İade kaydı var; gider ve geri ödeme mutabakatı gerekli' : p.discount !== 0 ? 'Kupon/indirim finansmanı doğrulanmadı' : 'İptal veya desteklenmeyen para birimi', goods: cost.amount, currentCostEstimate: cost.currentCostEstimate });
         }
         if (offset + r.data.length >= r.count) break;
         if (!r.data.length) throw new Error('INCOMPLETE');
@@ -84,10 +87,16 @@ export async function GET(req: NextRequest) {
       returns.salesCovered = returns.archiveCovered && (!archived.length || financeCoverage(first,now,windows.data as FinanceWindow[],now));
       returns.covered = financeCoverage(since,now,windows.data as FinanceWindow[],now);
       if (!returns.salesCovered) for (const sale of sales) if (sale.platform === 'trendyol') { sale.eligible=false;sale.exclusion=returns.archiveCovered?'İade ve cari hesap arşivi henüz güncel değil':'Sipariş arşivi seçili dönemi tam kapsamıyor'; }
-      if (returns.covered) {
-        returns.count = settlementRows.length;
-        for (const r of settlementRows) { const debt = Number(r.debt),credit=Number(r.credit); if (!Number.isFinite(debt) || !Number.isFinite(credit)) throw Error('RETURN_AMOUNT');returns.debtMinor += Math.round((debt-credit)*100);if (!Number.isSafeInteger(returns.debtMinor)) throw Error('RETURN_AMOUNT'); }
+      returns.count = settlementRows.length;
+      for (const r of settlementRows) { const debt = Number(r.debt),credit=Number(r.credit); if (!Number.isFinite(debt) || !Number.isFinite(credit)) throw Error('RETURN_AMOUNT');returns.debtMinor += Math.round((debt-credit)*100);if (!Number.isSafeInteger(returns.debtMinor)) throw Error('RETURN_AMOUNT'); }
+      const byOrder = new Map(settlementRows.map(row => [row.order_number,row]));
+      let shipping = 0, complete = true;
+      for (const row of byOrder.values()) {
+        const profile = profileAt(profiles.data as ProfitProfile[],'trendyol',row.transaction_at);
+        try { if (!profile) { complete = false; break; } validateProfitSettings(profile.settings); shipping += profile.settings.shippingMinor; }
+        catch { complete = false; break; }
       }
+      returns.shippingEstimateMinor = complete ? shipping : null;
     }
     return NextResponse.json({ ...buildProfitReport(sales.sort((a,b) => Date.parse(b.at)-Date.parse(a.at)), profiles.data as ProfitProfile[]), returns, period:{since,until:now} }, { headers });
   } catch { return NextResponse.json({ error: 'Kâr raporu tamamlanamadı. Kâr analizi SQL güncellemesini ve veritabanı bağlantısını kontrol edin; eksik toplam gösterilmedi.' }, { status: 503, headers }); }

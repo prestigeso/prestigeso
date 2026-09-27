@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
       { error: "Trendyol yapılandırılmadı." },
       { status: 503, headers },
     );
-  const [jobs, packages, mappings] = await Promise.all([
+  const [jobs, packages, mappings, catalog] = await Promise.all([
     supabaseAdmin
       .from("trendyol_sync_jobs")
       .select("id,revision,status,starts_at,ends_at,updated_at")
@@ -41,13 +41,14 @@ export async function GET(req: NextRequest) {
       .select("resource_key,payload")
       .eq("kind", "sku_mapping")
       .limit(1001),
+    supabaseAdmin.from("products").select('"SKU",name,barcode').order("id").limit(1001),
   ]);
-  if (jobs.error || packages.error || mappings.error)
+  if (jobs.error || packages.error || mappings.error || catalog.error)
     return NextResponse.json(
       { error: "Yerel kayıtlar okunamadı; migration durumunu kontrol edin." },
       { status: 503, headers },
     );
-  if ((mappings.data || []).length > 1000)
+  if ((mappings.data || []).length > 1000 || (catalog.data || []).length > 1000)
     return NextResponse.json(
       { error: "Eşleme kapasitesi aşıldı; eksik eşleme gösterilmedi." },
       { status: 503, headers },
@@ -61,6 +62,7 @@ export async function GET(req: NextRequest) {
       packages: (packages.data || []).slice(0, 100),
       truncated: (packages.data || []).length > 100,
       mappings: map,
+      products: catalog.data || [],
       environment,
     },
     { headers },
