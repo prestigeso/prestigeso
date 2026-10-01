@@ -17,7 +17,10 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import crypto from 'node:crypto';
+import dns from 'node:dns/promises';
 import fs from 'node:fs/promises';
+import https from 'node:https';
+import net from 'node:net';
 import path from 'node:path';
 import { validateR2Environment } from './lib/r2-environment.mjs';
 
@@ -41,6 +44,23 @@ const outputDir = path.resolve('output', 'r2-product-media');
 const planFile = path.join(outputDir, 'plan.json');
 const manifestFile = path.join(outputDir, 'verified.jsonl');
 const sha256 = (body) => crypto.createHash('sha256').update(body).digest('hex');
+
+function retryable(error) {
+  return ['ECONNABORTED', 'ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'UND_ERR_SOCKET', 'UND_ERR_HEADERS_TIMEOUT'].includes(error?.code) ||
+    ['AbortError', 'TimeoutError'].includes(error?.name) || error?.message === 'aborted' ||
+    [429, 500, 502, 503, 504].includes(error?.$metadata?.httpStatusCode);
+}
+
+async function withNetworkRetry(operation) {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (attempt >= 5 || !retryable(error)) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250 * 2 ** attempt));
+    }
+  }
+}
 
 function sourceKey(value) {
   if (typeof value !== 'string') return null;
@@ -82,6 +102,7 @@ function r2Client(settings) {
   return new S3Client({
     region: 'auto',
     endpoint: `https://${settings.account}.r2.cloudflarestorage.com`,
+    forcePathStyle: true,
     credentials: {
       accessKeyId: settings.accessKeyId,
       secretAccessKey: settings.secretAccessKey,
@@ -150,6 +171,94 @@ async function r2Body(s3, settings, key) {
   return Buffer.from(await result.Body.transformToByteArray());
 }
 
+const publicIpv4Cache = new Map();
+const pinnedPublicIpv4 = process.env.R2_PUBLIC_IPV4?.trim() || '';
+if (pinnedPublicIpv4 && net.isIP(pinnedPublicIpv4) !== 4) {
+  throw new Error('R2_PUBLIC_IPV4 must be a valid IPv4 address.');
+}
+function lookupPublicIpv4(hostname, options, callback) {
+  const complete = (address) => {
+    if (options?.all) callback(null, [{ address, family: 4 }]);
+    else callback(null, address, 4);
+  };
+  const cached = pinnedPublicIpv4 || publicIpv4Cache.get(hostname);
+  if (cached) {
+    complete(cached);
+    return;
+  }
+  dns.resolve4(hostname).then(
+    (addresses) => {
+      if (!addresses[0]) throw new Error(`No public IPv4 address for ${hostname}`);
+      publicIpv4Cache.set(hostname, addresses[0]);
+      complete(addresses[0]);
+    },
+    callback,
+  ).catch(callback);
+}
+const publicAgent = new https.Agent({ keepAlive: true, maxSockets: 4, lookup: lookupPublicIpv4 });
+
+function publicImageHead(url, expectedBytes) {
+  return new Promise((resolve, reject) => {
+    const request = https.request(url, {
+      method: 'HEAD', agent: publicAgent, timeout: 15000,
+    }, (response) => {
+      const status = response.statusCode;
+      const type = response.headers['content-type'];
+      const bytes = Number(response.headers['content-length']);
+      response.resume();
+      if (status !== 200 || !type?.startsWith('image/') || bytes !== expectedBytes) {
+        const error = new Error(`Public R2 HEAD mismatch: status=${status}, type=${type}, bytes=${bytes}`);
+        error.code = [429, 500, 502, 503, 504].includes(status) ? 'ETIMEDOUT' : 'BAD_RESPONSE';
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+    request.on('timeout', () => {
+      const error = new Error('Public R2 HEAD timed out.');
+      error.code = 'ETIMEDOUT';
+      request.destroy(error);
+    });
+    request.on('error', reject);
+    request.end();
+  });
+}
+
+function publicImageBody(url, expectedBytes) {
+  return new Promise((resolve, reject) => {
+    const request = https.get(url, {
+      agent: publicAgent,
+      timeout: 30000,
+    }, (response) => {
+      if (response.statusCode !== 200 || !response.headers['content-type']?.startsWith('image/')) {
+        const error = new Error(`Public R2 URL is not ready (${response.statusCode})`);
+        error.code = [429, 500, 502, 503, 504].includes(response.statusCode) ? 'ETIMEDOUT' : 'BAD_RESPONSE';
+        response.resume();
+        reject(error);
+        return;
+      }
+      const chunks = [];
+      let bytes = 0;
+      response.on('data', (chunk) => {
+        bytes += chunk.length;
+        if (bytes > expectedBytes) {
+          request.destroy(new Error('Public R2 image is larger than the verified source.'));
+          return;
+        }
+        chunks.push(chunk);
+      });
+      response.on('end', () => resolve(Buffer.concat(chunks)));
+      response.on('error', reject);
+    });
+    request.on('timeout', () => {
+      const error = new Error('Public R2 request timed out.');
+      error.code = 'ETIMEDOUT';
+      request.destroy(error);
+    });
+    request.on('error', reject);
+  });
+}
+
 async function copyObjects(plan, settings) {
   const s3 = r2Client(settings);
   const storage = db.storage.from('products');
@@ -193,26 +302,37 @@ async function copyObjects(plan, settings) {
 
 async function checkPublicCopies(plan, settings) {
   const verified = await verifiedEntries();
-  const s3 = r2Client(settings);
+  const keys = mediaKeys(plan);
+  let nextIndex = 0;
+  const sampleIndexes = new Set([0, 0.25, 0.5, 0.75, 1].map((fraction) => Math.floor((keys.length - 1) * fraction)));
+  // Every source hash was matched against an R2 GET during copy. The public
+  // gate checks every HTTPS object and fully hashes distributed samples.
   try {
-    for (const key of mediaKeys(plan)) {
-      const entry = verified.get(key);
-      if (!entry || entry.url !== r2Url(settings, key)) throw new Error(`Unverified R2 object: ${key}`);
-      if (sha256(await r2Body(s3, settings, key)) !== entry.sha256) {
-        throw new Error(`R2 object changed after verification: ${key}`);
+    await Promise.all(Array.from({ length: Math.min(4, keys.length) }, async () => {
+      for (;;) {
+        const index = nextIndex++;
+        if (index >= keys.length) return;
+        const key = keys[index];
+        try {
+          const entry = verified.get(key);
+          if (!entry || entry.url !== r2Url(settings, key)) throw new Error(`Unverified R2 object: ${key}`);
+          await withNetworkRetry(() => publicImageHead(entry.url, entry.bytes));
+          if (sampleIndexes.has(index)) {
+            const publicBody = await withNetworkRetry(() => publicImageBody(entry.url, entry.bytes));
+            if (publicBody.length !== entry.bytes || sha256(publicBody) !== entry.sha256) {
+              throw new Error(`Public R2 image checksum differs: ${key}`);
+            }
+          }
+          if ((index + 1) % 25 === 0) console.log(`Public verification reached ${index + 1}/${keys.length}`);
+        } catch (error) {
+          throw new Error(`Public verification stopped at ${key}: ${error.message}`, { cause: error });
+        }
       }
-      const response = await fetch(entry.url, { redirect: 'error', signal: AbortSignal.timeout(30000) });
-      if (!response.ok || !response.headers.get('content-type')?.startsWith('image/')) {
-        throw new Error(`Public R2 URL is not ready: ${key} (${response.status})`);
-      }
-      const publicBody = Buffer.from(await response.arrayBuffer());
-      if (publicBody.length !== entry.bytes || sha256(publicBody) !== entry.sha256) {
-        throw new Error(`Public R2 image checksum differs: ${key}`);
-      }
-    }
+    }));
   } finally {
-    s3.destroy();
+    publicAgent.destroy();
   }
+  return { publicHeadObjects: keys.length, sampledPublicHashes: sampleIndexes.size };
 }
 
 function replaced(value, settings) {
@@ -225,6 +345,32 @@ async function switchReferences(plan, settings) {
     products: await allRows('products', 'id,image,images,updated_at'),
     slides: await allRows('hero_slides', 'id,image_url'),
   };
+  if (current.products.length !== plan.products.length || current.slides.length !== plan.slides.length) {
+    throw new Error('Product or slide count changed after planning; create a new plan.');
+  }
+  const productsById = new Map(current.products.map((row) => [row.id, row]));
+  const slidesById = new Map(current.slides.map((row) => [row.id, row]));
+  for (const original of plan.products) {
+    const row = productsById.get(original.id);
+    if (!row || JSON.stringify([row.image, row.images, row.updated_at]) !==
+        JSON.stringify([original.image, original.images, original.updated_at])) {
+      const desired = {
+        image: replaced(original.image, settings),
+        images: Array.isArray(original.images)
+          ? original.images.map((value) => replaced(value, settings))
+          : original.images,
+      };
+      if (!row || JSON.stringify([row.image, row.images]) !== JSON.stringify([desired.image, desired.images])) {
+        throw new Error(`Product ${original.id} changed after planning; stopped before database writes.`);
+      }
+    }
+  }
+  for (const original of plan.slides) {
+    const row = slidesById.get(original.id);
+    if (!row || (row.image_url !== original.image_url && row.image_url !== replaced(original.image_url, settings))) {
+      throw new Error(`Slide ${original.id} changed after planning; stopped before database writes.`);
+    }
+  }
   const plannedKeys = new Set(mediaKeys(plan));
   const newKeys = mediaKeys(current).filter((key) => !plannedKeys.has(key));
   if (newKeys.length > 0) {
@@ -334,8 +480,8 @@ if (!copy && !switchDb && !rollbackDb && !verify) {
   if (copy) await copyObjects(plan, settings);
   else if (switchDb) await switchReferences(plan, settings);
   else if (verify) {
-    await checkPublicCopies(plan, settings);
-    console.log(JSON.stringify({ mode: 'VERIFY_ONLY', verifiedPublicObjects: mediaKeys(plan).length, databaseWrites: 0, deletedObjects: 0 }));
+    const result = await checkPublicCopies(plan, settings);
+    console.log(JSON.stringify({ mode: 'VERIFY_ONLY', ...result, databaseWrites: 0, deletedObjects: 0 }));
   }
   else await rollbackReferences(plan, settings);
 }

@@ -33,10 +33,14 @@ node --env-file=.env.local scripts/migrate-product-media-to-r2.mjs --switch-db
 `--save-plan` is read-only against Supabase and writes a local snapshot under
 `output/r2-product-media/`, which is gitignored. A plain run (without flags)
 is also read-only and prints counts. `--copy` transfers only referenced
-product/hero objects, checks SHA-256 against R2, and writes a verified manifest.
-It is resumable. `--verify` checks the R2 and public-domain SHA-256 checksums
-without database writes. Redirects and non-image public responses are rejected.
-`--switch-db` repeats these checks before
+product/hero objects, checks every source SHA-256 against an R2 GET, and writes
+a verified manifest. It is resumable. `--verify` checks that every public HTTPS
+URL returns an image of the verified byte length, then compares the full
+SHA-256 for five distributed public samples. It makes no database writes.
+Redirects and non-image public responses are rejected. On Windows, a temporary
+`R2_PUBLIC_IPV4` environment value may work around an unstable local DNS
+resolver; HTTPS still uses the media hostname and validates its certificate.
+Do not set that value in Vercel. `--switch-db` repeats these checks before
 changing image URLs in the product and hero-slide rows. Product writes use an
 `updated_at` check to stop on concurrent edits. If admin product/slider edits
 occur during migration, stop and make a fresh plan rather than overwriting them.
@@ -82,9 +86,15 @@ stops if an image was edited after cutover, so that newer work is not lost.
   Google and Cloudflare DNS resolvers returned those Cloudflare nameservers.
   `media.prestigeso.com.tr` was attached to the bucket with minimum TLS 1.2;
   Cloudflare shows its custom-domain status as Active and its HTTPS endpoint
-  answers through Cloudflare. No image has yet been copied or publicly verified.
-- On 2026-09-30, the saved plan still matched all 232 product and 6 hero-slide
-  records; it references 956 unique objects. No database image URL has changed.
+  answers through Cloudflare.
+- On 2026-10-02, all 956 referenced objects had been copied with source/R2
+  SHA-256 equality. All 956 public HTTPS URLs returned the expected image type
+  and byte length, and five distributed public URLs matched full SHA-256.
+  The saved plan covers 232 products and 6 hero slides. No database image URL
+  has changed yet, and no Supabase source object has been deleted.
+- The R2-capable code is deployed in Production while
+  `PRODUCT_MEDIA_BACKEND=supabase`; `R2_PUBLIC_BASE_URL` is configured for the
+  production image loader. Cutover remains a separate step.
 - Keep `PRODUCT_MEDIA_BACKEND=supabase` during preparation. The environment
   validator rejects typos, invalid credentials and development/S3 public URLs.
 - No source media cleanup is included in the migration. Copying does not reduce

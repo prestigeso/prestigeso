@@ -48,6 +48,7 @@ function client(settings: R2Config): S3Client {
   return new S3Client({
     region: "auto",
     endpoint: `https://${settings.accountId}.r2.cloudflarestorage.com`,
+    forcePathStyle: true,
     credentials: {
       accessKeyId: settings.accessKeyId,
       secretAccessKey: settings.secretAccessKey,
