@@ -7,6 +7,12 @@ import {
   validateImageFile,
 } from "@/lib/uploads/imageFiles";
 import { optimizeAdminImage } from "@/lib/uploads/optimizeAdminImage";
+import {
+  deleteR2ProductMedia,
+  isR2ProductMediaEnabled,
+  r2ProductMediaKeyFromUrl,
+  uploadR2ProductMedia,
+} from "@/lib/uploads/r2ProductMedia";
 
 export const runtime = "nodejs";
 const MAX_ADMIN_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -29,6 +35,10 @@ export async function POST(req: NextRequest) {
       prefix,
     );
     const path = createImageObjectPath(`admin/${prefix}`, optimized.extension);
+    if (isR2ProductMediaEnabled()) {
+      const url = await uploadR2ProductMedia(path, optimized.body, optimized.contentType);
+      return NextResponse.json({ url });
+    }
     const { error } = await supabaseAdmin.storage.from("products").upload(path, optimized.body, {
       contentType: optimized.contentType,
       cacheControl: "31536000",
@@ -52,12 +62,22 @@ export async function DELETE(req: NextRequest) {
   const values: unknown[] = Array.isArray(body.urls)
     ? body.urls.slice(0, 50)
     : [];
-  const paths = values
+  const supabasePaths = values
     .map((value) => storageObjectPathFromPublicUrl(value))
     .filter((value): value is string => Boolean(value));
-  if (paths.length === 0) return NextResponse.json({ success: true });
-  const { error } = await supabaseAdmin.storage.from("products").remove(paths);
-  if (error)
+  const r2Keys = values
+    .map((value) => r2ProductMediaKeyFromUrl(value))
+    .filter((value): value is string => Boolean(value));
+  try {
+    if (r2Keys.length > 0) await deleteR2ProductMedia(r2Keys);
+    // Preserve original Supabase media after cutover until a separate,
+    // verified backup/cleanup is explicitly approved.
+    if (supabasePaths.length > 0 && !isR2ProductMediaEnabled()) {
+      const { error } = await supabaseAdmin.storage.from("products").remove(supabasePaths);
+      if (error) throw error;
+    }
+  } catch {
     return NextResponse.json({ error: "Görseller silinemedi." }, { status: 500 });
+  }
   return NextResponse.json({ success: true });
 }

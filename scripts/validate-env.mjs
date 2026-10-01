@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { validateR2Environment } from "./lib/r2-environment.mjs";
 
 if (existsSync(".env.local") && typeof process.loadEnvFile === "function") {
   process.loadEnvFile(".env.local");
@@ -49,13 +50,15 @@ const invalidPaytrFlags = ["PAYTR_TEST_MODE", "PAYTR_DEBUG_ON"].filter(
   (name) =>
     process.env[name] !== undefined && !["0", "1"].includes(process.env[name]),
 );
+const invalidR2Settings = validateR2Environment(process.env);
 
 if (
   missing.length ||
   weakSecrets.length ||
   weakAdminPassword ||
   invalidTotpSecret ||
-  invalidPaytrFlags.length
+  invalidPaytrFlags.length ||
+  invalidR2Settings.length
 ) {
   if (missing.length)
     console.error(`Eksik ortam değişkenleri: ${missing.join(", ")}`);
@@ -75,6 +78,8 @@ if (
     console.error(
       `Yalnızca 0 veya 1 olabilen değişkenler: ${invalidPaytrFlags.join(", ")}`,
     );
+  if (invalidR2Settings.length)
+    console.error(`Eksik veya geçersiz R2 ayarları: ${invalidR2Settings.join(", ")}`);
   process.exit(1);
 }
 

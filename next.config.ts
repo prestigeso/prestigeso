@@ -1,8 +1,10 @@
 import type { NextConfig } from "next";
+import { parseR2PublicBaseUrl } from "./lib/uploads/r2MediaUrl.ts";
 
 const supabaseHostname = new URL(
   process.env.NEXT_PUBLIC_SUPABASE_URL || "https://invalid.supabase.co",
 ).hostname;
+const r2PublicUrl = parseR2PublicBaseUrl(process.env.R2_PUBLIC_BASE_URL);
 
 const securityHeaders = [
   {
@@ -65,6 +67,9 @@ const nextConfig: NextConfig = {
         hostname: supabaseHostname,
         pathname: "/storage/v1/object/public/**",
       },
+      ...(r2PublicUrl
+        ? [{ protocol: "https" as const, hostname: r2PublicUrl.hostname, port: "", pathname: "/**", search: "" }]
+        : []),
     ],
   },
 };
