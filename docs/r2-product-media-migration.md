@@ -1,7 +1,8 @@
 # Product media to Cloudflare R2
 
 This moves **product and hero-slide images only**. Review photos and private
-return evidence stay in Supabase. The migration never deletes source objects.
+return evidence stay in Supabase. The copy/cutover commands never delete source
+objects; the separately gated prune command below does.
 
 ## Prepare Cloudflare
 
@@ -55,11 +56,13 @@ continues to recognize both providers, but does **not** delete legacy Supabase
 objects while R2 mode is on. Do not remove legacy objects until a separate
 backup, URL inventory, and rollback window have been verified.
 
-If cutover must be reversed, set `PRODUCT_MEDIA_BACKEND=supabase` for new
-uploads and run `node --env-file=.env.local
-scripts/migrate-product-media-to-r2.mjs --rollback-db`. This restores only
-unchanged migrated image fields from the saved plan and keeps both copies. It
-stops if an image was edited after cutover, so that newer work is not lost.
+Before source cleanup, a rollback could set `PRODUCT_MEDIA_BACKEND=supabase`
+and run `node --env-file=.env.local
+scripts/migrate-product-media-to-r2.mjs --rollback-db`. **After source
+cleanup this rollback is unavailable:** the original Supabase object URLs no
+longer resolve. The rollback command now checks that every source object exists
+before writing any database row. If a future rollback is required, restore
+and verify the source objects first; do not merely change the environment flag.
 
 ## Cost and availability checks
 
@@ -95,7 +98,8 @@ stops if an image was edited after cutover, so that newer work is not lost.
   and byte length, and five distributed public URLs matched full SHA-256.
   The saved plan covers 232 products and 6 hero slides. The database cutover
   updated 200 product rows and 6 slides; all 232 products and 6 slides now
-  match their planned R2 targets. No Supabase source object was deleted.
+  match their planned R2 targets. No Supabase source object was deleted at that
+  stage.
 - On 2026-10-02, Vercel Production `PRODUCT_MEDIA_BACKEND` was changed to `r2`
   and the R2-capable deployment was redeployed. The production deployment is
   Ready and aliased to `www.prestigeso.com.tr`. A live authenticated admin
@@ -107,5 +111,13 @@ stops if an image was edited after cutover, so that newer work is not lost.
   originals or divergences.
 - New product/hero uploads now use R2. The environment validator rejects
   typos, invalid credentials and development/S3 public URLs.
-- No source media cleanup is included in the migration. Copying does not reduce
-  Supabase storage usage by itself; eventual cleanup requires separate approval.
+- On 2026-10-02, after explicit user approval, all 956 migrated public R2
+  images were rechecked (HTTP HEAD and five full SHA-256 samples), the 232
+  products and 6 slides were audited, and every available public table was
+  scanned for legacy product-bucket URLs. No references remained. The exact
+  956 verified Supabase source objects (509,060,026 bytes, about 485.5 MiB)
+  were deleted. A fresh bucket inventory found zero migrated source objects;
+  the other 520 objects, including review media, were untouched. Public R2
+  verification and the database target audit passed again after deletion.
+  Supabase usage figures may update later; other buckets and unrelated product
+  objects are outside this cleanup.

@@ -422,6 +422,16 @@ async function switchReferences(plan, settings) {
 }
 
 async function rollbackReferences(plan, settings) {
+  // A rollback to Supabase URLs is unsafe once legacy objects have been
+  // pruned. Check the entire source set before changing even one DB row.
+  const storage = db.storage.from('products');
+  const keys = mediaKeys(plan);
+  for (let offset = 0; offset < keys.length; offset += 8) {
+    await Promise.all(keys.slice(offset, offset + 8).map(async (key) => {
+      const { error } = await storage.info(key);
+      if (error) throw new Error(`Supabase source object is missing; rollback is unavailable: ${key}`);
+    }));
+  }
   let revertedProducts = 0;
   let revertedSlides = 0;
   for (const original of plan.products) {
