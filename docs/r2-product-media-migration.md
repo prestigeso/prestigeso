@@ -21,13 +21,14 @@ return evidence stay in Supabase. The migration never deletes source objects.
 ## Copy and cut over
 
 From the repository root, with a service-role key for the intended Supabase
-project and R2 variables in `.env.local`:
+project and R2 variables available to the relevant command:
 
 ```powershell
 node --env-file=.env.local scripts/migrate-product-media-to-r2.mjs --save-plan
 node --env-file=.env.local scripts/migrate-product-media-to-r2.mjs --copy
 node --env-file=.env.local scripts/migrate-product-media-to-r2.mjs --verify
 node --env-file=.env.local scripts/migrate-product-media-to-r2.mjs --switch-db
+node --env-file=.env.local scripts/migrate-product-media-to-r2.mjs --audit-switch
 ```
 
 `--save-plan` is read-only against Supabase and writes a local snapshot under
@@ -42,8 +43,10 @@ Redirects and non-image public responses are rejected. On Windows, a temporary
 resolver; HTTPS still uses the media hostname and validates its certificate.
 Do not set that value in Vercel. `--switch-db` repeats these checks before
 changing image URLs in the product and hero-slide rows. Product writes use an
-`updated_at` check to stop on concurrent edits. If admin product/slider edits
-occur during migration, stop and make a fresh plan rather than overwriting them.
+`updated_at` check to stop on concurrent edits. A non-image product edit after
+planning is allowed if the image fields still match; an image edit stops the
+cutover rather than overwriting it. `--audit-switch` reports whether every
+planned row has reached its target without changing the database.
 
 After cutover, inspect multiple product pages and slides on the production
 domain, then set `PRODUCT_MEDIA_BACKEND=r2` in Vercel and redeploy. New admin
@@ -87,15 +90,19 @@ stops if an image was edited after cutover, so that newer work is not lost.
   `media.prestigeso.com.tr` was attached to the bucket with minimum TLS 1.2;
   Cloudflare shows its custom-domain status as Active and its HTTPS endpoint
   answers through Cloudflare.
-- On 2026-10-02, all 956 referenced objects had been copied with source/R2
+- On 2026-10-02, all 956 referenced objects were copied with source/R2
   SHA-256 equality. All 956 public HTTPS URLs returned the expected image type
   and byte length, and five distributed public URLs matched full SHA-256.
-  The saved plan covers 232 products and 6 hero slides. No database image URL
-  has changed yet, and no Supabase source object has been deleted.
+  The saved plan covers 232 products and 6 hero slides. The database cutover
+  updated 200 product rows and 6 slides; all 232 products and 6 slides now
+  match their planned R2 targets. No Supabase source object was deleted.
 - The R2-capable code is deployed in Production while
   `PRODUCT_MEDIA_BACKEND=supabase`; `R2_PUBLIC_BASE_URL` is configured for the
-  production image loader. Cutover remains a separate step.
-- Keep `PRODUCT_MEDIA_BACKEND=supabase` during preparation. The environment
+  production image loader. The homepage and sampled product pages return 200
+  with R2 URLs, and a sampled direct image and Next/Image response returned
+  image content with status 200. The remaining operational step is to set
+  `PRODUCT_MEDIA_BACKEND=r2` and redeploy so *new* uploads use R2 too.
+- Keep `PRODUCT_MEDIA_BACKEND=supabase` until new-upload cutover. The environment
   validator rejects typos, invalid credentials and development/S3 public URLs.
 - No source media cleanup is included in the migration. Copying does not reduce
   Supabase storage usage by itself; eventual cleanup requires separate approval.

@@ -28,7 +28,8 @@ const copy = process.argv.includes('--copy');
 const switchDb = process.argv.includes('--switch-db');
 const rollbackDb = process.argv.includes('--rollback-db');
 const verify = process.argv.includes('--verify');
-if ([copy, switchDb, rollbackDb, verify].filter(Boolean).length > 1) {
+const auditSwitch = process.argv.includes('--audit-switch');
+if ([copy, switchDb, rollbackDb, verify, auditSwitch].filter(Boolean).length > 1) {
   throw new Error('Run one write mode at a time.');
 }
 
@@ -77,19 +78,23 @@ function sourceKey(value) {
 }
 
 function r2Settings() {
+  const rawBaseUrl = process.env.R2_PUBLIC_BASE_URL?.trim() || '';
+  if (!rawBaseUrl) throw new Error('R2_PUBLIC_BASE_URL is required.');
+  const baseUrl = new URL(rawBaseUrl);
+  if (baseUrl.protocol !== 'https:' || baseUrl.username || baseUrl.password || baseUrl.port || baseUrl.pathname !== '/' || baseUrl.search || baseUrl.hash || baseUrl.hostname.endsWith('.r2.dev') || baseUrl.hostname.endsWith('.r2.cloudflarestorage.com')) {
+    throw new Error('R2_PUBLIC_BASE_URL must be an HTTPS origin.');
+  }
+  // The copy needs S3 credentials; public verification and database URL
+  // switching only need the custom domain and the saved hash manifest.
+  if (!copy) return { baseUrl };
   const issues = validateR2Environment({ ...process.env, PRODUCT_MEDIA_BACKEND: 'r2' });
   if (issues.length) throw new Error(`Missing or invalid R2 settings: ${issues.join(', ')}`);
   const account = process.env.R2_ACCOUNT_ID?.trim() || '';
   const bucket = process.env.R2_BUCKET?.trim() || '';
   const accessKeyId = process.env.R2_ACCESS_KEY_ID?.trim() || '';
   const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY?.trim() || '';
-  const rawBaseUrl = process.env.R2_PUBLIC_BASE_URL?.trim() || '';
-  if (!/^[a-f0-9]{32}$/i.test(account) || !bucket || !accessKeyId || !secretAccessKey || !rawBaseUrl) {
-    throw new Error('R2 account, bucket, keys and public custom domain are required.');
-  }
-  const baseUrl = new URL(rawBaseUrl);
-  if (baseUrl.protocol !== 'https:' || baseUrl.username || baseUrl.password || baseUrl.port || baseUrl.pathname !== '/' || baseUrl.search || baseUrl.hash || baseUrl.hostname.endsWith('.r2.dev') || baseUrl.hostname.endsWith('.r2.cloudflarestorage.com')) {
-    throw new Error('R2_PUBLIC_BASE_URL must be an HTTPS origin.');
+  if (!/^[a-f0-9]{32}$/i.test(account) || !bucket || !accessKeyId || !secretAccessKey) {
+    throw new Error('R2 account, bucket and keys are required to copy objects.');
   }
   return { account, bucket, accessKeyId, secretAccessKey, baseUrl };
 }
@@ -352,8 +357,8 @@ async function switchReferences(plan, settings) {
   const slidesById = new Map(current.slides.map((row) => [row.id, row]));
   for (const original of plan.products) {
     const row = productsById.get(original.id);
-    if (!row || JSON.stringify([row.image, row.images, row.updated_at]) !==
-        JSON.stringify([original.image, original.images, original.updated_at])) {
+    if (!row || JSON.stringify([row.image, row.images]) !==
+        JSON.stringify([original.image, original.images])) {
       const desired = {
         image: replaced(original.image, settings),
         images: Array.isArray(original.images)
@@ -391,12 +396,12 @@ async function switchReferences(plan, settings) {
       .select('image,images,updated_at').eq('id', original.id).single();
     if (readError) throw readError;
     if (JSON.stringify([current.image, current.images]) === JSON.stringify([desired.image, desired.images])) continue;
-    if (JSON.stringify([current.image, current.images, current.updated_at]) !==
-        JSON.stringify([original.image, original.images, original.updated_at])) {
+    if (JSON.stringify([current.image, current.images]) !==
+        JSON.stringify([original.image, original.images])) {
       throw new Error(`Product ${original.id} changed after the plan; stopped without overwriting it.`);
     }
     const { data, error } = await db.from('products').update(desired)
-      .eq('id', original.id).eq('updated_at', original.updated_at).select('id');
+      .eq('id', original.id).eq('updated_at', current.updated_at).select('id');
     if (error) throw error;
     if (data?.length !== 1) throw new Error(`Product ${original.id} changed during cutover.`);
     updatedProducts++;
@@ -457,7 +462,31 @@ async function rollbackReferences(plan, settings) {
   console.log(JSON.stringify({ revertedProducts, revertedSlides, r2ObjectsDeleted: 0 }));
 }
 
-if (!copy && !switchDb && !rollbackDb && !verify) {
+if (auditSwitch) {
+  const plan = await readPlan();
+  const settings = r2Settings();
+  const products = new Map((await allRows('products', 'id,image,images')).map((row) => [row.id, row]));
+  const slides = new Map((await allRows('hero_slides', 'id,image_url')).map((row) => [row.id, row]));
+  const productStatus = { atTarget: 0, atOriginal: 0, diverged: [] };
+  const slideStatus = { atTarget: 0, atOriginal: 0, diverged: [] };
+  for (const original of plan.products) {
+    const current = products.get(original.id);
+    const target = [replaced(original.image, settings),
+      Array.isArray(original.images) ? original.images.map((value) => replaced(value, settings)) : original.images];
+    const actual = [current?.image, current?.images];
+    if (current && JSON.stringify(actual) === JSON.stringify(target)) productStatus.atTarget++;
+    else if (current && JSON.stringify(actual) === JSON.stringify([original.image, original.images])) productStatus.atOriginal++;
+    else productStatus.diverged.push(original.id);
+  }
+  for (const original of plan.slides) {
+    const current = slides.get(original.id);
+    if (current?.image_url === replaced(original.image_url, settings)) slideStatus.atTarget++;
+    else if (current?.image_url === original.image_url) slideStatus.atOriginal++;
+    else slideStatus.diverged.push(original.id);
+  }
+  console.log(JSON.stringify({ mode: 'AUDIT_SWITCH', productStatus, slideStatus,
+    productCount: products.size, slideCount: slides.size }));
+} else if (!copy && !switchDb && !rollbackDb && !verify) {
   const plan = {
     sourceOrigin,
     createdAt: new Date().toISOString(),
