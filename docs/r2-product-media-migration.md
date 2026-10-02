@@ -96,13 +96,16 @@ stops if an image was edited after cutover, so that newer work is not lost.
   The saved plan covers 232 products and 6 hero slides. The database cutover
   updated 200 product rows and 6 slides; all 232 products and 6 slides now
   match their planned R2 targets. No Supabase source object was deleted.
-- The R2-capable code is deployed in Production while
-  `PRODUCT_MEDIA_BACKEND=supabase`; `R2_PUBLIC_BASE_URL` is configured for the
-  production image loader. The homepage and sampled product pages return 200
-  with R2 URLs, and a sampled direct image and Next/Image response returned
-  image content with status 200. The remaining operational step is to set
-  `PRODUCT_MEDIA_BACKEND=r2` and redeploy so *new* uploads use R2 too.
-- Keep `PRODUCT_MEDIA_BACKEND=supabase` until new-upload cutover. The environment
-  validator rejects typos, invalid credentials and development/S3 public URLs.
+- On 2026-10-02, Vercel Production `PRODUCT_MEDIA_BACKEND` was changed to `r2`
+  and the R2-capable deployment was redeployed. The production deployment is
+  Ready and aliased to `www.prestigeso.com.tr`. A live authenticated admin
+  upload returned a `media.prestigeso.com.tr` URL; the public image returned
+  HTTP 200 with image content, and the disposable test object was deleted.
+  The homepage and a sampled product page returned HTTP 200, and a sampled
+  product R2 image returned HTTP 200. A fresh read-only database audit found
+  232/232 product rows and 6/6 hero slides at their R2 targets, with no
+  originals or divergences.
+- New product/hero uploads now use R2. The environment validator rejects
+  typos, invalid credentials and development/S3 public URLs.
 - No source media cleanup is included in the migration. Copying does not reduce
   Supabase storage usage by itself; eventual cleanup requires separate approval.
